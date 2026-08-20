@@ -140,7 +140,7 @@ def patch_readme(releases: int, tests: int, checks: int) -> None:
     text = re.sub(
         r'(<img src="\./assets/metrics-dark\.svg" alt=")[^"]*(")',
         rf"\g<1>{tests // 1000}000+ tests · {checks} checks per PR · "
-        rf"branch protection bypass list is empty\g<2>",
+        rf"no branch protection bypasses\g<2>",
         text,
     )
     readme.write_text(text, encoding="utf-8")
@@ -162,7 +162,7 @@ def main() -> int:
         return 1
 
     tiles = [(f"{tests // 1000}000+", "tests", False), (str(checks), "checks per PR", False),
-             ("empty", "bypass list", True)]
+             ("0", "protection bypasses", True)]
     for theme, dark in (("dark", True), ("light", False)):
         (ROOT / f"assets/metrics-{theme}.svg").write_text(render(tiles, dark), encoding="utf-8")
     patch_readme(releases, tests, checks)
