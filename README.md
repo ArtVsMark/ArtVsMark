@@ -19,14 +19,14 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="./assets/metrics-dark.svg">
   <source media="(prefers-color-scheme: light)" srcset="./assets/metrics-light.svg">
-  <img src="./assets/metrics-dark.svg" alt="4000+ tests · 32 checks per PR · branch protection bypass list is empty" width="92%">
+  <img src="./assets/metrics-dark.svg" alt="4000+ tests · 16 checks per PR · no branch protection bypasses" width="92%">
 </picture>
 
 <br><br>
 
 <a href="https://github.com/ArtVsMark/Stepik-Python-Grader"><img src="https://img.shields.io/badge/main_project-Stepik--Python--Grader-1F6FEB?style=for-the-badge&logo=github&logoColor=white" alt="Main project"></a>
-<a href="https://pypi.org/project/stepik-python-grader/"><img src="https://img.shields.io/pypi/v/stepik-python-grader?style=for-the-badge&logo=pypi&logoColor=white&label=pypi&color=3775A9" alt="PyPI"></a>
-<a href="https://github.com/ArtVsMark/Stepik-Python-Grader/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/ArtVsMark/Stepik-Python-Grader/ci.yml?style=for-the-badge&logo=githubactions&logoColor=white&label=CI" alt="CI"></a>
+<a href="https://pypi.org/project/stepik-python-grader/"><img src="https://img.shields.io/pypi/v/stepik-python-grader?style=for-the-badge&logo=pypi&logoColor=white&label=pypi&color=3775A9&cacheSeconds=300" alt="PyPI"></a>
+<a href="https://github.com/ArtVsMark/Stepik-Python-Grader/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/ArtVsMark/Stepik-Python-Grader/ci.yml?style=for-the-badge&logo=githubactions&logoColor=white&label=CI&cacheSeconds=300" alt="CI"></a>
 
 <br>
 
