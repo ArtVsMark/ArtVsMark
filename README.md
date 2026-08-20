@@ -48,7 +48,7 @@
 <tr>
 <td valign="top">
 <a href="https://github.com/ArtVsMark/Stepik-Python-Grader"><b>Stepik-Python-Grader</b></a><br>
-<sub><a href="https://pypi.org/project/stepik-python-grader/">PyPI</a> · <a href="https://github.com/ArtVsMark/Stepik-Python-Grader/blob/main/README.en.md">Quick start</a> · <a href="https://github.com/ArtVsMark/Stepik-Python-Grader/blob/main/HISTORY.md">History</a></sub>
+<sub><a href="https://pypi.org/project/stepik-python-grader/">PyPI</a> · <a href="https://github.com/ArtVsMark/Stepik-Python-Grader/blob/main/README.en.md#quick-start-no-stepik-needed">Quick start</a> · <a href="https://github.com/ArtVsMark/Stepik-Python-Grader/blob/main/HISTORY.md">History</a></sub>
 </td>
 <td valign="top">
 A local offline autograder for Python. Downloads task data from Stepik, runs correctness checks without a submit limit, and <b>compares several solutions honestly</b> — correctness first, benchmark metrics second.
@@ -69,22 +69,7 @@ A local offline autograder for Python. Downloads task data from Stepik, runs cor
 pipx install stepik-python-grader && stepik-grader
 ```
 
-<details>
-<summary><b>Beyond basic test execution</b></summary>
-
-<br>
-
-| Capability | What it does |
-|---|---|
-| 🔍 **Offline glossary** | Bilingual RU/EN Python glossary, reachable straight from the error you just hit |
-| 🧭 **Trace-based debugging** | Step-by-step tracer with a memory graph |
-| ⏱️ **Subprocess benchmarking** | `timeit` microbenchmarks plus time and memory ranking across solutions |
-| 🛡️ **OS-level sandboxing** | Optional execution boundary for Linux, macOS and Windows |
-| 🤖 **AI failure explanations** | Opt-in, bring-your-own-key — never on by default |
-| 📈 **Progress & history** | Tracks your recurring mistakes so they can be revisited |
-| 📚 **Layered docs** | Split by audience: `use` · `dev` · `agent` · `audit` · `archive` |
-
-</details>
+**Beyond running tests:** an offline RU/EN glossary reachable straight from the error you just hit · a step-by-step tracer with a memory graph · `timeit` microbenchmarks with time and memory ranking · an optional OS sandbox for Linux, macOS and Windows · opt-in AI failure explanations, bring-your-own-key.
 
 <div align="center">
 <picture>
@@ -184,6 +169,15 @@ The grader has a **"First contribution in 15 minutes"** onramp, and every `good 
 
 Качество держится механикой, а не памятью: гейты перед коммитом и мержем, пустой список
 обходов защиты ветки, каждое правило подписано инцидентом, из которого выросло.
+
+**Сейчас в работе:** границы модулей по мере роста площади · автоматизация очереди мержей ·
+регрессионное покрытие (каждый исправленный баг оставляет тест) · паритет английской документации ·
+`--serve` как основной сценарий вместо запасного · более тесные границы для недоверенного кода.
+
+**Стек:** Python · pytest · Hypothesis · Ruff · mypy · GitHub Actions · PyPI · Playwright.
+
+**Открыт для вклада:** онрамп «Первый вклад за 15 минут», задачи `good first issue` заводятся сразу
+на двух языках — двуязычие проверяет отдельный скрипт, а не добрая воля.
 
 Подробности — в проекте: [README грейдера](https://github.com/ArtVsMark/Stepik-Python-Grader#readme) (на русском) · [история проекта](https://github.com/ArtVsMark/Stepik-Python-Grader/blob/main/HISTORY.md) · [как включиться](https://github.com/ArtVsMark/Stepik-Python-Grader/blob/main/CONTRIBUTING.md)
 
