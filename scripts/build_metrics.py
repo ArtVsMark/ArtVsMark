@@ -121,7 +121,13 @@ def render(tiles: list[tuple[str, str, bool]], dark: bool) -> str:
 
 
 def patch_readme(releases: int, tests: int, checks: int) -> None:
-    """Обновляет числа между маркерами <!--m:key--> … <!--/m:key-->."""
+    """Обновляет числа между маркерами <!--m:key--> … <!--/m:key--> и alt картинки.
+
+    Alt правится вместе с SVG не для порядка: он невидим глазу, но именно его
+    читают скринридеры и текстовые выгрузки страницы. Разошедшись с картинкой,
+    он врёт тише всех — «32 checks per PR» прожили в alt на мерж дольше, чем на
+    самом изображении.
+    """
     readme = ROOT / "README.md"
     text = readme.read_text(encoding="utf-8")
     for key, value in (("releases", releases), ("tests", f"{tests // 1000}000+"), ("checks", checks)):
@@ -131,6 +137,12 @@ def patch_readme(releases: int, tests: int, checks: int) -> None:
             text,
             flags=re.S,
         )
+    text = re.sub(
+        r'(<img src="\./assets/metrics-dark\.svg" alt=")[^"]*(")',
+        rf"\g<1>{tests // 1000}000+ tests · {checks} checks per PR · "
+        rf"branch protection bypass list is empty\g<2>",
+        text,
+    )
     readme.write_text(text, encoding="utf-8")
 
 

@@ -19,7 +19,7 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="./assets/metrics-dark.svg">
   <source media="(prefers-color-scheme: light)" srcset="./assets/metrics-light.svg">
-  <img src="./assets/metrics-dark.svg" alt="4000+ tests · 32 checks per PR · branch protection bypass list is empty" width="92%">
+  <img src="./assets/metrics-dark.svg" alt="4000+ tests · 16 checks per PR · branch protection bypass list is empty" width="92%">
 </picture>
 
 <br><br>
