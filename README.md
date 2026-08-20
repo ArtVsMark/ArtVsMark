@@ -53,7 +53,7 @@
 <td valign="top">
 A local offline autograder for Python. Downloads task data from Stepik, runs correctness checks without a submit limit, and <b>compares several solutions honestly</b> — correctness first, benchmark metrics second.
 </td>
-<td valign="top"><sub>CLI · web UI · GUI<br>pytest plugin<br>OS sandbox</sub></td>
+<td valign="top"><sub>CLI · web UI · GUI · pytest plugin · OS sandbox</sub></td>
 </tr>
 <tr>
 <td valign="top"><a href="https://github.com/ArtVsMark/Glossary-Python"><b>Glossary-Python</b></a></td>
@@ -185,50 +185,7 @@ The grader has a **"First contribution in 15 minutes"** onramp, and every `good 
 Качество держится механикой, а не памятью: гейты перед коммитом и мержем, пустой список
 обходов защиты ветки, каждое правило подписано инцидентом, из которого выросло.
 
-<details>
-<summary><b>Развернуть полную версию</b></summary>
-
-<br>
-
-### Stepik-Python-Grader
-
-**Локальный грейдер для курсов «Поколение Python» на Stepik** — и для любой папки с решениями и тест-кейсами.
-
-Скачивает данные задачи с сайта, проверяет решение локально без лимита попыток и — главное, что отличает его от обычного прогона тестов — **сравнивает несколько решений честно**: сначала по корректности, потом по benchmark-метрикам. Весь сценарий доступен через **CLI**, **локальный веб-интерфейс**, **GUI-лаунчер** и **плагин pytest**.
-
-Сверх прогона тестов: офлайн-глоссарий Python с переходом прямо из ошибки, пошаговый трассировщик с memory-graph, микробенчмарк `timeit`, OS-песочница для Linux / macOS / Windows и AI-объяснение падений (opt-in, свой ключ).
-
-```bash
-pipx install stepik-python-grader && stepik-grader
-```
-
-[Репозиторий](https://github.com/ArtVsMark/Stepik-Python-Grader) ·
-[PyPI](https://pypi.org/project/stepik-python-grader/) ·
-[История проекта](https://github.com/ArtVsMark/Stepik-Python-Grader/blob/main/HISTORY.md)
-
-### Glossary-Python
-
-[Glossary-Python](https://github.com/ArtVsMark/Glossary-Python) — словарный слой, в который грейдер уводит из упавшего прогона.
-
-### Чем держится качество
-
-Проект — заодно полигон инженерной дисциплины. Что стоит за зелёной галочкой:
-
-- **более 4000 тестов** в наборе из 197 модулей;
-- **32 проверки на каждый PR**, из них 11 обязательных;
-- матрица CI: **три ОС × Python 3.12 / 3.13**, плюс 3.14 экспериментально;
-- **11 выпусков**, от `v1.0.0` до `v1.10.0`.
-
-- **Гейты вместо памяти** — `preflight.py` перед коммитом, `check_pr_ready.py` перед мержем. То, что нельзя забыть, потому что оно исполняется.
-- **Правило действует и на владельца** — список обходов защиты ветки пуст. Это механика, а не обещание.
-- **Каждое правило подписано инцидентом** — рядом стоит номер issue, из которого оно выросло: через полгода видно не только «что», но и «почему именно так».
-- **CHANGELOG собирается из фрагментов**, а не пишется задним числом: запись приезжает вместе с изменением.
-
-### Открыт для вклада
-
-В грейдере есть онрамп **«Первый вклад за 15 минут»**, а задачи с меткой `good first issue` заводятся сразу на двух языках — двуязычие проверяет отдельный скрипт, а не добрая воля.
-
-</details>
+Подробности — в проекте: [README грейдера](https://github.com/ArtVsMark/Stepik-Python-Grader#readme) (на русском) · [история проекта](https://github.com/ArtVsMark/Stepik-Python-Grader/blob/main/HISTORY.md) · [как включиться](https://github.com/ArtVsMark/Stepik-Python-Grader/blob/main/CONTRIBUTING.md)
 
 <div align="center">
 
