@@ -16,12 +16,11 @@
 
 <br>
 
-<img src="https://img.shields.io/badge/tests-4000%2B-238636?style=flat-square&labelColor=1C2128" alt="4000+ tests">
-<img src="https://img.shields.io/badge/checks_per_PR-32-1F6FEB?style=flat-square&labelColor=1C2128" alt="32 checks per pull request">
-<img src="https://img.shields.io/badge/required_checks-11-8957E5?style=flat-square&labelColor=1C2128" alt="11 required checks">
-<img src="https://img.shields.io/badge/bypass_list-empty-D29922?style=flat-square&labelColor=1C2128" alt="Branch protection bypass list is empty">
-<img src="https://img.shields.io/badge/releases-11-3FB950?style=flat-square&labelColor=1C2128" alt="11 releases shipped">
-<a href="https://github.com/ArtVsMark/Stepik-Python-Grader/pulls?q=is%3Apr+is%3Aclosed"><img src="https://img.shields.io/github/issues-pr-closed/ArtVsMark/Stepik-Python-Grader?style=flat-square&label=merged%20PRs&color=F78166&labelColor=1C2128" alt="Merged pull requests"></a>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./assets/metrics-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="./assets/metrics-light.svg">
+  <img src="./assets/metrics-dark.svg" alt="4000+ tests · 32 checks per PR · 11 releases shipped · branch protection bypass list is empty" width="92%">
+</picture>
 
 <br><br>
 
@@ -63,6 +62,8 @@ A local offline autograder for Python. Downloads task data from Stepik, runs cor
 </tr>
 </tbody>
 </table>
+
+### Quick start
 
 ```bash
 pipx install stepik-python-grader && stepik-grader
@@ -140,18 +141,14 @@ pipx install stepik-python-grader && stepik-grader
 
 <div align="center">
 
-<img src="https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python">
-<img src="https://img.shields.io/badge/pytest-0A9EDC?style=for-the-badge&logo=pytest&logoColor=white" alt="pytest">
-<img src="https://img.shields.io/badge/Hypothesis-4B32C3?style=for-the-badge" alt="Hypothesis">
-<img src="https://img.shields.io/badge/Ruff-D7FF64?style=for-the-badge&logo=ruff&logoColor=black" alt="Ruff">
-<img src="https://img.shields.io/badge/mypy-2A6DB2?style=for-the-badge" alt="mypy">
-<img src="https://img.shields.io/badge/GitHub_Actions-2088FF?style=for-the-badge&logo=githubactions&logoColor=white" alt="GitHub Actions">
-<img src="https://img.shields.io/badge/PyPI-3775A9?style=for-the-badge&logo=pypi&logoColor=white" alt="PyPI">
-<img src="https://img.shields.io/badge/Playwright-2EAD33?style=for-the-badge&logo=playwright&logoColor=white" alt="Playwright">
-
-<br>
-
-<sub><code>CLI tooling</code> · <code>local web UI</code> · <code>benchmarking</code> · <code>OS sandboxing</code> · <code>docs architecture</code> · <code>release automation</code> · <code>typed boundaries</code> · <code>property-based testing</code></sub>
+<img src="https://img.shields.io/badge/Python-4A5058?style=for-the-badge&logo=python&logoColor=white" alt="Python">
+<img src="https://img.shields.io/badge/pytest-4A5058?style=for-the-badge&logo=pytest&logoColor=white" alt="pytest">
+<img src="https://img.shields.io/badge/Hypothesis-4A5058?style=for-the-badge" alt="Hypothesis">
+<img src="https://img.shields.io/badge/Ruff-4A5058?style=for-the-badge&logo=ruff&logoColor=white" alt="Ruff">
+<img src="https://img.shields.io/badge/mypy-4A5058?style=for-the-badge" alt="mypy">
+<img src="https://img.shields.io/badge/GitHub_Actions-4A5058?style=for-the-badge&logo=githubactions&logoColor=white" alt="GitHub Actions">
+<img src="https://img.shields.io/badge/PyPI-4A5058?style=for-the-badge&logo=pypi&logoColor=white" alt="PyPI">
+<img src="https://img.shields.io/badge/Playwright-4A5058?style=for-the-badge&logo=playwright&logoColor=white" alt="Playwright">
 
 </div>
 
@@ -173,17 +170,11 @@ The grader has a **"First contribution in 15 minutes"** onramp, and every `good 
 <a href="https://github.com/ArtVsMark/Stepik-Python-Grader/discussions"><img src="https://img.shields.io/badge/discussions-ask_anything-1F6FEB?style=for-the-badge&logo=github&logoColor=white" alt="Discussions"></a>
 <a href="https://github.com/ArtVsMark/Stepik-Python-Grader/issues/new/choose"><img src="https://img.shields.io/badge/issues-report_a_bug-F78166?style=for-the-badge&logo=github&logoColor=white" alt="Report a bug"></a>
 
-<br><br>
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/output/snake-dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/output/snake-light.svg">
-  <img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/output/snake-dark.svg" alt="Contribution graph consumed by a snake" width="100%">
-</picture>
-
 </div>
 
 ---
+
+<br>
 
 <details>
 <summary><b>🇷🇺 По-русски</b></summary>
@@ -234,7 +225,17 @@ pipx install stepik-python-grader && stepik-grader
 
 </details>
 
-<br>
+<div align="center">
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/output/snake-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/output/snake-light.svg">
+  <img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/output/snake-dark.svg" alt="Contribution graph consumed by a snake" width="100%">
+</picture>
+
+</div>
+
+---
 
 <div align="center">
 <sub>Practical Python tooling for checking, comparing, debugging and shipping code with more confidence.</sub>
