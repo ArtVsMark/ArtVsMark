@@ -121,12 +121,12 @@ pipx install stepik-python-grader && stepik-grader
 ## Current focus
 
 <table>
-<tr><td align="center">🏗️</td><td><b>Architecture refinement</b></td><td>keeping module boundaries honest as surface area grows</td></tr>
-<tr><td align="center">⚙️</td><td><b>CI &amp; merge automation</b></td><td>stronger gates, less manual shepherding</td></tr>
-<tr><td align="center">🧪</td><td><b>Regression coverage</b></td><td>every fixed bug leaves a test behind</td></tr>
-<tr><td align="center">🌍</td><td><b>English documentation</b></td><td>full parity with the Russian docs tree</td></tr>
-<tr><td align="center">🖥️</td><td><b>Local web UX</b></td><td>making <code>--serve</code> the primary workflow, not the fallback</td></tr>
-<tr><td align="center">🔒</td><td><b>Safer execution</b></td><td>tighter boundaries for untrusted code paths</td></tr>
+<tr><td><b>Architecture refinement</b></td><td>keeping module boundaries honest as surface area grows</td></tr>
+<tr><td><b>CI &amp; merge automation</b></td><td>stronger gates, less manual shepherding</td></tr>
+<tr><td><b>Regression coverage</b></td><td>every fixed bug leaves a test behind</td></tr>
+<tr><td><b>English documentation</b></td><td>full parity with the Russian docs tree</td></tr>
+<tr><td><b>Local web UX</b></td><td>making <code>--serve</code> the primary workflow, not the fallback</td></tr>
+<tr><td><b>Safer execution</b></td><td>tighter boundaries for untrusted code paths</td></tr>
 </table>
 
 <div align="center">
@@ -175,14 +175,20 @@ The grader has a **"First contribution in 15 minutes"** onramp, and every `good 
 </picture>
 </div>
 
+### 🇷🇺 По-русски
+
+**Мейнтейнер open-source на Python.** Делаю инструменты для тех, кто проверяет, сравнивает,
+отлаживает и выпускает код. Флагман — [Stepik-Python-Grader](https://github.com/ArtVsMark/Stepik-Python-Grader):
+локальный грейдер, который не просто прогоняет тесты, а **сравнивает решения честно** —
+сначала по корректности, потом по benchmark-метрикам.
+
+Качество держится механикой, а не памятью: гейты перед коммитом и мержем, пустой список
+обходов защиты ветки, каждое правило подписано инцидентом, из которого выросло.
+
 <details>
-<summary><h3>🇷🇺&nbsp; Читать по-русски &nbsp;·&nbsp; <sub>развернуть</sub></h3></summary>
+<summary><b>Развернуть полную версию</b></summary>
 
 <br>
-
-### Привет 👋
-
-**Мейнтейнер open-source на Python.** Делаю инструменты для тех, кто проверяет, сравнивает, отлаживает и выпускает код, — и стараюсь, чтобы качество держалось механикой, а не памятью и добрыми намерениями.
 
 ### Stepik-Python-Grader
 
