@@ -1,0 +1,59 @@
+# Пересобирает цифры витрины из живых источников.
+#
+# Повод: релиз v1.11.0 вышел через четыре часа после того, как в README было
+# вписано «11 releases shipped». Числа, вписанные руками, устаревают молча —
+# поэтому они измеряются, а не запоминаются.
+#
+# Грейдер публичный, поэтому штатного GITHUB_TOKEN хватает и обмен через
+# промежуточные артефакты не нужен: workflow читает его API и клонирует его
+# рабочее дерево напрямую.
+name: Profile metrics
+
+on:
+  schedule:
+    # Раз в сутки; минута не :00, чтобы не попадать в общий пик.
+    - cron: "23 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: metrics
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Забрать витрину
+        uses: actions/checkout@v5
+
+      - name: Забрать грейдер (только рабочее дерево)
+        uses: actions/checkout@v5
+        with:
+          repository: ArtVsMark/Stepik-Python-Grader
+          path: grader
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Пересобрать метрики
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python scripts/build_metrics.py grader
+
+      - name: Закоммитить, если числа изменились
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- README.md assets; then
+            echo "Числа не изменились — коммит не нужен."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md assets
+          git commit -m "chore(profile): пересобранные метрики витрины [skip ci]"
+          git push
