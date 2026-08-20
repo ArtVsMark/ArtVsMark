@@ -57,11 +57,13 @@ A local offline autograder for Python. Downloads task data from Stepik, runs cor
 </tr>
 <tr>
 <td valign="top"><a href="https://github.com/ArtVsMark/Glossary-Python"><b>Glossary-Python</b></a></td>
-<td valign="top">The vocabulary layer the grader links into when a run fails — a Python glossary for people who are still learning the words.</td>
+<td valign="top">Supporting layer: the glossary the grader links into when a run fails.</td>
 <td valign="top"><sub>content · tooling</sub></td>
 </tr>
 </tbody>
 </table>
+
+<sub><b>Quick start</b></sub>
 
 ```bash
 pipx install stepik-python-grader && stepik-grader
@@ -96,10 +98,10 @@ pipx install stepik-python-grader && stepik-grader
 
 <table>
 <tr>
-<td align="center" width="25%"><h3>4000+</h3><sub>tests across a<br>197-module suite</sub></td>
-<td align="center" width="25%"><h3>32</h3><sub>checks per PR,<br>11 of them required</sub></td>
+<td align="center" width="25%"><h3><!--m:tests-->4000+<!--/m:tests--></h3><sub>tests across a<br>197-module suite</sub></td>
+<td align="center" width="25%"><h3><!--m:checks-->32<!--/m:checks--></h3><sub>checks per PR,<br>11 of them required</sub></td>
 <td align="center" width="25%"><h3>3 × 2</h3><sub>OS × Python versions,<br>3.14 experimental</sub></td>
-<td align="center" width="25%"><h3>11</h3><sub>releases shipped,<br><code>v1.0.0</code> → <code>v1.10.0</code></sub></td>
+<td align="center" width="25%"><h3><!--m:releases-->12<!--/m:releases--></h3><sub>releases shipped,<br>latest <code>v1.11.0</code></sub></td>
 </tr>
 </table>
 
@@ -230,10 +232,4 @@ pipx install stepik-python-grader && stepik-grader
   <img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/output/snake-dark.svg" alt="Contribution graph consumed by a snake" width="100%">
 </picture>
 
-</div>
-
----
-
-<div align="center">
-<sub>Practical Python tooling for checking, comparing, debugging and shipping code with more confidence.</sub>
 </div>
