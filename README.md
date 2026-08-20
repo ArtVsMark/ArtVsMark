@@ -99,7 +99,7 @@ pipx install stepik-python-grader && stepik-grader
 <table>
 <tr>
 <td align="center" width="25%"><h3><!--m:tests-->4000+<!--/m:tests--></h3><sub>tests across a<br>197-module suite</sub></td>
-<td align="center" width="25%"><h3><!--m:checks-->32<!--/m:checks--></h3><sub>checks per PR,<br>11 of them required</sub></td>
+<td align="center" width="25%"><h3><!--m:checks-->16<!--/m:checks--></h3><sub>checks per PR,<br>11 of them required</sub></td>
 <td align="center" width="25%"><h3>3 × 2</h3><sub>OS × Python versions,<br>3.14 experimental</sub></td>
 <td align="center" width="25%"><h3><!--m:releases-->12<!--/m:releases--></h3><sub>releases shipped,<br>latest <code>v1.11.0</code></sub></td>
 </tr>
