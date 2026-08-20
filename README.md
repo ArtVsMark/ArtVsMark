@@ -19,7 +19,7 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="./assets/metrics-dark.svg">
   <source media="(prefers-color-scheme: light)" srcset="./assets/metrics-light.svg">
-  <img src="./assets/metrics-dark.svg" alt="4000+ tests · 32 checks per PR · 11 releases shipped · branch protection bypass list is empty" width="92%">
+  <img src="./assets/metrics-dark.svg" alt="4000+ tests · 32 checks per PR · branch protection bypass list is empty" width="92%">
 </picture>
 
 <br><br>
@@ -38,7 +38,7 @@
 
 </div>
 
-## 🚀 What I maintain
+## What I maintain
 
 <table>
 <thead>
@@ -51,7 +51,7 @@
 <sub><a href="https://pypi.org/project/stepik-python-grader/">PyPI</a> · <a href="https://github.com/ArtVsMark/Stepik-Python-Grader/blob/main/README.en.md">Quick start</a> · <a href="https://github.com/ArtVsMark/Stepik-Python-Grader/blob/main/HISTORY.md">History</a></sub>
 </td>
 <td valign="top">
-A local offline autograder for Python. Downloads task data from Stepik, runs correctness checks without a submit limit, and — the part that makes it more than a test runner — <b>compares several solutions honestly</b>: correctness first, benchmark metrics second.
+A local offline autograder for Python. Downloads task data from Stepik, runs correctness checks without a submit limit, and <b>compares several solutions honestly</b> — correctness first, benchmark metrics second.
 </td>
 <td valign="top"><sub>CLI · web UI · GUI<br>pytest plugin<br>OS sandbox</sub></td>
 </tr>
@@ -63,14 +63,12 @@ A local offline autograder for Python. Downloads task data from Stepik, runs cor
 </tbody>
 </table>
 
-### Quick start
-
 ```bash
 pipx install stepik-python-grader && stepik-grader
 ```
 
 <details>
-<summary><b>⚙️ Beyond basic test execution</b></summary>
+<summary><b>Beyond basic test execution</b></summary>
 
 <br>
 
@@ -94,7 +92,7 @@ pipx install stepik-python-grader && stepik-grader
 </picture>
 </div>
 
-## 🛠 What holds the quality
+## What holds the quality
 
 <table>
 <tr>
@@ -118,7 +116,7 @@ pipx install stepik-python-grader && stepik-grader
 </picture>
 </div>
 
-## 🧭 Current focus
+## Current focus
 
 <table>
 <tr><td align="center">🏗️</td><td><b>Architecture refinement</b></td><td>keeping module boundaries honest as surface area grows</td></tr>
@@ -137,18 +135,13 @@ pipx install stepik-python-grader && stepik-grader
 </picture>
 </div>
 
-## 🧰 Stack
+## Stack
 
 <div align="center">
 
-<img src="https://img.shields.io/badge/Python-4A5058?style=for-the-badge&logo=python&logoColor=white" alt="Python">
-<img src="https://img.shields.io/badge/pytest-4A5058?style=for-the-badge&logo=pytest&logoColor=white" alt="pytest">
-<img src="https://img.shields.io/badge/Hypothesis-4A5058?style=for-the-badge" alt="Hypothesis">
-<img src="https://img.shields.io/badge/Ruff-4A5058?style=for-the-badge&logo=ruff&logoColor=white" alt="Ruff">
-<img src="https://img.shields.io/badge/mypy-4A5058?style=for-the-badge" alt="mypy">
-<img src="https://img.shields.io/badge/GitHub_Actions-4A5058?style=for-the-badge&logo=githubactions&logoColor=white" alt="GitHub Actions">
-<img src="https://img.shields.io/badge/PyPI-4A5058?style=for-the-badge&logo=pypi&logoColor=white" alt="PyPI">
-<img src="https://img.shields.io/badge/Playwright-4A5058?style=for-the-badge&logo=playwright&logoColor=white" alt="Playwright">
+`Python` · `pytest` · `Hypothesis` · `Ruff` · `mypy` · `GitHub Actions` · `PyPI` · `Playwright`
+
+<sub>CLI tooling · local web UI · benchmarking · OS sandboxing · docs architecture · release automation · typed boundaries · property-based testing</sub>
 
 </div>
 
@@ -160,7 +153,7 @@ pipx install stepik-python-grader && stepik-grader
 </picture>
 </div>
 
-## 🤝 Contributions welcome
+## Contributions welcome
 
 The grader has a **"First contribution in 15 minutes"** onramp, and every `good first issue` is written in **both Russian and English** — a bilingual body is enforced by a dedicated check, not by good intentions.
 
@@ -172,12 +165,16 @@ The grader has a **"First contribution in 15 minutes"** onramp, and every `good 
 
 </div>
 
----
-
-<br>
+<div align="center">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./assets/divider-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="./assets/divider-light.svg">
+  <img src="./assets/divider-dark.svg" alt="" width="100%">
+</picture>
+</div>
 
 <details>
-<summary><b>🇷🇺 По-русски</b></summary>
+<summary><h3>🇷🇺&nbsp; Читать по-русски &nbsp;·&nbsp; <sub>развернуть</sub></h3></summary>
 
 <br>
 
@@ -185,7 +182,7 @@ The grader has a **"First contribution in 15 minutes"** onramp, and every `good 
 
 **Мейнтейнер open-source на Python.** Делаю инструменты для тех, кто проверяет, сравнивает, отлаживает и выпускает код, — и стараюсь, чтобы качество держалось механикой, а не памятью и добрыми намерениями.
 
-### 🎓 Stepik-Python-Grader
+### Stepik-Python-Grader
 
 **Локальный грейдер для курсов «Поколение Python» на Stepik** — и для любой папки с решениями и тест-кейсами.
 
@@ -201,11 +198,11 @@ pipx install stepik-python-grader && stepik-grader
 [PyPI](https://pypi.org/project/stepik-python-grader/) ·
 [История проекта](https://github.com/ArtVsMark/Stepik-Python-Grader/blob/main/HISTORY.md)
 
-### 📖 Glossary-Python
+### Glossary-Python
 
 [Glossary-Python](https://github.com/ArtVsMark/Glossary-Python) — словарный слой, в который грейдер уводит из упавшего прогона.
 
-### 🛠 Чем держится качество
+### Чем держится качество
 
 Проект — заодно полигон инженерной дисциплины. Что стоит за зелёной галочкой:
 
@@ -219,7 +216,7 @@ pipx install stepik-python-grader && stepik-grader
 - **Каждое правило подписано инцидентом** — рядом стоит номер issue, из которого оно выросло: через полгода видно не только «что», но и «почему именно так».
 - **CHANGELOG собирается из фрагментов**, а не пишется задним числом: запись приезжает вместе с изменением.
 
-### 🤝 Открыт для вклада
+### Открыт для вклада
 
 В грейдере есть онрамп **«Первый вклад за 15 минут»**, а задачи с меткой `good first issue` заводятся сразу на двух языках — двуязычие проверяет отдельный скрипт, а не добрая воля.
 
