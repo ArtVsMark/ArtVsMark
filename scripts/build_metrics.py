@@ -55,15 +55,28 @@ def count_tests(grader_dir: pathlib.Path) -> int:
     return total
 
 
-def checks_per_pr() -> int:
-    """Сколько проверок создаётся на PR — по последнему смерженному."""
-    for pull in _api(f"/repos/{REPO}/pulls?state=closed&per_page=20"):
+def checks_per_pr(sample: int = 5) -> int:
+    """Сколько РАЗНЫХ проверок создаётся на PR.
+
+    Считаются уникальные имена, а не ``total_count``: после ``update-branch``
+    GitHub создаёт второй комплект check-runs, а первый остаётся висеть на
+    коммите. Сумма тогда удваивается — так на витрине и появилось «32 checks
+    per PR» вместо действительных шестнадцати.
+
+    Берётся максимум по нескольким последним PR: у отдельно взятого часть
+    джобов могла не стартовать (конфликт, отменённый прогон), и одна такая
+    выборка занизила бы число.
+    """
+    best = 0
+    for pull in _api(f"/repos/{REPO}/pulls?state=closed&per_page=30"):
         if not pull.get("merged_at"):
             continue
         runs = _api(f"/repos/{REPO}/commits/{pull['head']['sha']}/check-runs?per_page=100")
-        if runs["total_count"]:
-            return int(runs["total_count"])
-    return 0
+        best = max(best, len({run["name"] for run in runs["check_runs"]}))
+        sample -= 1
+        if sample <= 0:
+            break
+    return best
 
 
 def release_count() -> int:
