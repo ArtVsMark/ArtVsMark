@@ -1,0 +1,43 @@
+# Генерирует анимацию «змейки» по графику контрибуций и кладёт её в ветку
+# `output`. README ссылается на неё оттуда, поэтому в `main` бинарных
+# артефактов не появляется.
+#
+# Первый прогон запускается сразу после мержа в `main` — до него ссылка в
+# README ведёт в никуда, и это ожидаемо.
+name: Contribution snake
+
+on:
+  schedule:
+    # Раз в сутки; минута нарочно не :00, чтобы не попадать в общий пик.
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: snake
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Сгенерировать SVG для светлой и тёмной темы
+        uses: Platane/snk@v3
+        id: snake
+        with:
+          github_user_name: ${{ github.repository_owner }}
+          outputs: |
+            dist/snake-light.svg?palette=github-light
+            dist/snake-dark.svg?palette=github-dark
+
+      - name: Опубликовать в ветку output
+        uses: crazy-max/ghaction-github-pages@v4
+        with:
+          target_branch: output
+          build_dir: dist
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
