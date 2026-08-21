@@ -44,7 +44,7 @@
 |---|---|---|
 | **[Stepik-Python-Grader](https://github.com/ArtVsMark/Stepik-Python-Grader)**<br><sub>[PyPI](https://pypi.org/project/stepik-python-grader/) · [Quick start](https://github.com/ArtVsMark/Stepik-Python-Grader/blob/main/README.en.md#quick-start-no-stepik-needed) · [History](https://github.com/ArtVsMark/Stepik-Python-Grader/blob/main/HISTORY.md)</sub> | A local offline autograder for Python. Downloads task data from Stepik, runs correctness checks without a submit limit, and **compares several solutions honestly** — correctness first, benchmark metrics second. | <sub>CLI · web UI · GUI · pytest plugin · OS sandbox</sub> |
 | **[Glossary-Python](https://github.com/ArtVsMark/Glossary-Python)** | Supporting layer: the glossary the grader links into when a run fails. | <sub>content · tooling</sub> |
-| **[claude-code-playbook](https://github.com/ArtVsMark/claude-code-playbook)** | <!--m:rules-->124<!--/m:rules--> rules for running agent sessions and a GitHub pipeline — each one carrying the incident it grew from, not just the wording. Russian and English. | <sub>docs · RU/EN</sub> |
+| **[claude-code-playbook](https://github.com/ArtVsMark/claude-code-playbook)** | <!--m:rules-->125<!--/m:rules--> rules for running agent sessions and a GitHub pipeline — each one carrying the incident it grew from, not just the wording. Russian and English. | <sub>docs · RU/EN</sub> |
 | **[claude-code-usage](https://github.com/ArtVsMark/claude-code-usage)** | Turns a three-step limit indicator into an actual number: measures what a session spent, calibrates its own scale, reports what is left. Early — the spec is written, the tool is not. | <sub>Python · JSONL over git</sub> |
 
 <sub><b>Quick start</b></sub>
@@ -65,7 +65,7 @@ pipx install stepik-python-grader && stepik-grader
 
 ## What holds the quality
 
-<!--m:modules-->209<!--/m:modules--> test modules · <!--m:required-->11<!--/m:required--> required checks on `main` · <!--m:os-->3<!--/m:os--> OS × <!--m:py-->2<!--/m:py--> Python versions, <!--m:exp-->3.14<!--/m:exp--> experimental · <!--m:releases-->12<!--/m:releases--> releases shipped
+<!--m:modules-->210<!--/m:modules--> test modules · <!--m:required-->11<!--/m:required--> required checks on `main` · <!--m:os-->3<!--/m:os--> OS × <!--m:py-->2<!--/m:py--> Python versions, <!--m:exp-->3.14<!--/m:exp--> experimental · <!--m:releases-->12<!--/m:releases--> releases shipped
 
 - **Gates instead of memory** — `preflight.py` before a commit, `check_pr_ready.py` before a merge. Things you cannot forget, because they are enforced rather than remembered.
 - **The rule applies to the owner too** — the branch-protection bypass list is empty. Not a policy, a mechanism.
@@ -144,7 +144,7 @@ The grader has a **"First contribution in 15 minutes"** onramp, and every `good 
 сначала по корректности, потом по benchmark-метрикам.
 
 Рядом — [claude-code-playbook](https://github.com/ArtVsMark/claude-code-playbook): каталог правил
-работы с агентскими окнами и конвейером GitHub; записей в нём — <!--m:rules-->124<!--/m:rules-->,
+работы с агентскими окнами и конвейером GitHub; записей в нём — <!--m:rules-->125<!--/m:rules-->,
 каждая с историей поломки, из которой выросла.
 И [claude-code-usage](https://github.com/ArtVsMark/claude-code-usage) — остаток лимитов Claude Code
 в цифрах вместо трёхступенчатого светофора; пока написана спецификация.
