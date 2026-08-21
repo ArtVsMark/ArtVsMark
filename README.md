@@ -19,7 +19,7 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="./assets/metrics-dark.svg">
   <source media="(prefers-color-scheme: light)" srcset="./assets/metrics-light.svg">
-  <img src="./assets/metrics-dark.svg" alt="4000+ tests, 92.9% coverage (all OS), 17 checks per PR" width="92%">
+  <img src="./assets/metrics-dark.svg" alt="4000+ tests, 93% coverage (all OS), 17 checks per PR" width="92%">
 </picture>
 
 <br><br>
@@ -53,7 +53,7 @@
 pipx install stepik-python-grader && stepik-grader
 ```
 
-**Beyond running tests:** an offline RU/EN glossary of <!--m:glossary-->1349<!--/m:glossary--> ready cards, reachable straight from the error you just hit · a step-by-step tracer with a memory graph · `timeit` microbenchmarks with time and memory ranking · an optional OS sandbox for Linux, macOS and Windows · opt-in AI failure explanations, bring-your-own-key.
+**Beyond running tests:** an offline RU/EN glossary of <!--m:glossary-->1349<!--/m:glossary--> ready cards, reachable straight from the error you just hit · a step-by-step tracer with a memory graph · `timeit` microbenchmarks with time and memory ranking · an optional OS-level sandbox, kernel-enforced on Linux and macOS and partial on Windows, where the missing network isolation is a [named gap](https://github.com/ArtVsMark/Stepik-Python-Grader/blob/main/SECURITY.md#гарантии-по-ос-асимметрия--не-баг-задокументированный-компромисс), not an oversight · opt-in AI failure explanations, bring-your-own-key.
 
 <div align="center">
 <picture>
@@ -68,7 +68,7 @@ pipx install stepik-python-grader && stepik-grader
 <!--m:modules-->210<!--/m:modules--> test modules · <!--m:required-->11<!--/m:required--> required checks on `main` · <!--m:os-->3<!--/m:os--> OS × <!--m:py-->2<!--/m:py--> Python versions, <!--m:exp-->3.14<!--/m:exp--> experimental · <!--m:releases-->12<!--/m:releases--> releases shipped
 
 - **Gates instead of memory** — `preflight.py` before a commit, `check_pr_ready.py` before a merge. Things you cannot forget, because they are enforced rather than remembered.
-- **The rule applies to the owner too** — the branch-protection bypass list is empty. Not a policy, a mechanism.
+- **The gate is a ruleset, not an agreement** — what protects `main` is public, and you can read it without taking my word: every required check green, on a branch already up to date with `main`, force-push and deletion refused. [See for yourself](https://api.github.com/repos/ArtVsMark/Stepik-Python-Grader/rules/branches/main).
 - **Every rule cites its incident** — each convention carries the issue number it grew from, and the incidents themselves live in a [public catalogue](https://github.com/ArtVsMark/claude-code-playbook). Half a year later it is clear not only *what* the rule is, but *why*.
 - **A changelog assembled from fragments**, not written after the fact — entries land with the change that caused them.
 - **The numbers above are measured, not typed** — a [daily job](./.github/workflows/metrics.yml) reads them from the repositories that produce them and rewrites this page. A number nobody measures is a number that rots.
@@ -118,7 +118,7 @@ pipx install stepik-python-grader && stepik-grader
 
 ## Contributions welcome
 
-The grader has a **"First contribution in 15 minutes"** onramp, and every `good first issue` is written in **both Russian and English** — a bilingual body is enforced by a dedicated check, not by good intentions. Waiting for a first-timer right now: **<!--m:gfi-->3<!--/m:gfi-->**.
+The grader has a **"First contribution in 15 minutes"** onramp, and every `good first issue` is written in **both Russian and English** — a bilingual body is enforced by a dedicated check, not by good intentions. Open right now: **<!--m:gfi-->4<!--/m:gfi-->** — the count is rebuilt from the tracker daily, and an empty pool means none are waiting this minute, not that the door is closed.
 
 <div align="center">
 
@@ -138,31 +138,17 @@ The grader has a **"First contribution in 15 minutes"** onramp, and every `good 
 
 ### 🇷🇺 По-русски
 
-**Мейнтейнер open-source на Python.** Делаю инструменты для тех, кто проверяет, сравнивает,
-отлаживает и выпускает код. Флагман — [Stepik-Python-Grader](https://github.com/ArtVsMark/Stepik-Python-Grader):
-локальный грейдер, который не просто прогоняет тесты, а **сравнивает решения честно** —
-сначала по корректности, потом по benchmark-метрикам.
+**Мейнтейнер open-source на Python.** Флагман — [Stepik-Python-Grader](https://github.com/ArtVsMark/Stepik-Python-Grader):
+локальный грейдер, который не просто прогоняет тесты, а **сравнивает решения честно** — сначала по
+корректности, потом по benchmark-метрикам. Рядом — [claude-code-playbook](https://github.com/ArtVsMark/claude-code-playbook),
+каталог правил, каждое с историей поломки, из которой выросло, и [claude-code-usage](https://github.com/ArtVsMark/claude-code-usage) —
+остаток лимитов Claude Code в цифрах вместо трёхступенчатого светофора; пока спецификация.
 
-Рядом — [claude-code-playbook](https://github.com/ArtVsMark/claude-code-playbook): каталог правил
-работы с агентскими окнами и конвейером GitHub; записей в нём — <!--m:rules-->125<!--/m:rules-->,
-каждая с историей поломки, из которой выросла.
-И [claude-code-usage](https://github.com/ArtVsMark/claude-code-usage) — остаток лимитов Claude Code
-в цифрах вместо трёхступенчатого светофора; пока написана спецификация.
+Качество держится механикой, а не памятью: гейты перед коммитом и мержем, зелёный CI на актуальной
+ветке как условие мержа, числа на этой странице пересобирает
+[отдельный workflow](./.github/workflows/metrics.yml), а не автор.
 
-Качество держится механикой, а не памятью: гейты перед коммитом и мержем, пустой список
-обходов защиты ветки, зелёный CI на актуальном состоянии как условие мержа.
-Числа на этой странице никто не вписывает руками — их раз в сутки пересобирает
-[отдельный workflow](./.github/workflows/metrics.yml) из тех репозиториев, которые их порождают.
-
-**Сейчас в работе:** автоматизация очереди мержей · регрессионное покрытие (каждый исправленный
-баг оставляет тест) · паритет английской документации · `--serve` как основной сценарий вместо запасного.
-
-**Стек:** Python · pytest · Hypothesis · Ruff · mypy · GitHub Actions · PyPI · Playwright.
-
-**Открыт для вклада:** онрамп «Первый вклад за 15 минут», задачи `good first issue` заводятся сразу
-на двух языках — двуязычие проверяет отдельный скрипт, а не добрая воля.
-
-Подробности — в проекте: [README грейдера](https://github.com/ArtVsMark/Stepik-Python-Grader#readme) (на русском) · [история проекта](https://github.com/ArtVsMark/Stepik-Python-Grader/blob/main/HISTORY.md) · [как включиться](https://github.com/ArtVsMark/Stepik-Python-Grader/blob/main/CONTRIBUTING.md)
+Подробности — в самих проектах: [README грейдера](https://github.com/ArtVsMark/Stepik-Python-Grader#readme) (на русском) · [история](https://github.com/ArtVsMark/Stepik-Python-Grader/blob/main/HISTORY.md) · [как включиться](https://github.com/ArtVsMark/Stepik-Python-Grader/blob/main/CONTRIBUTING.md)
 
 <div align="center">
 

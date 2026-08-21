@@ -22,9 +22,12 @@
 * релизов — длиной списка релизов. Номер последней версии витрина не
   повторяет: его показывает живой бейдж PyPI, а два места для одного числа —
   это два места, где оно может разойтись;
-* покрытие, карточки глоссария, пул ``good first issue`` — из ветки ``badges``
-  грейдера: его CI уже публикует эти числа как shields-endpoint JSON, и
-  витрине они достаются готовыми;
+* покрытие и карточки глоссария — из ветки ``badges`` грейдера: его CI уже
+  публикует эти числа как shields-endpoint JSON, и иначе их не получить —
+  нужен прогон тестов и установленный пакет;
+* пул ``good first issue`` — прямым запросом к трекеру, а НЕ из бейджа рядом с
+  предыдущими двумя: бейдж обновляет CI грейдера, и между его прогонами число
+  отстаёт. Витрина показывала 3, когда открытых было 4;
 * правил в каталоге — числом файлов ``rules/ru/*.md`` в клоне playbook.
 
 Чего здесь НЕТ и почему: пустой список обходов защиты ветки. GitHub отдаёт
@@ -43,6 +46,7 @@ import pathlib
 import re
 import statistics
 import sys
+import urllib.parse
 import urllib.request
 
 REPO = "ArtVsMark/Stepik-Python-Grader"
@@ -82,6 +86,22 @@ def badge(name: str) -> str:
     """
     payload = _api(f"/repos/{REPO}/contents/.github/badges/{name}.json?ref=badges")
     return json.loads(base64.b64decode(payload["content"]))["message"]
+
+
+def good_first_issues() -> int:
+    """Сколько задач для новичка открыто прямо сейчас.
+
+    Грейдер публикует это число бейджем, но бейдж пишет его CI — между
+    прогонами значение отстаёт, и витрина однажды показывала три открытые
+    задачи против четырёх настоящих. Покрытие и глоссарий иначе не достать,
+    а это обычный запрос к трекеру: делать его самим дешевле, чем показывать
+    вчерашнее.
+
+    Из выдачи убираются PR: endpoint ``issues`` отдаёт и их тоже.
+    """
+    label = urllib.parse.quote("good first issue")
+    issues = _api(f"/repos/{REPO}/issues?state=open&labels={label}&per_page=100")
+    return len([issue for issue in issues if "pull_request" not in issue])
 
 
 def count_tests(grader: pathlib.Path) -> int:
@@ -284,7 +304,7 @@ def main() -> int:
     releases = release_count()
     coverage = badge("coverage-combined")
     glossary = badge("glossary").split()[0]
-    good_first_issues = badge("good-first-issues")
+    open_for_newcomers = good_first_issues()
     rules = count_rules(playbook)
 
     # Числа с плитки (tests, coverage, checks) в тексте README не повторяются:
@@ -299,7 +319,7 @@ def main() -> int:
         "exp": experimental,
         "releases": releases,
         "glossary": glossary,
-        "gfi": good_first_issues,
+        "gfi": open_for_newcomers,
         "rules": rules,
     }
     print(" · ".join(f"{name}: {value}" for value, name in plate))
