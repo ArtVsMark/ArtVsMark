@@ -1,0 +1,170 @@
+# Штатный автомерж площадки со squash. Заменил собственный скрипт слияния.
+#
+# ПОЧЕМУ СВОЙ СКРИПТ БЫЛ И ПОЧЕМУ ЕГО БОЛЬШЕ НЕТ. Витрина сливала сама
+# (`scripts/merge_pr.py`), потому что кнопка «Merge pull request» пишет своё
+# сообщение и трейлеры коммитов ветки до первопредков `main` не доезжают —
+# правило 123. Скрипт пересобирал сообщение заново.
+#
+# Замер показал, что пересобирать нечего: у репозитория стоит
+# `squash_merge_commit_message = COMMIT_MESSAGES`, то есть тело squash-коммита
+# и есть сцепленные сообщения коммитов ветки — ровно то, что скрипт собирал
+# руками, включая трейлеры. А автором squash площадка ставит **автора
+# изменения**, а не того, кто нажал.
+#
+# Отсюда три следствия, и каждое убирает по подпорке:
+#   * пересобирать сообщение не нужно — площадка соберёт его сама;
+#   * запрет «не сливать из окна» не нужен: кто бы ни нажал, автором останется
+#     автор изменения, и подмена учётных данных на записи (правило 131) больше
+#     ничего не портит;
+#   * история `main` становится линейной, и коммиты веток с чужим автором в неё
+#     не попадают вовсе.
+#
+# ПОЧЕМУ ТЕЛО НЕ ПЕРЕДАЁТСЯ ЯВНО. Каталог правил в своём `automerge.yml`
+# передаёт `--subject/--body`. Здесь — нет, и это осознанно: автомерж включается,
+# пока проверки идут, а ветка после включения может получить ещё коммиты.
+# Переданное тело замёрзло бы на момент включения, тогда как собранное площадкой
+# берётся в момент слияния — всегда свежее.
+#
+# ПОЧЕМУ ВКЛЮЧАЕМ РАНО, А НЕ ПО ЗЕЛЁНОМУ. Замер каталога: включение автомержа
+# ОТКАЗЫВАЕТ изменению в чистом состоянии — ждать уже нечего. Значит включать
+# надо, пока проверки ещё идут.
+#
+# ОТСЮДА ЖЕ: ЗАЩИТА ВЕТКИ — УСЛОВИЕ РАБОТЫ, А НЕ УДОБСТВО. Без обязательной
+# проверки изменение становится «чистым» сразу, и автомерж сольёт его, НЕ
+# ДОЖИДАЯСЬ гейтов, то есть тихо отключит их все (правило 010). Поэтому наличие
+# защиты проверяется до включения, и без неё автомерж не включается.
+name: automerge
+
+on:
+  pull_request:
+    # Умолчание типов не включает ready_for_review, а снятие черновика — это и
+    # есть «беру на слияние» (правило 104: у событийной автоматики своя кнопка).
+    types: [opened, ready_for_review, synchronize, reopened]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: "номер изменения"
+        required: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: automerge-${{ github.event.pull_request.number || inputs.pr }}
+  cancel-in-progress: true
+
+jobs:
+  arm:
+    name: automerge
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      # Секрет в env, а не в `if` напрямую: контекст `secrets` в условиях шага
+      # не гарантирован.
+      MERGE_QUEUE_TOKEN: ${{ secrets.MERGE_QUEUE_TOKEN }}
+      PR: ${{ github.event.pull_request.number || inputs.pr }}
+    steps:
+      # Секрета нет — предупреждение и выход, а не отказ: красное здесь означало
+      # бы поломку изменения, тогда как это ненастроенная возможность (051).
+      # Молча уйти на штатный токен нельзя: с ним автором станет бот.
+      - name: токен владельца задан
+        if: env.MERGE_QUEUE_TOKEN == ''
+        run: |
+          echo "::warning::MERGE_QUEUE_TOKEN не задан — автомерж не включается. Нужен PAT владельца. GITHUB_TOKEN не подходит: с ним автором коммита в main станет бот."
+          echo "SKIP=1" >> "$GITHUB_ENV"
+
+      - name: состояние изменения
+        id: pr
+        if: env.SKIP != '1'
+        env:
+          GH_TOKEN: ${{ env.MERGE_QUEUE_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh pr view "$PR" --repo "$GITHUB_REPOSITORY" \
+            --json isDraft,state,baseRefName,autoMergeRequest \
+            --jq '"draft=\(.isDraft)", "state=\(.state)", "base=\(.baseRefName)",
+                  "armed=\(.autoMergeRequest != null)"' >> "$GITHUB_OUTPUT"
+
+      # Черновик — «ещё не беру». Пропуск, а не отказ: красное на штатном
+      # состоянии приучает читать красное как фон. Уже включённый автомерж —
+      # тоже пропуск, повторное включение ничего не меняет.
+      - name: пропустить черновик и уже включённые
+        if: >-
+          env.SKIP != '1' &&
+          (steps.pr.outputs.draft == 'true' ||
+           steps.pr.outputs.state != 'OPEN' ||
+           steps.pr.outputs.armed == 'true')
+        run: |
+          echo "#$PR: черновик, закрыто или автомерж уже включён — пропуск"
+          echo "SKIP=1" >> "$GITHUB_ENV"
+
+      # Метка `hold` — стоп-кран владельца, и она сильнее всего остального.
+      # Автомерж здесь по умолчанию: отключается меткой, а не включается ею.
+      - name: пропустить помеченные hold
+        if: env.SKIP != '1'
+        env:
+          GH_TOKEN: ${{ env.MERGE_QUEUE_TOKEN }}
+        run: |
+          set -euo pipefail
+          if gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json labels \
+               --jq '.labels[].name' | grep -qx hold; then
+            echo "#$PR: метка hold — пропуск"
+            echo "SKIP=1" >> "$GITHUB_ENV"
+          fi
+
+      # Без обязательной проверки автомерж сливает мимо гейтов. Проверяется до
+      # включения; пробел называется вслух, а не заминается (правило 046).
+      - name: обязательная проверка на общей ветке есть
+        if: env.SKIP != '1'
+        env:
+          GH_TOKEN: ${{ env.MERGE_QUEUE_TOKEN }}
+          BASE: ${{ steps.pr.outputs.base }}
+        run: |
+          set -uo pipefail
+          contexts=$(gh api "repos/$GITHUB_REPOSITORY/rules/branches/$BASE" \
+            --jq '[.[] | select(.type=="required_status_checks")
+                       | .parameters.required_status_checks[].context] | length' 2>&1) && rc=0 || rc=$?
+          if [ "$rc" -ne 0 ]; then
+            echo "::warning::Состояние защиты ветки $BASE не прочитано — автомерж не включается. $contexts"
+            echo "SKIP=1" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          if [ "$contexts" -eq 0 ]; then
+            echo "::warning::У ветки $BASE нет обязательных проверок — автомерж слил бы мимо гейтов, поэтому не включается. Settings -> Rules -> Require status checks to pass."
+            echo "SKIP=1" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          echo "обязательных проверок на $BASE: $contexts"
+
+      - name: включить автомерж
+        if: env.SKIP != '1'
+        env:
+          # Токен владельца, а не штатный: при squash автором коммита в main
+          # становится автор изменения, и включать должен тот, чью личность этот
+          # коммит обязан нести (правила 131, 135).
+          GH_TOKEN: ${{ env.MERGE_QUEUE_TOKEN }}
+        run: |
+          set -uo pipefail
+          # Включение автомержа умеет только GraphQL — REST такого не отдаёт.
+          # Это та самая оговорка, ради которой правило 001 написано с «только
+          # там, где REST не умеет»; `gh` делает этот вызов за нас.
+          out=$(gh pr merge "$PR" --repo "$GITHUB_REPOSITORY" --auto --squash 2>&1) && rc=0 || rc=$?
+          if [ "$rc" -ne 0 ]; then
+            case "$out" in
+              *"lean status"*|*"already"*)
+                echo "::warning::#$PR уже в чистом состоянии — ждать нечего, автомерж включить нельзя. Слить должен человек."
+                exit 0 ;;
+              *uto-merge*|*"not enabled"*)
+                echo "::error::Автомерж в репозитории не разрешён. Settings -> General -> Allow auto-merge."
+                exit 1 ;;
+              *quash*)
+                echo "::error::Squash запрещён. Settings -> General -> Allow squash merging. Именно squash атрибутирует коммит автору изменения, а не тому, кто нажал."
+                exit 1 ;;
+              *)
+                echo "::error::Автомерж не включился: $out"
+                exit 1 ;;
+            esac
+          fi
+          printf '%s\n' "$out"
+          echo "автомерж включён: сольётся, когда обязательные проверки позеленеют"
