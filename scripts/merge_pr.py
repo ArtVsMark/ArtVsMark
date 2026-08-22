@@ -27,9 +27,15 @@ from __future__ import annotations
 
 import json
 import os
+import pathlib
 import sys
 import urllib.error
 import urllib.request
+
+# Путь добавляется явно: без него `import checks` держится на том, из какого
+# каталога запустили, и ломается, едва модуль импортируют, а не запускают.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import checks  # noqa: E402
 
 REPO = os.environ.get("SHOWCASE_REPO", "ArtVsMark/ArtVsMark")
 API = "https://api.github.com"
@@ -134,9 +140,6 @@ def commit_message(number: int) -> tuple[str, str]:
     return title, "\n".join(body).strip()
 
 
-GOOD = ("success", "skipped", "neutral")
-
-
 def checks_are_green(sha: str) -> tuple[bool, str]:
     """Зелены ли проверки на коммите.
 
@@ -149,21 +152,17 @@ def checks_are_green(sha: str) -> tuple[bool, str]:
     имена, конвейер видел бы «не зелено» и не сливал бы такой PR никогда,
     причём молча: у него нет способа сказать «я застрял».
 
-    Это тот же счёт записей вместо объектов, из-за которого на витрине
-    появилось «32 проверки на PR» вместо шестнадцати.
+    Свёртка живёт в ``checks.py`` — одна на весь репозиторий: пока она была
+    выражением внутри функции, второй потребитель написал своё и ошибся.
     """
     runs = _api(f"/repos/{REPO}/commits/{sha}/check-runs?per_page=100")["check_runs"]
     if not runs:
         return False, "проверок нет — это «не стартовало», а не «всё хорошо»"
 
-    latest: dict[str, dict] = {}
-    for run in sorted(runs, key=lambda r: (r.get("started_at") or "", r.get("id") or 0)):
-        latest[run["name"]] = run
-
-    bad = [name for name, run in latest.items() if run["conclusion"] not in GOOD]
+    bad = checks.red_names(runs)
     if bad:
-        return False, f"не зелены: {', '.join(sorted(bad))}"
-    return True, f"зелено ({len(latest)} из {len(runs)} записей — свежие)"
+        return False, f"не зелены: {', '.join(bad)}"
+    return True, f"зелено ({len(checks.unique_names(runs))} проверок, записей {len(runs)})"
 
 
 def merge(number: int, dry_run: bool = False) -> int:

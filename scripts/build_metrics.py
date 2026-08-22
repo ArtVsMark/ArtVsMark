@@ -61,6 +61,11 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+# Путь добавляется явно: без него `import checks` держится на том, из какого
+# каталога запустили, и ломается, едва модуль импортируют, а не запускают.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import checks  # noqa: E402
+
 REPO = "ArtVsMark/Stepik-Python-Grader"
 API = "https://api.github.com"
 # Экспорт каталога правил: обычный HTTP по «сырой» ссылке — ни API площадки, ни
@@ -233,7 +238,7 @@ def checks_per_pr(sample: int = 7) -> int:
         if not pull.get("merged_at"):
             continue
         runs = _api(f"/repos/{REPO}/commits/{pull['head']['sha']}/check-runs?per_page=100")
-        counts.append(len({run["name"] for run in runs["check_runs"]}))
+        counts.append(len(checks.unique_names(runs["check_runs"])))
         if len(counts) >= sample:
             break
     return int(statistics.median(counts)) if counts else 0

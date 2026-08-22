@@ -41,8 +41,8 @@
     },
     "009": {
       "status": "active",
-      "mechanism": "none",
-      "where": "scripts/build_metrics.py::checks_per_pr — уникальные имена проверок, а не записи"
+      "mechanism": "process-step",
+      "where": "scripts/checks.py — свёртка записей по имени одна на весь репозиторий; сборка метрик и конвейер слияния зовут её, а не пишут своё"
     },
     "010": {
       "status": "active",
@@ -391,7 +391,7 @@
     "090": {
       "status": "active",
       "mechanism": "process-step",
-      "where": "scripts/build_metrics.py::count_rules — число правил берётся из экспорта каталога, а не считается своей копией определения"
+      "where": "scripts/checks.py — общая утилита вынесена выше обеих подсистем; и scripts/build_metrics.py::count_rules — число правил берётся из экспорта каталога, а не из своей копии определения"
     },
     "091": {
       "status": "not-applicable",
