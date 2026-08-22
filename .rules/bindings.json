@@ -564,6 +564,18 @@
     "130": {
       "status": "not-applicable",
       "why": "бэклог витрины — одна-две задачи: сопоставлять новое правило не с чем"
+    },
+    "131": {
+      "status": "unreviewed"
+    },
+    "132": {
+      "status": "unreviewed"
+    },
+    "133": {
+      "status": "unreviewed"
+    },
+    "134": {
+      "status": "unreviewed"
     }
   }
 }
