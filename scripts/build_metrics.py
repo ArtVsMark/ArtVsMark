@@ -28,7 +28,9 @@
 * пул ``good first issue`` — прямым запросом к трекеру, а НЕ из бейджа рядом с
   предыдущими двумя: бейдж обновляет CI грейдера, и между его прогонами число
   отстаёт. Витрина показывала 3, когда открытых было 4;
-* правил в каталоге — полем ``count`` его машиночитаемого экспорта. Раньше
+* правил в каталоге — полем ``count`` его машиночитаемого экспорта. Оттуда же
+  берутся их номера: правило, которого ещё нет в ``.rules/bindings.json``,
+  дописывается туда со статусом ``unreviewed``. Раньше
   витрина клонировала каталог целиком и считала файлы сама — то есть держала
   у себя копию чужого определения правила. Определения совпадали до первого
   чужого изменения, а разошлись бы молча: оба числа выглядят правдоподобно;
@@ -67,6 +69,8 @@ RULES_EXPORT = "https://raw.githubusercontent.com/ArtVsMark/claude-code-playbook
 RULES_SCHEMA = "1"  # мажор, который умеет читать эта сборка
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 PROJECTS = ROOT / "projects.json"
+# Ответ витрины каталогу: что здесь принято, что отклонено, чего нет предмета.
+BINDINGS = ROOT / ".rules/bindings.json"
 # Потолок «Current focus». Двигается только вниз: рост означает, что уборку
 # заменили правкой ограничителя.
 FOCUS_LIMIT = 5
@@ -272,8 +276,8 @@ def release_count() -> int:
     return len(_api(f"/repos/{REPO}/releases?per_page=100"))
 
 
-def count_rules() -> int:
-    """Число правил в каталоге — из его собственного экспорта.
+def rules_export() -> dict:
+    """Экспорт каталога правил — источник и числа правил, и списка их номеров.
 
     Что считать правилом, решает каталог: пара файлов в двух деревьях, номер,
     область, разбираемый след — и всё это держат его гейты. ``count`` в экспорте
@@ -297,7 +301,32 @@ def count_rules() -> int:
     schema = str(export.get("schema", ""))
     if schema.split(".")[0] != RULES_SCHEMA:
         raise SystemExit(f"схема экспорта {schema!r}, а сборка умеет мажор {RULES_SCHEMA}.x")
-    return int(export["count"])
+    return export
+
+
+def sync_bindings(export: dict) -> str:
+    """Дописывает в ответ потребителя правила, которых в нём ещё нет.
+
+    Гейта здесь нет намеренно: витрина собирается, а не проверяется, и падать
+    из-за того, что в чужом каталоге появилось правило, она не должна. Но и
+    молчать нельзя — иначе «никто не знал» снова становится возможным
+    состоянием. Поэтому новое правило само приезжает сюда со статусом
+    ``unreviewed``: решение по нему принимает человек, а вот появление в списке
+    от человека не зависит.
+
+    Номера правил не переиспользуются, поэтому исчезнувшие записи не удаляются:
+    пропасть правило может только вместе с каталогом.
+    """
+    answer = json.loads(BINDINGS.read_text(encoding="utf-8"))
+    rules = answer["rules"]
+    added = [rule["id"] for rule in export["rules"] if rule["id"] not in rules]
+    for rule_id in added:
+        rules[rule_id] = {"status": "unreviewed"}
+    if added:
+        answer["rules"] = {key: rules[key] for key in sorted(rules)}
+        BINDINGS.write_text(json.dumps(answer, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    unreviewed = sum(1 for binding in rules.values() if binding["status"] == "unreviewed")
+    return f"ответ каталогу: записей {len(rules)}, нерассмотренных {unreviewed}, дописано {len(added)}"
 
 
 def render(tiles: list[tuple[str, str]], dark: bool) -> str:
@@ -416,7 +445,9 @@ def main() -> int:
     coverage = badge("coverage-combined")
     glossary = badge("glossary").split()[0]
     open_for_newcomers = good_first_issues()
-    rules = count_rules()
+    export = rules_export()
+    rules = int(export["count"])
+    bindings = sync_bindings(export)
 
     # Числа с плитки (tests, coverage, checks) в тексте README не повторяются:
     # одно число — одно место. Текстовому читателю они достаются через alt
@@ -435,6 +466,7 @@ def main() -> int:
         "rules": rules,
     }
     print(" · ".join(f"{name}: {value}" for value, name in plate))
+    print(bindings)
     print(" · ".join(f"{key}: {value}" for key, value in values.items() if key != "projects"))
 
     # Ноль допустим ровно у одной метрики: пустой пул задач для новичка — это
