@@ -28,6 +28,8 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Без этого действует умолчание GitHub в шесть часов.
+    timeout-minutes: 10
     steps:
       - name: Забрать витрину
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -51,13 +53,13 @@ jobs:
       - name: Закоммитить, если числа изменились
         run: |
           set -euo pipefail
-          if git diff --quiet -- README.md assets; then
+          if git diff --quiet -- README.md assets .rules; then
             echo "Числа не изменились — коммит не нужен."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add README.md assets
+          git add README.md assets .rules
           git commit -m "chore(profile): пересобранные метрики витрины [skip ci]"
           # Между checkout и push мог уехать мерж PR: без rebase пуш отлетит,
           # и витрина пропустит сутки до следующего расписания.

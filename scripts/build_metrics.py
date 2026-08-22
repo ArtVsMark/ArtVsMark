@@ -28,7 +28,9 @@
 * пул ``good first issue`` — прямым запросом к трекеру, а НЕ из бейджа рядом с
   предыдущими двумя: бейдж обновляет CI грейдера, и между его прогонами число
   отстаёт. Витрина показывала 3, когда открытых было 4;
-* правил в каталоге — полем ``count`` его машиночитаемого экспорта. Раньше
+* правил в каталоге — полем ``count`` его машиночитаемого экспорта. Оттуда же
+  берутся их номера: правило, которого ещё нет в ``.rules/bindings.json``,
+  дописывается туда со статусом ``unreviewed``. Раньше
   витрина клонировала каталог целиком и считала файлы сама — то есть держала
   у себя копию чужого определения правила. Определения совпадали до первого
   чужого изменения, а разошлись бы молча: оба числа выглядят правдоподобно;
@@ -67,6 +69,8 @@ RULES_EXPORT = "https://raw.githubusercontent.com/ArtVsMark/claude-code-playbook
 RULES_SCHEMA = "1"  # мажор, который умеет читать эта сборка
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 PROJECTS = ROOT / "projects.json"
+# Ответ витрины каталогу: что здесь принято, что отклонено, чего нет предмета.
+BINDINGS = ROOT / ".rules/bindings.json"
 # Потолок «Current focus». Двигается только вниз: рост означает, что уборку
 # заменили правкой ограничителя.
 FOCUS_LIMIT = 5
@@ -272,8 +276,8 @@ def release_count() -> int:
     return len(_api(f"/repos/{REPO}/releases?per_page=100"))
 
 
-def count_rules() -> int:
-    """Число правил в каталоге — из его собственного экспорта.
+def rules_export() -> dict:
+    """Экспорт каталога правил — источник и числа правил, и списка их номеров.
 
     Что считать правилом, решает каталог: пара файлов в двух деревьях, номер,
     область, разбираемый след — и всё это держат его гейты. ``count`` в экспорте
@@ -297,7 +301,32 @@ def count_rules() -> int:
     schema = str(export.get("schema", ""))
     if schema.split(".")[0] != RULES_SCHEMA:
         raise SystemExit(f"схема экспорта {schema!r}, а сборка умеет мажор {RULES_SCHEMA}.x")
-    return int(export["count"])
+    return export
+
+
+def sync_bindings(export: dict, write: bool = True) -> str:
+    """Дописывает в ответ потребителя правила, которых в нём ещё нет.
+
+    Гейта здесь нет намеренно: витрина собирается, а не проверяется, и падать
+    из-за того, что в чужом каталоге появилось правило, она не должна. Но и
+    молчать нельзя — иначе «никто не знал» снова становится возможным
+    состоянием. Поэтому новое правило само приезжает сюда со статусом
+    ``unreviewed``: решение по нему принимает человек, а вот появление в списке
+    от человека не зависит.
+
+    Номера правил не переиспользуются, поэтому исчезнувшие записи не удаляются:
+    пропасть правило может только вместе с каталогом.
+    """
+    answer = json.loads(BINDINGS.read_text(encoding="utf-8"))
+    rules = answer["rules"]
+    added = [rule["id"] for rule in export["rules"] if rule["id"] not in rules]
+    for rule_id in added:
+        rules[rule_id] = {"status": "unreviewed"}
+    if added and write:
+        answer["rules"] = {key: rules[key] for key in sorted(rules)}
+        BINDINGS.write_text(json.dumps(answer, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    unreviewed = sum(1 for binding in rules.values() if binding["status"] == "unreviewed")
+    return f"ответ каталогу: записей {len(rules)}, нерассмотренных {unreviewed}, дописано {len(added)}"
 
 
 def render(tiles: list[tuple[str, str]], dark: bool) -> str:
@@ -344,7 +373,7 @@ def aria_label(svg: pathlib.Path) -> str:
     return match.group(1) if match else ""
 
 
-def sync_alt(text: str) -> tuple[str, int]:
+def sync_alt(text: str, fresh: dict[str, str] | None = None) -> tuple[str, int]:
     """Приводит alt каждой картинки витрины к её же ``aria-label``.
 
     Alt правится вместе с картинкой не для порядка: он невидим глазу, но именно
@@ -354,8 +383,14 @@ def sync_alt(text: str) -> tuple[str, int]:
     хранится она внутри SVG.
     """
     def replace(match: re.Match[str]) -> str:
-        label = aria_label(ROOT / "assets" / f"{match.group('name')}.svg").replace('"', "'")
-        return f"{match.group('head')}{label}{match.group('tail')}"
+        name = match.group("name")
+        # Подпись только что нарисованной картинки берётся из памяти. Читать её
+        # с диска значило бы читать собственный вывод: генератор питается
+        # источниками и ничем из того, что сам записал. С диска берутся только
+        # рукодельные SVG — шапка, печатающаяся строка, разделитель: для них
+        # файл и есть источник.
+        label = fresh[name] if fresh and name in fresh else aria_label(ROOT / "assets" / f"{name}.svg")
+        return f"{match.group('head')}{label.replace(chr(34), chr(39))}{match.group('tail')}"
 
     return re.subn(
         r'(?P<head><img src="\./assets/(?P<name>[a-z-]+)\.svg" alt=")[^"]*(?P<tail>")',
@@ -364,7 +399,7 @@ def sync_alt(text: str) -> tuple[str, int]:
     )
 
 
-def patch_readme(values: dict[str, object]) -> None:
+def patch_readme(values: dict[str, object], fresh: dict[str, str], write: bool = True) -> None:
     """Обновляет числа между маркерами ``<!--m:key-->`` … ``<!--/m:key-->``.
 
     Если маркер не нашёлся, скрипт падает, а не проходит молча: ``re.sub`` без
@@ -394,15 +429,25 @@ def patch_readme(values: dict[str, object]) -> None:
     # находит её — и молча докладывает, что всё проставлено.
     expected = len(re.findall(r"<img[^>]*assets/[a-z-]+\.svg", text))
     check_focus_limit(text)
-    text, patched = sync_alt(text)
+    text, patched = sync_alt(text, fresh)
     if patched != expected:
         raise SystemExit(f"alt проставлен у {patched} картинок из {expected} — разметка изменилась")
 
-    readme.write_text(text, encoding="utf-8")
+    if write:
+        readme.write_text(text, encoding="utf-8")
 
 
 def main() -> int:
-    grader = pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else "grader")
+    """``--check`` прогоняет всё то же самое, но ничего не пишет.
+
+    Витрине нечему зеленеть на PR: тестов у неё нет, а проверять есть что —
+    жив ли каждый источник, на месте ли маркеры, проставился ли alt у всех
+    картинок, не перерос ли «Current focus» свой потолок. Это и есть проверка,
+    которую ждёт автомерж: без неё «слить по зелёному» означает «слить сразу».
+    """
+    argv = [a for a in sys.argv[1:] if a != "--check"]
+    check = "--check" in sys.argv
+    grader = pathlib.Path(argv[0] if argv else "grader")
     if not (grader / "tests").is_dir():
         print(f"нет клона грейдера в {grader}/ — ожидается каталог tests/", file=sys.stderr)
         return 1
@@ -416,7 +461,9 @@ def main() -> int:
     coverage = badge("coverage-combined")
     glossary = badge("glossary").split()[0]
     open_for_newcomers = good_first_issues()
-    rules = count_rules()
+    export = rules_export()
+    rules = int(export["count"])
+    bindings = sync_bindings(export, write=not check)
 
     # Числа с плитки (tests, coverage, checks) в тексте README не повторяются:
     # одно число — одно место. Текстовому читателю они достаются через alt
@@ -435,6 +482,7 @@ def main() -> int:
         "rules": rules,
     }
     print(" · ".join(f"{name}: {value}" for value, name in plate))
+    print(bindings)
     print(" · ".join(f"{key}: {value}" for key, value in values.items() if key != "projects"))
 
     # Ноль допустим ровно у одной метрики: пустой пул задач для новичка — это
@@ -449,10 +497,15 @@ def main() -> int:
         print(f"метрика не собралась ({', '.join(empty)}) — ничего не переписываю", file=sys.stderr)
         return 1
 
+    fresh = {}
     for theme, dark in (("dark", True), ("light", False)):
-        (ROOT / f"assets/metrics-{theme}.svg").write_text(render(plate, dark), encoding="utf-8")
-    patch_readme(values)
-    print("assets/metrics-*.svg и README обновлены")
+        svg = render(plate, dark)
+        fresh[f"metrics-{theme}"] = ", ".join(f"{value} {name}" for value, name in plate)
+        if not check:
+            (ROOT / f"assets/metrics-{theme}.svg").write_text(svg, encoding="utf-8")
+    patch_readme(values, fresh, write=not check)
+    print("проверка прошла: источники живы, маркеры на месте" if check
+          else "assets/metrics-*.svg и README обновлены")
     return 0
 
 

@@ -19,7 +19,7 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="./assets/metrics-dark.svg">
   <source media="(prefers-color-scheme: light)" srcset="./assets/metrics-light.svg">
-  <img src="./assets/metrics-dark.svg" alt="4000+ tests, 93% coverage (all OS), 17 checks per PR" width="92%">
+  <img src="./assets/metrics-dark.svg" alt="4000+ tests, 92.6% coverage (all OS), 17 checks per PR" width="92%">
 </picture>
 
 <br><br>
@@ -71,7 +71,7 @@ pipx install stepik-python-grader && stepik-grader
 
 - **Gates instead of memory** — `preflight.py` before a commit, `check_pr_ready.py` before a merge. Things you cannot forget, because they are enforced rather than remembered.
 - **The gate is a ruleset, not an agreement** — what protects `main` is public, and you can read it without taking my word: every required check green, on a branch already up to date with `main`, force-push and deletion refused. [See for yourself](https://api.github.com/repos/ArtVsMark/Stepik-Python-Grader/rules/branches/main).
-- **Every rule cites its incident** — each convention carries the issue number it grew from, and the incidents themselves live in a [public catalogue](https://github.com/ArtVsMark/claude-code-playbook). Half a year later it is clear not only *what* the rule is, but *why*.
+- **Every rule cites its incident** — each convention carries the issue number it grew from, and the incidents themselves live in a [public catalogue](https://github.com/ArtVsMark/claude-code-playbook). This page answers for every rule in it — adopted and by what, rejected and why, no subject here — in [`.rules/bindings.json`](./.rules/bindings.json).
 - **A changelog assembled from fragments**, not written after the fact — entries land with the change that caused them.
 - **The numbers above are measured, not typed** — a [daily job](./.github/workflows/metrics.yml) reads them from the repositories that produce them and rewrites this page. A number nobody measures is a number that rots.
 
@@ -122,7 +122,7 @@ pipx install stepik-python-grader && stepik-grader
 
 ## Contributions welcome
 
-The grader has a **"First contribution in 15 minutes"** onramp, and every `good first issue` is written in **both Russian and English** — a bilingual body is enforced by a dedicated check, not by good intentions. Open right now: **<!--m:gfi-->4<!--/m:gfi-->** — the count is rebuilt from the tracker daily, and an empty pool means none are waiting this minute, not that the door is closed.
+The grader has a **"First contribution in 15 minutes"** onramp, and every `good first issue` is written in **both Russian and English** — a bilingual body is enforced by a dedicated check, not by good intentions. Open right now: **<!--m:gfi-->3<!--/m:gfi-->** — the count is rebuilt from the tracker daily, and an empty pool means none are waiting this minute, not that the door is closed.
 
 <div align="center">
 
