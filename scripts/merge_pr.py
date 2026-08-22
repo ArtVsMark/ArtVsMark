@@ -34,6 +34,8 @@ import urllib.request
 REPO = os.environ.get("SHOWCASE_REPO", "ArtVsMark/ArtVsMark")
 API = "https://api.github.com"
 HOLD = "hold"
+# Трейлеры вынимаются из тел коммитов и склеиваются в конце итогового сообщения.
+TRAILERS = ("Co-Authored-By", "Claude-Session")
 
 
 def refuse_outside_actions() -> None:
@@ -90,32 +92,46 @@ def _api(path: str, method: str = "GET", payload: dict | None = None) -> object:
 
 
 def commit_message(number: int) -> tuple[str, str]:
-    """Заголовок и тело коммита слияния.
+    """Заголовок и тело коммита слияния — с сохранением «почему».
 
-    Трейлеры собираются со всех коммитов ветки и склеиваются без повторов:
-    одно и то же соавторство, повторённое в каждом коммите, в итоговом
-    сообщении должно остаться одной строкой.
+    Первая редакция собирала из коммитов ветки только заголовки: получался
+    список дел и ни одной причины. Между тем каждое «зачем» уже написано — в
+    теле своего коммита, автором и в тот момент, когда он лучше всего помнил,
+    что и почему менял. Пересказывать это заново по различиям значит писать
+    хуже и позже.
+
+    Поэтому тело коммита слияния — это тела коммитов ветки целиком, каждое под
+    своим заголовком. Трейлеры вынимаются из них и склеиваются в конце без
+    повторов: одно и то же соавторство, повторённое в каждом коммите, в
+    итоговом сообщении должно остаться одной строкой.
     """
     pull = _api(f"/repos/{REPO}/pulls/{number}")
     commits = _api(f"/repos/{REPO}/pulls/{number}/commits?per_page=100")
 
-    works, trailers = [], []
+    parts, trailers = [], []
     for commit in commits:
-        lines = commit["commit"]["message"].splitlines()
-        works.append(lines[0])
-        for line in lines[1:]:
-            if ":" in line and line.split(":", 1)[0] in ("Co-Authored-By", "Claude-Session"):
+        subject, _, rest = commit["commit"]["message"].partition("\n")
+        kept = []
+        for line in rest.splitlines():
+            key = line.split(":", 1)[0] if ":" in line else ""
+            if key in TRAILERS:
                 if line not in trailers:
                     trailers.append(line)
+            else:
+                kept.append(line)
+        parts.append((subject, "\n".join(kept).strip()))
 
     title = f"{pull['title']} (#{number})"
-    body = []
-    if len(works) > 1:
-        body += [f"* {work}" for work in works] + [""]
-    body.append(f"Ветка: {pull['head']['ref']}")
+    body: list[str] = []
+    for subject, explanation in parts:
+        body.append(f"## {subject}" if len(parts) > 1 else explanation)
+        if len(parts) > 1 and explanation:
+            body += ["", explanation]
+        body.append("")
+    body += [f"Ветка: {pull['head']['ref']} · {pull['html_url']}"]
     if trailers:
         body += [""] + trailers
-    return title, "\n".join(body)
+    return title, "\n".join(body).strip()
 
 
 GOOD = ("success", "skipped", "neutral")
