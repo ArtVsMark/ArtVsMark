@@ -15,7 +15,7 @@
     },
     "003": {
       "status": "not-applicable",
-      "why": "конвейера с очередью мержей здесь нет: изменения вливаются по одному вручную"
+      "why": "конвейер витрины не смотрит на имена веток: слияние решают зелёные проверки и метка hold, а не префикс"
     },
     "004": {
       "status": "rejected",
@@ -47,7 +47,7 @@
     "010": {
       "status": "active",
       "mechanism": "gate",
-      "where": "scripts/build_metrics.py::main — пустая выборка проверок роняет сборку, а не даёт ноль"
+      "where": "scripts/merge_pr.py::checks_are_green и build_metrics.py — пустой список проверок не считается зелёным"
     },
     "011": {
       "status": "active",
@@ -196,7 +196,7 @@
     "045": {
       "status": "active",
       "mechanism": "gate",
-      "where": "scripts/build_metrics.py::count_rules — отказ экспорта роняет сборку, прошлое число не подставляется"
+      "where": "scripts/build_metrics.py::count_rules и .github/workflows/merge-when-green.yml — отсутствие токена не выдаётся за успех"
     },
     "046": {
       "status": "active",
@@ -214,7 +214,7 @@
     "049": {
       "status": "active",
       "mechanism": "process-step",
-      "where": "scripts/build_metrics.py::render_projects — порядок проектов выводится из времени пуша"
+      "where": "scripts/merge_pr.py — что готово к слиянию, вычисляется из живых PR и их проверок, а не из реестра"
     },
     "050": {
       "status": "active",
@@ -223,8 +223,8 @@
     },
     "051": {
       "status": "active",
-      "mechanism": "none",
-      "where": "scripts/build_metrics.py — падение только на достоверном: пропавший маркер, отказ источника"
+      "mechanism": "process-step",
+      "where": "scripts/merge_pr.py — метка hold останавливает слияние, а проверка PR блокирует только достоверное"
     },
     "052": {
       "status": "not-applicable",
@@ -443,7 +443,7 @@
     "104": {
       "status": "active",
       "mechanism": "process-step",
-      "where": ".github/workflows/metrics.yml, snake.yml — у обоих прогонов есть workflow_dispatch"
+      "where": ".github/workflows/*.yml — у всех четырёх прогонов есть workflow_dispatch"
     },
     "105": {
       "status": "not-applicable",
@@ -522,8 +522,8 @@
     },
     "123": {
       "status": "active",
-      "mechanism": "none",
-      "where": ".rules/README.md § Атрибуция коммитов — автор коммита владелец, исполнитель трейлером; пробел в слиянии назван там же"
+      "mechanism": "process-step",
+      "where": "scripts/merge_pr.py — сообщение слияния пересобирается из коммитов ветки вместе с трейлерами"
     },
     "124": {
       "status": "not-applicable",

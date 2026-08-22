@@ -1,0 +1,59 @@
+# Проверка PR витрины.
+#
+# Зачем она вообще: у витрины нет тестов, и до сих пор на PR не запускалось
+# ничего. «Слить по зелёному» в таком репозитории означает «слить сразу» —
+# автомержу нечего ждать. Проверять при этом есть что: жив ли каждый источник
+# метрики, на месте ли маркеры чисел, проставился ли alt у всех картинок, не
+# перерос ли «Current focus» свой потолок.
+#
+# Прогон ничего не пишет: `--check` собирает страницу в память и сверяет
+# инварианты. Расхождение чисел с тем, что лежит в ветке, дефектом НЕ считается
+# — числа переписывает суточная сборка, и требовать их свежести на PR значило бы
+# ронять проверку от чужого коммита.
+name: PR check
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-check-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Забрать витрину
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Забрать грейдер (только рабочее дерево)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ArtVsMark/Stepik-Python-Grader
+          path: grader
+          fetch-depth: 1
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Собрать витрину вхолостую
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python scripts/build_metrics.py grader --check
+
+      - name: Убедиться, что вхолостую значит вхолостую
+        run: |
+          set -euo pipefail
+          if ! git diff --quiet; then
+            echo "::error::--check изменил рабочее дерево — это не проверка, а сборка"
+            git --no-pager diff --stat
+            exit 1
+          fi
+          echo "Рабочее дерево не тронуто."

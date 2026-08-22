@@ -304,7 +304,7 @@ def rules_export() -> dict:
     return export
 
 
-def sync_bindings(export: dict) -> str:
+def sync_bindings(export: dict, write: bool = True) -> str:
     """Дописывает в ответ потребителя правила, которых в нём ещё нет.
 
     Гейта здесь нет намеренно: витрина собирается, а не проверяется, и падать
@@ -322,7 +322,7 @@ def sync_bindings(export: dict) -> str:
     added = [rule["id"] for rule in export["rules"] if rule["id"] not in rules]
     for rule_id in added:
         rules[rule_id] = {"status": "unreviewed"}
-    if added:
+    if added and write:
         answer["rules"] = {key: rules[key] for key in sorted(rules)}
         BINDINGS.write_text(json.dumps(answer, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     unreviewed = sum(1 for binding in rules.values() if binding["status"] == "unreviewed")
@@ -393,7 +393,7 @@ def sync_alt(text: str) -> tuple[str, int]:
     )
 
 
-def patch_readme(values: dict[str, object]) -> None:
+def patch_readme(values: dict[str, object], write: bool = True) -> None:
     """Обновляет числа между маркерами ``<!--m:key-->`` … ``<!--/m:key-->``.
 
     Если маркер не нашёлся, скрипт падает, а не проходит молча: ``re.sub`` без
@@ -427,11 +427,21 @@ def patch_readme(values: dict[str, object]) -> None:
     if patched != expected:
         raise SystemExit(f"alt проставлен у {patched} картинок из {expected} — разметка изменилась")
 
-    readme.write_text(text, encoding="utf-8")
+    if write:
+        readme.write_text(text, encoding="utf-8")
 
 
 def main() -> int:
-    grader = pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else "grader")
+    """``--check`` прогоняет всё то же самое, но ничего не пишет.
+
+    Витрине нечему зеленеть на PR: тестов у неё нет, а проверять есть что —
+    жив ли каждый источник, на месте ли маркеры, проставился ли alt у всех
+    картинок, не перерос ли «Current focus» свой потолок. Это и есть проверка,
+    которую ждёт автомерж: без неё «слить по зелёному» означает «слить сразу».
+    """
+    argv = [a for a in sys.argv[1:] if a != "--check"]
+    check = "--check" in sys.argv
+    grader = pathlib.Path(argv[0] if argv else "grader")
     if not (grader / "tests").is_dir():
         print(f"нет клона грейдера в {grader}/ — ожидается каталог tests/", file=sys.stderr)
         return 1
@@ -447,7 +457,7 @@ def main() -> int:
     open_for_newcomers = good_first_issues()
     export = rules_export()
     rules = int(export["count"])
-    bindings = sync_bindings(export)
+    bindings = sync_bindings(export, write=not check)
 
     # Числа с плитки (tests, coverage, checks) в тексте README не повторяются:
     # одно число — одно место. Текстовому читателю они достаются через alt
@@ -482,9 +492,12 @@ def main() -> int:
         return 1
 
     for theme, dark in (("dark", True), ("light", False)):
-        (ROOT / f"assets/metrics-{theme}.svg").write_text(render(plate, dark), encoding="utf-8")
-    patch_readme(values)
-    print("assets/metrics-*.svg и README обновлены")
+        svg = render(plate, dark)
+        if not check:
+            (ROOT / f"assets/metrics-{theme}.svg").write_text(svg, encoding="utf-8")
+    patch_readme(values, write=not check)
+    print("проверка прошла: источники живы, маркеры на месте" if check
+          else "assets/metrics-*.svg и README обновлены")
     return 0
 
 
