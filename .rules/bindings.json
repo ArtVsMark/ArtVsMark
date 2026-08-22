@@ -11,7 +11,7 @@
     "002": {
       "status": "active",
       "mechanism": "process-step",
-      "where": "README.md § What holds the quality — утверждения о качестве заменены на проверяемые читателем"
+      "where": "README.md § What holds the quality и scripts/merge_pr.py::refuse_outside_actions — утверждения проверяемы, а известное правило превращено в гейт"
     },
     "003": {
       "status": "not-applicable",
@@ -527,8 +527,8 @@
     },
     "123": {
       "status": "active",
-      "mechanism": "process-step",
-      "where": "scripts/merge_pr.py — сообщение слияния пересобирается из коммитов ветки вместе с трейлерами"
+      "mechanism": "gate",
+      "where": "scripts/merge_pr.py — сообщение слияния пересобирается с трейлерами, а сам merge запрещён вне Actions: на записи учётные данные подменяются, и автором стал бы бот"
     },
     "124": {
       "status": "not-applicable",

@@ -8,8 +8,12 @@
 # ПОЧЕМУ НУЖЕН ОТДЕЛЬНЫЙ ТОКЕН. Слияние штатным `GITHUB_TOKEN` делает автором
 # коммита `github-actions[bot]` — то есть чинит одну дыру в атрибуции, пробивая
 # другую. Автор должен быть человеком, поэтому нужен PAT владельца в секрете
-# `MERGE_TOKEN`. Пока секрета нет, прогон честно сообщает об этом и выходит: он
-# не притворяется сработавшим.
+# `MERGE_TOKEN`.
+#
+# ПОЧЕМУ ЖАЛОБА НЕ НА КАЖДОМ ПРОГОНЕ. Скрипт читает штатным токеном и молчит,
+# пока сливать нечего; про отсутствие `MERGE_TOKEN` он говорит в тот момент,
+# когда зелёный PR действительно нашёлся. Предупреждение, повторяемое впустую,
+# перестают читать.
 #
 # Стоп-кран — метка `hold` на PR: с ней слияние пропускается.
 name: Merge when green
@@ -17,7 +21,7 @@ name: Merge when green
 on:
   schedule:
     # Не в 0 и не в 30: в эти минуты GitHub обслуживает расписания всей планеты.
-    - cron: "13,43 * * * *"
+    - cron: "43 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -32,8 +36,6 @@ jobs:
   merge:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    env:
-      MERGE_TOKEN: ${{ secrets.MERGE_TOKEN }}
     steps:
       - name: Забрать витрину
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -43,12 +45,9 @@ jobs:
           python-version: "3.12"
 
       - name: Слить всё зелёное
-        run: |
-          set -euo pipefail
-          if [ -z "${MERGE_TOKEN}" ]; then
-            echo "::warning::Секрета MERGE_TOKEN нет — слияние пропущено."
-            echo "Без него автором коммита слияния стал бы github-actions[bot],"
-            echo "а атрибуция чинится ровно ради обратного."
-            exit 0
-          fi
-          GH_TOKEN="${MERGE_TOKEN}" python scripts/merge_pr.py --when-green
+        env:
+          # Читает — штатным, пишет — только этим. Пусто, значит слияния не
+          # будет, и скрипт скажет об этом, когда найдёт что сливать.
+          GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python scripts/merge_pr.py --when-green
