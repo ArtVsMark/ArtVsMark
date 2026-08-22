@@ -19,6 +19,8 @@
 ``--when-green`` пропускает черновики, PR с меткой ``hold`` и всё, у чего
 проверки не зелёные. Отсутствие проверок зелёным НЕ считается: пустой список
 означает «не стартовало», а не «всё хорошо».
+
+Сливать можно только из Actions: см. ``refuse_outside_actions``.
 """
 
 from __future__ import annotations
@@ -34,10 +36,43 @@ API = "https://api.github.com"
 HOLD = "hold"
 
 
+def refuse_outside_actions() -> None:
+    """Запрещает слияние откуда угодно, кроме Actions.
+
+    Прокси облачного окна подменяет учётные данные **на записи**: PR, открытый
+    оттуда, числится за владельцем, а коммит слияния получает автором бота.
+    Спросить у токена, кто он, бесполезно — ответ относится к чтению: тем же
+    токеном ``GET /user`` возвращает владельца, а автором коммита слияния
+    `0728344` стал `claude[bot]`.
+
+    Проверять поэтому нечего, кроме окружения. Знание тут не помогает: это
+    предупреждение было прочитано, пересказано в описании PR — и слияние всё
+    равно запустили из окна часом позже. Либо гейт, либо не правило.
+
+    Осознанный обход — ``MERGE_OUTSIDE_ACTIONS=1``: человек на своей машине
+    сливает своим токеном, и автором станет он сам.
+    """
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        return
+    if os.environ.get("MERGE_OUTSIDE_ACTIONS") == "1":
+        print("слияние вне Actions по явному разрешению — автором станет владелец токена", file=sys.stderr)
+        return
+    raise SystemExit(
+        "слияние вне Actions запрещено: на записи учётные данные подменяются, и автором\n"
+        "коммита слияния станет бот, а не человек. Проверить это заранее нельзя — на\n"
+        "чтении тот же токен представляется владельцем.\n"
+        "Место слияния — .github/workflows/merge-when-green.yml с секретом MERGE_TOKEN.\n"
+        "Осознанный обход со своей машины — MERGE_OUTSIDE_ACTIONS=1."
+    )
+
+
 def _api(path: str, method: str = "GET", payload: dict | None = None) -> object:
+    # Читать можно любым токеном, писать — только тем, что задан GH_TOKEN:
+    # в Actions это секрет владельца, и подставлять вместо него штатный
+    # GITHUB_TOKEN нельзя — автором стал бы github-actions[bot].
     token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
     if not token:
-        raise SystemExit("нет GH_TOKEN — слияние требует токена с правом записи")
+        raise SystemExit("нет токена: ни GH_TOKEN, ни GITHUB_TOKEN")
     request = urllib.request.Request(
         f"{API}{path}",
         method=method,
@@ -97,6 +132,12 @@ def checks_are_green(sha: str) -> tuple[bool, str]:
 
 
 def merge(number: int, dry_run: bool = False) -> int:
+    if not dry_run:
+        refuse_outside_actions()
+        if not os.environ.get("GH_TOKEN"):
+            print("есть что сливать, но GH_TOKEN не задан: в Actions это секрет MERGE_TOKEN.\n"
+                  "Слияние штатным токеном сделало бы автором github-actions[bot].", file=sys.stderr)
+            return 0
     title, body = commit_message(number)
     print(f"--- сообщение слияния PR #{number} ---\n{title}\n\n{body}\n---")
     if dry_run:
