@@ -4,9 +4,9 @@
 # вписано «11 releases shipped». Числа, вписанные руками, устаревают молча —
 # поэтому они измеряются, а не запоминаются.
 #
-# Грейдер и каталог правил публичные, поэтому штатного GITHUB_TOKEN хватает и
-# обмен через промежуточные артефакты не нужен: workflow читает их API и
-# клонирует рабочие деревья напрямую.
+# Грейдер публичный, поэтому штатного GITHUB_TOKEN хватает: workflow читает его
+# API и клонирует рабочее дерево напрямую. Каталог правил не клонируется вовсе —
+# его число берётся из машиночитаемого экспорта одной HTTP-загрузкой.
 name: Profile metrics
 
 on:
@@ -39,13 +39,6 @@ jobs:
           path: grader
           fetch-depth: 1
 
-      - name: Забрать каталог правил (только рабочее дерево)
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: ArtVsMark/claude-code-playbook
-          path: playbook
-          fetch-depth: 1
-
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
@@ -53,7 +46,7 @@ jobs:
       - name: Пересобрать метрики
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python scripts/build_metrics.py grader playbook
+        run: python scripts/build_metrics.py grader
 
       - name: Закоммитить, если числа изменились
         run: |

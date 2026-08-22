@@ -28,7 +28,10 @@
 * пул ``good first issue`` — прямым запросом к трекеру, а НЕ из бейджа рядом с
   предыдущими двумя: бейдж обновляет CI грейдера, и между его прогонами число
   отстаёт. Витрина показывала 3, когда открытых было 4;
-* правил в каталоге — числом файлов ``rules/ru/*.md`` в клоне playbook;
+* правил в каталоге — полем ``count`` его машиночитаемого экспорта. Раньше
+  витрина клонировала каталог целиком и считала файлы сама — то есть держала
+  у себя копию чужого определения правила. Определения совпадали до первого
+  чужого изменения, а разошлись бы молча: оба числа выглядят правдоподобно;
 * порядок проектов в таблице — по времени последнего пуша, закреплённый
   первым. Список живёт данными в ``projects.json``, а не разметкой в README:
   порядок, расставленный руками, — та же память автора, что и число,
@@ -52,11 +55,16 @@ import pathlib
 import re
 import statistics
 import sys
+import urllib.error
 import urllib.parse
 import urllib.request
 
 REPO = "ArtVsMark/Stepik-Python-Grader"
 API = "https://api.github.com"
+# Экспорт каталога правил: обычный HTTP по «сырой» ссылке — ни API площадки, ни
+# клона, ни токена. Так его и задумал контракт: подключиться может кто угодно.
+RULES_EXPORT = "https://raw.githubusercontent.com/ArtVsMark/claude-code-playbook/main/export/rules.json"
+RULES_SCHEMA = "1"  # мажор, который умеет читать эта сборка
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 PROJECTS = ROOT / "projects.json"
 # Потолок «Current focus». Двигается только вниз: рост означает, что уборку
@@ -65,13 +73,23 @@ FOCUS_LIMIT = 5
 FONT = "Inter,Segoe UI,Helvetica,Arial,sans-serif"
 
 
-def _get(url: str) -> bytes:
+def _get(url: str, authenticated: bool = True) -> bytes:
+    """Загрузка. ``authenticated=False`` — для не-API источников.
+
+    Заголовок ``Authorization`` посылается не всюду: ``raw.githubusercontent.com``
+    отвечает на него 404 — токен для него чужой, и вместо содержимого приходит
+    «нет такого файла».
+    """
     request = urllib.request.Request(
         url,
         headers={
             "Accept": "application/vnd.github+json",
             "X-GitHub-Api-Version": "2022-11-28",
-            **({"Authorization": f"Bearer {t}"} if (t := os.environ.get("GH_TOKEN")) else {}),
+            **(
+                {"Authorization": f"Bearer {t}"}
+                if authenticated and (t := os.environ.get("GH_TOKEN"))
+                else {}
+            ),
         },
     )
     with urllib.request.urlopen(request, timeout=30) as response:
@@ -254,9 +272,32 @@ def release_count() -> int:
     return len(_api(f"/repos/{REPO}/releases?per_page=100"))
 
 
-def count_rules(playbook: pathlib.Path) -> int:
-    """Число правил в каталоге: один файл — одно правило."""
-    return len(list((playbook / "rules/ru").glob("[0-9]*.md")))
+def count_rules() -> int:
+    """Число правил в каталоге — из его собственного экспорта.
+
+    Что считать правилом, решает каталог: пара файлов в двух деревьях, номер,
+    область, разбираемый след — и всё это держат его гейты. ``count`` в экспорте
+    посчитан тем же скриптом, что собирает указатель каталога, и закреплён тем
+    же гейтом. Считать здесь самому означало бы держать копию чужого
+    определения: она совпадает ровно до первого изменения на той стороне, а
+    расходится молча — оба числа правдоподобны.
+
+    Отказ загрузки роняет сборку и НЕ подставляет прошлое число. Тихий откат к
+    старому значению — та самая половина правила про «молча»: страница осталась
+    бы прежней, а конвейер отчитался бы «числа не изменились».
+
+    Несовместимый мажор схемы — тоже отказ: читать «что получится» из формата,
+    который сменил смысл полей, хуже, чем не читать вовсе.
+    """
+    try:
+        export = json.loads(_get(RULES_EXPORT, authenticated=False))
+    except (urllib.error.URLError, ValueError) as error:
+        raise SystemExit(f"экспорт каталога не прочитан ({RULES_EXPORT}): {error}") from error
+
+    schema = str(export.get("schema", ""))
+    if schema.split(".")[0] != RULES_SCHEMA:
+        raise SystemExit(f"схема экспорта {schema!r}, а сборка умеет мажор {RULES_SCHEMA}.x")
+    return int(export["count"])
 
 
 def render(tiles: list[tuple[str, str]], dark: bool) -> str:
@@ -362,11 +403,9 @@ def patch_readme(values: dict[str, object]) -> None:
 
 def main() -> int:
     grader = pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else "grader")
-    playbook = pathlib.Path(sys.argv[2] if len(sys.argv) > 2 else "playbook")
-    for path, marker in ((grader, "tests"), (playbook, "rules/ru")):
-        if not (path / marker).is_dir():
-            print(f"нет клона в {path}/ — ожидается каталог {marker}/", file=sys.stderr)
-            return 1
+    if not (grader / "tests").is_dir():
+        print(f"нет клона грейдера в {grader}/ — ожидается каталог tests/", file=sys.stderr)
+        return 1
 
     tests = count_tests(grader)
     modules = count_test_modules(grader)
@@ -377,7 +416,7 @@ def main() -> int:
     coverage = badge("coverage-combined")
     glossary = badge("glossary").split()[0]
     open_for_newcomers = good_first_issues()
-    rules = count_rules(playbook)
+    rules = count_rules()
 
     # Числа с плитки (tests, coverage, checks) в тексте README не повторяются:
     # одно число — одно место. Текстовому читателю они достаются через alt
