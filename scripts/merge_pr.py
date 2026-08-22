@@ -69,7 +69,7 @@ def refuse_outside_actions() -> None:
         "слияние вне Actions запрещено: на записи учётные данные подменяются, и автором\n"
         "коммита слияния станет бот, а не человек. Проверить это заранее нельзя — на\n"
         "чтении тот же токен представляется владельцем.\n"
-        "Место слияния — .github/workflows/merge-when-green.yml с секретом MERGE_TOKEN.\n"
+        "Место слияния — .github/workflows/merge-when-green.yml с секретом MERGE_QUEUE_TOKEN.\n"
         "Осознанный обход со своей машины — MERGE_OUTSIDE_ACTIONS=1."
     )
 
@@ -169,7 +169,7 @@ def merge(number: int, dry_run: bool = False) -> int:
     if not dry_run:
         refuse_outside_actions()
         if not os.environ.get("GH_TOKEN"):
-            print("есть что сливать, но GH_TOKEN не задан: в Actions это секрет MERGE_TOKEN.\n"
+            print("есть что сливать, но GH_TOKEN не задан: в Actions это секрет MERGE_QUEUE_TOKEN.\n"
                   "Слияние штатным токеном сделало бы автором github-actions[bot].", file=sys.stderr)
             return 0
     title, body = commit_message(number)

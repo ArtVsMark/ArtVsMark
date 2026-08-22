@@ -91,7 +91,8 @@
 - **сообщение пересобирается** из тел коммитов ветки вместе с трейлерами:
   кнопка «Merge pull request» теряет и то и другое
   → [`123`](https://github.com/ArtVsMark/claude-code-playbook/blob/main/rules/ru/123-attribution-is-verified-on-the-final-history.md);
-- **автор коммита слияния — человек**: нужен секрет `MERGE_TOKEN`, штатный
+- **автор коммита слияния — человек**: нужен секрет `MERGE_QUEUE_TOKEN`
+  (имя общее с грейдером и каталогом), штатный
   токен сделал бы автором бота.
 
 ## 🏷️ Метки
