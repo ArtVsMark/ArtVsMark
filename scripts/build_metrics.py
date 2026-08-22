@@ -28,7 +28,13 @@
 * пул ``good first issue`` — прямым запросом к трекеру, а НЕ из бейджа рядом с
   предыдущими двумя: бейдж обновляет CI грейдера, и между его прогонами число
   отстаёт. Витрина показывала 3, когда открытых было 4;
-* правил в каталоге — числом файлов ``rules/ru/*.md`` в клоне playbook.
+* правил в каталоге — числом файлов ``rules/ru/*.md`` в клоне playbook;
+* порядок проектов в таблице — по времени последнего пуша, закреплённый
+  первым. Список живёт данными в ``projects.json``, а не разметкой в README:
+  порядок, расставленный руками, — та же память автора, что и число,
+  вписанное руками. Показываются первые ``featured_limit``; сколько проектов
+  осталось за потолком, сборка пишет под таблицей — урезанная выдача обязана
+  говорить, что она урезана.
 
 Чего здесь НЕТ и почему: пустой список обходов защиты ветки. GitHub отдаёт
 ``bypass_actors`` только админу репозитория, у ``GITHUB_TOKEN`` витрины таких
@@ -52,6 +58,10 @@ import urllib.request
 REPO = "ArtVsMark/Stepik-Python-Grader"
 API = "https://api.github.com"
 ROOT = pathlib.Path(__file__).resolve().parent.parent
+PROJECTS = ROOT / "projects.json"
+# Потолок «Current focus». Двигается только вниз: рост означает, что уборку
+# заменили правкой ограничителя.
+FOCUS_LIMIT = 5
 FONT = "Inter,Segoe UI,Helvetica,Arial,sans-serif"
 
 
@@ -102,6 +112,67 @@ def good_first_issues() -> int:
     label = urllib.parse.quote("good first issue")
     issues = _api(f"/repos/{REPO}/issues?state=open&labels={label}&per_page=100")
     return len([issue for issue in issues if "pull_request" not in issue])
+
+
+def repo_activity(repo: str) -> str:
+    """Время последнего пуша — ключ сортировки проектов.
+
+    Ошибка чтения здесь не проглатывается: репозиторий, ставший приватным или
+    переименованный, — это битая ссылка на витрине, и узнать о ней лучше от
+    упавшей сборки, чем от посетителя.
+    """
+    return _api(f"/repos/{repo}")["pushed_at"]
+
+
+def render_projects(config: dict) -> str:
+    """Таблица проектов: закреплённый первым, дальше по свежести пуша.
+
+    Показываются первые ``featured_limit``. Остаток не пропадает молча —
+    под таблицей сказано, сколько проектов не поместилось и где они лежат.
+    Сворачиваемый блок для остатка не годится: там, где страницу читают
+    текстом, он схлопывается в заголовок без содержимого.
+
+    Возвращается с переводами строк по краям: таблица markdown обязана
+    начинаться с начала строки, а маркер стоит вплотную перед ней.
+    """
+    limit = config["featured_limit"]
+    projects = config["projects"]
+    activity = {project["repo"]: repo_activity(project["repo"]) for project in projects}
+
+    ordered = sorted(projects, key=lambda project: activity[project["repo"]], reverse=True)
+    ordered.sort(key=lambda project: not project.get("pin", False))  # сортировка стабильна
+    featured, hidden = ordered[:limit], ordered[limit:]
+
+    rows = ["| Project | What it does | Stack |", "|---|---|---|"]
+    for project in featured:
+        title = f"**[{project['title']}](https://github.com/{project['repo']})**"
+        links = " · ".join(f"[{name}]({url})" for name, url in project.get("links", {}).items())
+        if links:
+            title += f"<br><sub>{links}</sub>"
+        rows.append(f"| {title} | {project['blurb']} | <sub>{project['stack']}</sub> |")
+
+    if hidden:
+        rows += [
+            "",
+            f"<sub>{limit} shown, most recently active first · {len(hidden)} more on the "
+            "[repositories tab](https://github.com/ArtVsMark?tab=repositories)</sub>",
+        ]
+    return "\n" + "\n".join(rows) + "\n"
+
+
+def check_focus_limit(text: str) -> None:
+    """Потолок «Current focus»: строк не больше FOCUS_LIMIT.
+
+    Единственный блок витрины, который ведётся руками, — планы измерить нечем.
+    Значит у него должен быть хотя бы предел, выраженный числом и проверяемый
+    машиной: «стало многовато» не проверяет ничего.
+    """
+    block = re.search(r"<!--focus-->(.*?)<!--/focus-->", text, re.S)
+    if not block:
+        raise SystemExit("в README нет блока <!--focus--> — потолок не к чему применить")
+    rows = [line for line in block.group(1).splitlines() if line.startswith("| **")]
+    if len(rows) > FOCUS_LIMIT:
+        raise SystemExit(f"в «Current focus» {len(rows)} строк при потолке {FOCUS_LIMIT}")
 
 
 def count_tests(grader: pathlib.Path) -> int:
@@ -281,6 +352,7 @@ def patch_readme(values: dict[str, object]) -> None:
     # проверяет саму себя: строгое выражение не видит поехавшую разметку, не
     # находит её — и молча докладывает, что всё проставлено.
     expected = len(re.findall(r"<img[^>]*assets/[a-z-]+\.svg", text))
+    check_focus_limit(text)
     text, patched = sync_alt(text)
     if patched != expected:
         raise SystemExit(f"alt проставлен у {patched} картинок из {expected} — разметка изменилась")
@@ -312,6 +384,7 @@ def main() -> int:
     # картинки, а его тоже проставляет этот скрипт — см. sync_alt.
     plate = [(f"{tests // 1000}000+", "tests"), (coverage, "coverage (all OS)"), (str(checks), "checks per PR")]
     values = {
+        "projects": render_projects(json.loads(PROJECTS.read_text(encoding="utf-8"))),
         "modules": modules,
         "required": required,
         "os": systems,
@@ -323,7 +396,7 @@ def main() -> int:
         "rules": rules,
     }
     print(" · ".join(f"{name}: {value}" for value, name in plate))
-    print(" · ".join(f"{key}: {value}" for key, value in values.items()))
+    print(" · ".join(f"{key}: {value}" for key, value in values.items() if key != "projects"))
 
     # Ноль допустим ровно у одной метрики: пустой пул задач для новичка — это
     # состояние трекера, а не сбой сборки. У остальных ноль означает, что
