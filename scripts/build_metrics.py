@@ -373,7 +373,7 @@ def aria_label(svg: pathlib.Path) -> str:
     return match.group(1) if match else ""
 
 
-def sync_alt(text: str) -> tuple[str, int]:
+def sync_alt(text: str, fresh: dict[str, str] | None = None) -> tuple[str, int]:
     """Приводит alt каждой картинки витрины к её же ``aria-label``.
 
     Alt правится вместе с картинкой не для порядка: он невидим глазу, но именно
@@ -383,8 +383,14 @@ def sync_alt(text: str) -> tuple[str, int]:
     хранится она внутри SVG.
     """
     def replace(match: re.Match[str]) -> str:
-        label = aria_label(ROOT / "assets" / f"{match.group('name')}.svg").replace('"', "'")
-        return f"{match.group('head')}{label}{match.group('tail')}"
+        name = match.group("name")
+        # Подпись только что нарисованной картинки берётся из памяти. Читать её
+        # с диска значило бы читать собственный вывод: генератор питается
+        # источниками и ничем из того, что сам записал. С диска берутся только
+        # рукодельные SVG — шапка, печатающаяся строка, разделитель: для них
+        # файл и есть источник.
+        label = fresh[name] if fresh and name in fresh else aria_label(ROOT / "assets" / f"{name}.svg")
+        return f"{match.group('head')}{label.replace(chr(34), chr(39))}{match.group('tail')}"
 
     return re.subn(
         r'(?P<head><img src="\./assets/(?P<name>[a-z-]+)\.svg" alt=")[^"]*(?P<tail>")',
@@ -393,7 +399,7 @@ def sync_alt(text: str) -> tuple[str, int]:
     )
 
 
-def patch_readme(values: dict[str, object], write: bool = True) -> None:
+def patch_readme(values: dict[str, object], fresh: dict[str, str], write: bool = True) -> None:
     """Обновляет числа между маркерами ``<!--m:key-->`` … ``<!--/m:key-->``.
 
     Если маркер не нашёлся, скрипт падает, а не проходит молча: ``re.sub`` без
@@ -423,7 +429,7 @@ def patch_readme(values: dict[str, object], write: bool = True) -> None:
     # находит её — и молча докладывает, что всё проставлено.
     expected = len(re.findall(r"<img[^>]*assets/[a-z-]+\.svg", text))
     check_focus_limit(text)
-    text, patched = sync_alt(text)
+    text, patched = sync_alt(text, fresh)
     if patched != expected:
         raise SystemExit(f"alt проставлен у {patched} картинок из {expected} — разметка изменилась")
 
@@ -491,11 +497,13 @@ def main() -> int:
         print(f"метрика не собралась ({', '.join(empty)}) — ничего не переписываю", file=sys.stderr)
         return 1
 
+    fresh = {}
     for theme, dark in (("dark", True), ("light", False)):
         svg = render(plate, dark)
+        fresh[f"metrics-{theme}"] = ", ".join(f"{value} {name}" for value, name in plate)
         if not check:
             (ROOT / f"assets/metrics-{theme}.svg").write_text(svg, encoding="utf-8")
-    patch_readme(values, write=not check)
+    patch_readme(values, fresh, write=not check)
     print("проверка прошла: источники живы, маркеры на месте" if check
           else "assets/metrics-*.svg и README обновлены")
     return 0

@@ -24,6 +24,8 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Без этого действует умолчание GitHub в шесть часов.
+    timeout-minutes: 10
     steps:
       - name: Сгенерировать SVG для светлой и тёмной темы
         uses: Platane/snk@d8f6715049803e982ee5ff501b6b9b7d5deeb09b # v3.5.0

@@ -19,7 +19,7 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="./assets/metrics-dark.svg">
   <source media="(prefers-color-scheme: light)" srcset="./assets/metrics-light.svg">
-  <img src="./assets/metrics-dark.svg" alt="4000+ tests, 93% coverage (all OS), 17 checks per PR" width="92%">
+  <img src="./assets/metrics-dark.svg" alt="4000+ tests, 92.6% coverage (all OS), 17 checks per PR" width="92%">
 </picture>
 
 <br><br>
@@ -122,7 +122,7 @@ pipx install stepik-python-grader && stepik-grader
 
 ## Contributions welcome
 
-The grader has a **"First contribution in 15 minutes"** onramp, and every `good first issue` is written in **both Russian and English** — a bilingual body is enforced by a dedicated check, not by good intentions. Open right now: **<!--m:gfi-->4<!--/m:gfi-->** — the count is rebuilt from the tracker daily, and an empty pool means none are waiting this minute, not that the door is closed.
+The grader has a **"First contribution in 15 minutes"** onramp, and every `good first issue` is written in **both Russian and English** — a bilingual body is enforced by a dedicated check, not by good intentions. Open right now: **<!--m:gfi-->3<!--/m:gfi-->** — the count is rebuilt from the tracker daily, and an empty pool means none are waiting this minute, not that the door is closed.
 
 <div align="center">
 
