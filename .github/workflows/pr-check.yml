@@ -15,6 +15,9 @@ name: PR check
 on:
   pull_request:
     branches: [main]
+    # `labeled`/`unlabeled` — чтобы проверка классификации пересчитывалась,
+    # когда метку наконец поставили, а не висела красной до следующего пуша.
+    types: [opened, synchronize, reopened, labeled, unlabeled]
   workflow_dispatch:
 
 permissions:
@@ -47,6 +50,12 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python scripts/build_metrics.py grader --check
+
+      - name: Проверить классификацию
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python scripts/check_labels.py ${{ github.event.pull_request.number }}
 
       - name: Убедиться, что вхолостую значит вхолостую
         run: |
