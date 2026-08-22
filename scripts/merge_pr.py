@@ -118,17 +118,36 @@ def commit_message(number: int) -> tuple[str, str]:
     return title, "\n".join(body)
 
 
+GOOD = ("success", "skipped", "neutral")
+
+
 def checks_are_green(sha: str) -> tuple[bool, str]:
     """Зелены ли проверки на коммите.
 
     Пустой список проверок зелёным не считается: условие «нет красных и нет
     ожидающих» истинно и на пустом множестве, а означает оно «не стартовало».
+
+    Записи сворачиваются по имени, и берётся **последняя**. У проверки PR стоит
+    отмена предыдущего прогона при новом пуше — отменённая запись остаётся
+    висеть на коммите рядом со свежей успешной. Считая записи, а не уникальные
+    имена, конвейер видел бы «не зелено» и не сливал бы такой PR никогда,
+    причём молча: у него нет способа сказать «я застрял».
+
+    Это тот же счёт записей вместо объектов, из-за которого на витрине
+    появилось «32 проверки на PR» вместо шестнадцати.
     """
     runs = _api(f"/repos/{REPO}/commits/{sha}/check-runs?per_page=100")["check_runs"]
     if not runs:
         return False, "проверок нет — это «не стартовало», а не «всё хорошо»"
-    bad = [r["name"] for r in runs if r["conclusion"] not in ("success", "skipped", "neutral")]
-    return not bad, "зелено" if not bad else f"не зелены: {', '.join(sorted(set(bad)))}"
+
+    latest: dict[str, dict] = {}
+    for run in sorted(runs, key=lambda r: (r.get("started_at") or "", r.get("id") or 0)):
+        latest[run["name"]] = run
+
+    bad = [name for name, run in latest.items() if run["conclusion"] not in GOOD]
+    if bad:
+        return False, f"не зелены: {', '.join(sorted(bad))}"
+    return True, f"зелено ({len(latest)} из {len(runs)} записей — свежие)"
 
 
 def merge(number: int, dry_run: bool = False) -> int:
