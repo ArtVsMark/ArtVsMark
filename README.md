@@ -24,12 +24,6 @@
 
 <br><br>
 
-<a href="https://github.com/ArtVsMark/Stepik-Python-Grader"><img src="https://img.shields.io/badge/main_project-Stepik--Python--Grader-1F6FEB?style=for-the-badge&logo=github&logoColor=white" alt="Main project"></a>
-<a href="https://pypi.org/project/stepik-python-grader/"><img src="https://img.shields.io/pypi/v/stepik-python-grader?style=for-the-badge&logo=pypi&logoColor=white&label=pypi&color=3775A9&cacheSeconds=300" alt="PyPI"></a>
-<a href="https://github.com/ArtVsMark/Stepik-Python-Grader/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/ArtVsMark/Stepik-Python-Grader/ci.yml?style=for-the-badge&logo=githubactions&logoColor=white&label=CI&cacheSeconds=300" alt="CI"></a>
-
-<br>
-
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="./assets/divider-dark.svg">
   <source media="(prefers-color-scheme: light)" srcset="./assets/divider-light.svg">
@@ -44,17 +38,15 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="./assets/featured-dark.svg">
   <source media="(prefers-color-scheme: light)" srcset="./assets/featured-light.svg">
-  <img src="./assets/featured-dark.svg" alt="Stepik-Python-Grader: 2 stars, 1664 commits, 44 issues, 12 releases, 655 prs · claude-code-playbook: 1 stars, 153 commits, 20 issues, 1 releases, 39 prs · Glossary-Python: 2 stars, 3 commits, 2 issues, 0 releases, 0 prs · claude-code-usage: 0 stars, 5 commits, 15 issues, 0 releases, 0 prs" width="100%">
+  <img src="./assets/featured-dark.svg" alt="Stepik-Python-Grader — Offline Python autograder: unlimited local checks, honest side-by-side comparison of solutions. 2 stars, 1665 commits, 43 issues, 12 releases, 656 prs · claude-code-playbook — Rules for agent sessions and a GitHub pipeline — each one carrying the incident it grew from. 1 stars, 158 commits, 20 issues, 1 releases, 43 prs · Glossary-Python — The RU/EN glossary the grader links into when a run fails. 2 stars, 3 commits, 2 issues, 0 releases, 0 prs · claude-code-usage — Turns a three-step limit indicator into a number. Early: the spec is written, the tool is not. 0 stars, 5 commits, 15 issues, 0 releases, 0 prs" width="100%">
 </picture>
 </div>
 
 <!--m:projects-->
-| Project | What it does | Stack |
-|---|---|---|
-| **[Stepik-Python-Grader](https://github.com/ArtVsMark/Stepik-Python-Grader)**<br><sub>[PyPI](https://pypi.org/project/stepik-python-grader/) · [Quick start](https://github.com/ArtVsMark/Stepik-Python-Grader/blob/main/README.en.md#quick-start-no-stepik-needed) · [History](https://github.com/ArtVsMark/Stepik-Python-Grader/blob/main/HISTORY.md)</sub> | A local offline autograder for Python. Downloads task data from Stepik, runs correctness checks without a submit limit, and **compares several solutions honestly** — correctness first, benchmark metrics second. | <sub>CLI · web UI · GUI · pytest plugin · OS sandbox</sub> |
-| **[claude-code-playbook](https://github.com/ArtVsMark/claude-code-playbook)** | <!--m:rules-->142<!--/m:rules--> rules for running agent sessions and a GitHub pipeline — each one carrying the incident it grew from, not just the wording. Russian and English. | <sub>docs · RU/EN</sub> |
-| **[claude-code-usage](https://github.com/ArtVsMark/claude-code-usage)** | Turns a three-step limit indicator into an actual number: measures what a session spent, calibrates its own scale, reports what is left. Early — the spec is written, the tool is not. | <sub>Python · JSONL over git</sub> |
-| **[Glossary-Python](https://github.com/ArtVsMark/Glossary-Python)** | Supporting layer: the glossary the grader links into when a run fails. | <sub>content · tooling</sub> |
+- **[Stepik-Python-Grader](https://github.com/ArtVsMark/Stepik-Python-Grader)** · [PyPI](https://pypi.org/project/stepik-python-grader/) · [Quick start](https://github.com/ArtVsMark/Stepik-Python-Grader/blob/main/README.en.md#quick-start-no-stepik-needed) · [History](https://github.com/ArtVsMark/Stepik-Python-Grader/blob/main/HISTORY.md) · <sub>CLI · web UI · GUI · pytest plugin · OS sandbox</sub><br>  [![release](https://img.shields.io/github/v/release/ArtVsMark/Stepik-Python-Grader?style=flat-square&cacheSeconds=300&label=release)](https://github.com/ArtVsMark/Stepik-Python-Grader/releases) [![CI](https://img.shields.io/github/actions/workflow/status/ArtVsMark/Stepik-Python-Grader/ci.yml?style=flat-square&cacheSeconds=300&label=CI)](https://github.com/ArtVsMark/Stepik-Python-Grader/actions/workflows/ci.yml) [![coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/ArtVsMark/Stepik-Python-Grader/badges/.github/badges/coverage-combined.json&style=flat-square&cacheSeconds=300)](https://github.com/ArtVsMark/Stepik-Python-Grader/tree/badges) [![pypi](https://img.shields.io/pypi/v/stepik-python-grader?style=flat-square&cacheSeconds=300&label=pypi)](https://pypi.org/project/stepik-python-grader/)
+- **[claude-code-playbook](https://github.com/ArtVsMark/claude-code-playbook)** · <sub>docs · RU/EN</sub><br>  [![CI](https://img.shields.io/github/actions/workflow/status/ArtVsMark/claude-code-playbook/ci.yml?style=flat-square&cacheSeconds=300&label=CI)](https://github.com/ArtVsMark/claude-code-playbook/actions/workflows/ci.yml)
+- **[claude-code-usage](https://github.com/ArtVsMark/claude-code-usage)** · <sub>Python · JSONL over git</sub><br>  [![pypi](https://img.shields.io/pypi/v/claude-code-usage?style=flat-square&cacheSeconds=300&label=pypi)](https://pypi.org/project/claude-code-usage/)
+- **[Glossary-Python](https://github.com/ArtVsMark/Glossary-Python)** · <sub>content · tooling</sub>
 <!--/m:projects-->
 
 <sub><b>Quick start</b></sub>
@@ -153,7 +145,7 @@ The grader has a **"First contribution in 15 minutes"** onramp, and every `good 
 **Мейнтейнер open-source на Python.** Флагман — [Stepik-Python-Grader](https://github.com/ArtVsMark/Stepik-Python-Grader):
 локальный грейдер, который не просто прогоняет тесты, а **сравнивает решения честно** — сначала по
 корректности, потом по benchmark-метрикам. Рядом — [claude-code-playbook](https://github.com/ArtVsMark/claude-code-playbook),
-каталог правил, каждое с историей поломки, из которой выросло, и [claude-code-usage](https://github.com/ArtVsMark/claude-code-usage) —
+каталог из <!--m:rules-->143<!--/m:rules--> правил, каждое с историей поломки, из которой выросло, и [claude-code-usage](https://github.com/ArtVsMark/claude-code-usage) —
 остаток лимитов Claude Code в цифрах вместо трёхступенчатого светофора; пока спецификация.
 
 Качество держится механикой, а не памятью: гейты перед коммитом и мержем, зелёный CI на актуальной

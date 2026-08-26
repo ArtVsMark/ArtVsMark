@@ -60,6 +60,7 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
+from xml.sax.saxutils import escape
 
 # Путь добавляется явно: без него `import checks` держится на том, из какого
 # каталога запустили, и ломается, едва модуль импортируют, а не запускают.
@@ -249,7 +250,15 @@ def rank_featured(stats: dict[str, dict[str, int]]) -> list[str]:
     return sorted(places, key=lambda repo: (places[repo], repo))
 
 
-def render_featured(entries: list[tuple[str, dict[str, int]]], dark: bool) -> str:
+#: Потолок описания в баннере. Считан от ширины картинки: 932 точки под текст
+#: при кегле 15 — это около ста двадцати знаков. Обрезать описание молча нельзя:
+#: витрина держит правило «урезанная выдача обязана сказать, что она урезана», а
+#: описание — не то место, где такую приписку поставишь. Поэтому длиннее потолка
+#: это отказ сборки, а не многоточие. Потолок двигается только вниз (050).
+TAGLINE_LIMIT = 110
+
+
+def render_featured(entries: list[tuple[str, str, dict[str, int]]], dark: bool) -> str:
     """Баннер акцентов: по одному проекту за раз, переключение по таймеру.
 
     Анимация живёт ВНУТРИ картинки, потому что страница профиля — Markdown:
@@ -267,7 +276,15 @@ def render_featured(entries: list[tuple[str, dict[str, int]]], dark: bool) -> st
     превратится в кашу. С атрибутами не доехавший стиль даёт статичную картинку
     с первым акцентом — то есть худший исход остаётся читаемым.
     """
-    width, height = 1000, 132
+    long = [title for title, tagline, _ in entries if len(tagline) > TAGLINE_LIMIT]
+    if long:
+        raise SystemExit(
+            f"описание не влезает в баннер (потолок {TAGLINE_LIMIT} знаков): {', '.join(long)}.\n"
+            "  Сократите tagline в projects.json. Обрезать молча нельзя: урезанная выдача\n"
+            "  обязана говорить, что она урезана, а описание — не то место, где это уместно."
+        )
+
+    width, height = 1000, 152
     cycle = ACCENT_SECONDS * len(entries)
     if dark:
         card, stroke, name_c, num_c, lab_c = "#0D1117", "#30363D", "#F0F6FC", "#58A6FF", "#7D8590"
@@ -277,8 +294,9 @@ def render_featured(entries: list[tuple[str, dict[str, int]]], dark: bool) -> st
     # Подпись перечисляет ВСЕ акценты с их числами: текстовому читателю
     # достаётся alt, и он не должен получить один кадр из четырёх.
     label = " · ".join(
-        f"{title}: " + ", ".join(f"{stat[field]} {field}" for field in FEATURED_FIELDS)
-        for title, stat in entries
+        f"{escape(title)} — {escape(tagline)} "
+        + ", ".join(f"{stat[field]} {field}" for field in FEATURED_FIELDS)
+        for title, tagline, stat in entries
     )
     step = 100 / len(entries)
     lines = []
@@ -306,9 +324,9 @@ def render_featured(entries: list[tuple[str, dict[str, int]]], dark: bool) -> st
         f'<rect x="0.5" y="0.5" width="{width - 1}" height="{height - 1}" rx="14" '
         f'fill="{card}" stroke="{stroke}"/>'
     )
-    for index, (title, stat) in enumerate(entries):
+    for index, (title, tagline, stat) in enumerate(entries):
         numbers = "".join(
-            f'<text x="{34 + column * 196}" y="106" fill="{num_c}" font-family="{FONT}" '
+            f'<text x="{34 + column * 196}" y="126" fill="{num_c}" font-family="{FONT}" '
             f'font-size="25" font-weight="800">{stat[field]}'
             f'<tspan fill="{lab_c}" font-size="14" font-weight="600" dx="7">{field}</tspan>'
             "</text>"
@@ -320,8 +338,12 @@ def render_featured(entries: list[tuple[str, dict[str, int]]], dark: bool) -> st
         )
         lines.append(f'    <rect x="34" y="26" width="44" height="4" rx="2" fill="{num_c}"/>')
         lines.append(
-            f'    <text x="34" y="68" fill="{name_c}" font-family="{FONT}" font-size="29" '
+            f'    <text x="34" y="64" fill="{name_c}" font-family="{FONT}" font-size="28" '
             f'font-weight="800" letter-spacing="-0.5">{title}</text>'
+        )
+        lines.append(
+            f'    <text x="34" y="90" fill="{lab_c}" font-family="{FONT}" font-size="15" '
+            f'font-weight="500">{escape(tagline)}</text>'
         )
         lines.append(f"    {numbers}")
         lines.append("  </g>")
@@ -329,16 +351,104 @@ def render_featured(entries: list[tuple[str, dict[str, int]]], dark: bool) -> st
     return "\n".join(lines) + "\n"
 
 
-def render_projects(config: dict) -> str:
-    """Таблица проектов: закреплённый первым, дальше по свежести пуша.
+#: Обязательные показатели проекта. Список закрыт: показатель, которого здесь
+#: нет, не спрашивается, а показатель отсюда обязан получить ответ у КАЖДОГО
+#: проекта — бейдж или названную причину. Список — константа, по которой
+#: проверяют, а не проза в докстроке: список, написанный и не ставший кодом,
+#: витрина уже проходила на гейте меток (правило 068).
+BADGE_KINDS = ("version", "ci", "coverage", "package")
 
-    Показываются первые ``featured_limit``. Остаток не пропадает молча —
-    под таблицей сказано, сколько проектов не поместилось и где они лежат.
+#: Единый вид: маленький, плоский, с коротким кэшем — бейдж, который врёт
+#: сутками, ничем не лучше числа, вписанного руками.
+SHIELD = "?style=flat-square&cacheSeconds=300"
+
+
+def badge_markdown(repo: str, kind: str, answer: dict) -> str | None:
+    """Разметка одного бейджа или ``None``, если предмета нет.
+
+    Ссылка ведёт туда, где показатель проверяется: релизы, прогоны, PyPI.
+    Бейдж без ссылки — картинка, по которой читателю некуда пойти.
+    """
+    if "none" in answer:
+        return None
+    if kind == "version":
+        return (f"[![release](https://img.shields.io/github/v/release/{repo}{SHIELD}&label=release)]"
+                f"(https://github.com/{repo}/releases)")
+    if kind == "ci":
+        workflow = answer["workflow"]
+        return (f"[![CI](https://img.shields.io/github/actions/workflow/status/{repo}/{workflow}"
+                f"{SHIELD}&label=CI)](https://github.com/{repo}/actions/workflows/{workflow})")
+    if kind == "coverage":
+        endpoint = answer["endpoint"]
+        url = (f"https://raw.githubusercontent.com/{repo}/badges/.github/badges/{endpoint}.json")
+        return (f"[![coverage](https://img.shields.io/endpoint?url={url}{SHIELD.replace('?', '&')})]"
+                f"(https://github.com/{repo}/tree/badges)")
+    package = answer["pypi"]
+    return (f"[![pypi](https://img.shields.io/pypi/v/{package}{SHIELD}&label=pypi)]"
+            f"(https://pypi.org/project/{package}/)")
+
+
+def check_badges(config: dict) -> None:
+    """Ответ по каждому обязательному показателю есть у каждого проекта.
+
+    Обязателен не бейдж, а ОТВЕТ. Требовать бейдж значило бы требовать
+    невозможного: у текстового репозитория нет покрытия, у неопубликованного —
+    версии на PyPI, и красное на этом было бы ложным отказом (правило 051).
+    Требовать нечего — но молчать нельзя: «у нас этого нет по такой-то причине»
+    и «мы не дошли» выглядят одинаково ровно до тех пор, пока их не развели.
+
+    Пустая причина считается отсутствием ответа: строка-заглушка удобна тем,
+    что закрывает гейт, ничего не сказав.
+    """
+    required = config.get("required_badges", list(BADGE_KINDS))
+    unknown = set(required) - set(BADGE_KINDS)
+    if unknown:
+        raise SystemExit(
+            f"projects.json: обязательными объявлены показатели, которых сборка не умеет: "
+            f"{', '.join(sorted(unknown))}. Умеет: {', '.join(BADGE_KINDS)}"
+        )
+
+    complaints = []
+    for project in config["projects"]:
+        answers = project.get("badges", {})
+        for kind in required:
+            answer = answers.get(kind)
+            if not isinstance(answer, dict) or not answer:
+                complaints.append(f"{project['title']}: нет ответа по показателю «{kind}»")
+                continue
+            if "none" in answer and not str(answer["none"]).strip():
+                complaints.append(f"{project['title']}: «{kind}» отклонён без причины")
+        for kind in set(answers) - set(BADGE_KINDS):
+            complaints.append(f"{project['title']}: показатель «{kind}» сборке неизвестен")
+
+    if complaints:
+        raise SystemExit(
+            "обязательные показатели проектов не отвечены:\n"
+            + "\n".join(f"  • {line}" for line in complaints)
+            + "\n\n  У каждого проекта по каждому показателю обязан быть ответ: бейдж или"
+            "\n  причина, почему предмета нет. Пустого ответа не бывает — «у нас этого нет»"
+            "\n  и «мы не дошли» это разные вещи."
+        )
+
+
+def render_projects(config: dict) -> str:
+    """Список проектов: закреплённый первым, дальше по свежести пуша.
+
+    Строка на проект — название, ссылки, стек. Описания здесь НЕТ намеренно:
+    оно переехало в баннер акцентов, и держать его в двух местах значило бы
+    завести два места, где оно может разойтись.
+
+    Ссылки, наоборот, остались текстом и останутся: баннер вставлен через
+    ``<img>``, и ссылка внутри картинки не кликается вовсе. Это не вкусовщина
+    про «текст лучше» — без этой строки посетителю некуда идти.
+
+    Показываются первые ``featured_limit``. Остаток не пропадает молча — под
+    списком сказано, сколько проектов не поместилось и где они лежат.
     Сворачиваемый блок для остатка не годится: там, где страницу читают
     текстом, он схлопывается в заголовок без содержимого.
 
-    Возвращается с переводами строк по краям: таблица markdown обязана
-    начинаться с начала строки, а маркер стоит вплотную перед ней.
+    Возвращается с переводами строк по краям: список markdown обязан
+    начинаться с начала строки, а маркер стоит вплотную перед ним.
     """
     limit = config["featured_limit"]
     projects = config["projects"]
@@ -348,13 +458,22 @@ def render_projects(config: dict) -> str:
     ordered.sort(key=lambda project: not project.get("pin", False))  # сортировка стабильна
     featured, hidden = ordered[:limit], ordered[limit:]
 
-    rows = ["| Project | What it does | Stack |", "|---|---|---|"]
+    rows = []
     for project in featured:
-        title = f"**[{project['title']}](https://github.com/{project['repo']})**"
+        parts = [f"**[{project['title']}](https://github.com/{project['repo']})**"]
         links = " · ".join(f"[{name}]({url})" for name, url in project.get("links", {}).items())
         if links:
-            title += f"<br><sub>{links}</sub>"
-        rows.append(f"| {title} | {project['blurb']} | <sub>{project['stack']}</sub> |")
+            parts.append(links)
+        parts.append(f"<sub>{project['stack']}</sub>")
+        badges = " ".join(
+            markdown
+            for kind in BADGE_KINDS
+            if (markdown := badge_markdown(project["repo"], kind, project["badges"].get(kind, {})))
+        )
+        row = "- " + " · ".join(parts)
+        if badges:
+            row += f"<br>  {badges}"
+        rows.append(row)
 
     if hidden:
         rows += [
@@ -727,11 +846,14 @@ def selftest() -> int:
         print(f"  порядок {got} — {name}")
 
     # ── баннер: то, что обязано быть в картинке ────────────────────────────
-    accents = [("Alpha", lead), ("Beta", mid), ("Gamma", tail)]
+    accents = [("Alpha", "первый по всему", lead), ("Beta", "середина", mid),
+               ("Gamma", "хвост", tail)]
     svg = render_featured(accents, dark=True)
     checks = [
         ("подпись перечисляет все акценты, а не первый",
-         all(title in svg.split("aria-label=")[1].split('">')[0] for title, _ in accents)),
+         all(title in svg.split("aria-label=")[1].split('">')[0] for title, _, _ in accents)),
+        ("подпись несёт описание, а не только числа",
+         all(tagline in svg.split("aria-label=")[1].split('">')[0] for _, tagline, _ in accents)),
         ("подпись несёт измеренные числа", "1664" not in svg and "900 commits" in svg),
         ("просьба уменьшить движение уважается", "prefers-reduced-motion" in svg),
         ("первый акцент виден без стиля", 'class="accent" opacity="1"' in svg),
@@ -743,6 +865,50 @@ def selftest() -> int:
         if not ok:
             broken.append(f"баннер: {name} — нет")
         print(f"  {'да ' if ok else 'НЕТ'} — баннер: {name}")
+
+    # ── обязательные показатели проекта ────────────────────────────────────
+    full = {"version": {"release": True}, "ci": {"workflow": "ci.yml"},
+            "coverage": {"endpoint": "cov"}, "package": {"pypi": "p"}}
+
+    def config_of(badges: dict) -> dict:
+        return {"required_badges": list(BADGE_KINDS),
+                "projects": [{"title": "X", "repo": "o/r", "badges": badges}]}
+
+    badge_cases = [
+        ("ответ есть по всем четырём", config_of(full), False),
+        ("показатель пропущен целиком", config_of({k: v for k, v in full.items() if k != "package"}), True),
+        ("ответ пустым словарём", config_of({**full, "coverage": {}}), True),
+        ("отказ без причины", config_of({**full, "coverage": {"none": ""}}), True),
+        ("отказ с причиной — законный ответ",
+         config_of({**full, "coverage": {"none": "тестов нет: репозиторий текстовый"}}), False),
+        ("показатель, которого сборка не умеет", config_of({**full, "stars": {"none": "x"}}), True),
+    ]
+    for name, cfg, must_reject in badge_cases:
+        try:
+            check_badges(cfg)
+            rejected = False
+        except SystemExit:
+            rejected = True
+        if rejected is not must_reject:
+            broken.append(f"показатели, {name}: ожидалось {'отказ' if must_reject else 'пропуск'}")
+        print(f"  {'отвергнут' if rejected else 'пропущен '} — показатели: {name}")
+
+    # Обязательный список, объявленный в данных, тоже проверяется: показатель,
+    # которого сборка не умеет, — это опечатка, тихо снимающая требование.
+    try:
+        check_badges({"required_badges": ["выдумка"], "projects": []})
+        broken.append("показатели: выдуманный обязательный показатель пропущен")
+        print("  пропущен  — показатели: выдуманный обязательный показатель")
+    except SystemExit:
+        print("  отвергнут — показатели: выдуманный обязательный показатель")
+
+    # ── описание не влезает в баннер ───────────────────────────────────────
+    try:
+        render_featured([("X", "д" * (TAGLINE_LIMIT + 1), lead)], dark=True)
+        broken.append("баннер: слишком длинное описание пропущено")
+        print("  пропущен  — баннер: описание длиннее потолка")
+    except SystemExit:
+        print("  отвергнут — баннер: описание длиннее потолка")
 
     if broken:
         print("\nсамопроверка провалена:", file=sys.stderr)
@@ -787,6 +953,9 @@ def main() -> int:
     bindings = sync_bindings(export, write=not check)
 
     config = json.loads(PROJECTS.read_text(encoding="utf-8"))
+    # Раньше сети: ответ по обязательным показателям не зависит от источников,
+    # и узнать о его нехватке дешевле до двадцати запросов, а не после.
+    check_badges(config)
     values = {
         "projects": render_projects(config),
         "modules": modules,
@@ -823,9 +992,13 @@ def main() -> int:
     # отказом самого запроса и сторожем курсорной разбивки в _count.
     stats = {project["repo"]: project_stats(project["repo"]) for project in config["projects"]}
     titles = {project["repo"]: project["title"] for project in config["projects"]}
-    accents = [(titles[repo], stats[repo]) for repo in rank_featured(stats)[:FEATURED_ACCENTS]]
+    taglines = {project["repo"]: project["tagline"] for project in config["projects"]}
+    accents = [
+        (titles[repo], taglines[repo], stats[repo])
+        for repo in rank_featured(stats)[:FEATURED_ACCENTS]
+    ]
     print("акценты: " + " · ".join(f"{title} ({', '.join(str(s[f]) for f in FEATURED_FIELDS)})"
-                                   for title, s in accents))
+                                   for title, _, s in accents))
 
     fresh = {}
     for theme, dark in (("dark", True), ("light", False)):
@@ -833,8 +1006,9 @@ def main() -> int:
         fresh[f"metrics-{theme}"] = ", ".join(f"{value} {name}" for value, name in plate)
         banner = render_featured(accents, dark)
         fresh[f"featured-{theme}"] = " · ".join(
-            f"{title}: " + ", ".join(f"{stat[field]} {field}" for field in FEATURED_FIELDS)
-            for title, stat in accents
+            f"{title} — {tagline} "
+            + ", ".join(f"{stat[field]} {field}" for field in FEATURED_FIELDS)
+            for title, tagline, stat in accents
         )
         if not check:
             (ROOT / f"assets/metrics-{theme}.svg").write_text(svg, encoding="utf-8")
