@@ -1,33 +1,33 @@
 <div align="center">
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./assets/header-dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="./assets/header-light.svg">
-  <img src="./assets/header-dark.svg" alt="Artem Markitanov — Python grading, benchmarking, testing and CI automation" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="./assets/header-dark.svg?v=1bcc27c0">
+  <source media="(prefers-color-scheme: light)" srcset="./assets/header-light.svg?v=7193931e">
+  <img src="./assets/header-dark.svg?v=1bcc27c0" alt="Artem Markitanov — Python grading, benchmarking, testing and CI automation" width="100%">
 </picture>
 
 <br>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./assets/typing-dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="./assets/typing-light.svg">
-  <img src="./assets/typing-dark.svg" alt="Open-source Python maintainer; Grading · benchmarking · CI automation; Quality held by mechanism, not memory" width="82%">
+  <source media="(prefers-color-scheme: dark)" srcset="./assets/typing-dark.svg?v=4d29b67d">
+  <source media="(prefers-color-scheme: light)" srcset="./assets/typing-light.svg?v=98c7f710">
+  <img src="./assets/typing-dark.svg?v=4d29b67d" alt="Open-source Python maintainer; Grading · benchmarking · CI automation; Quality held by mechanism, not memory" width="82%">
 </picture>
 
 <br>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./assets/metrics-dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="./assets/metrics-light.svg">
-  <img src="./assets/metrics-dark.svg" alt="4000+ tests, 92.1% coverage (all OS), 17 checks per PR" width="92%">
+  <source media="(prefers-color-scheme: dark)" srcset="./assets/metrics-dark.svg?v=7b30a0eb">
+  <source media="(prefers-color-scheme: light)" srcset="./assets/metrics-light.svg?v=8eb8d8c7">
+  <img src="./assets/metrics-dark.svg?v=7b30a0eb" alt="4000+ tests, 92.1% coverage (all OS), 17 checks per PR" width="92%">
 </picture>
 
 <br><br>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./assets/divider-dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="./assets/divider-light.svg">
-  <img src="./assets/divider-dark.svg" alt="" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="./assets/divider-dark.svg?v=1c137c57">
+  <source media="(prefers-color-scheme: light)" srcset="./assets/divider-light.svg?v=e01c573a">
+  <img src="./assets/divider-dark.svg?v=1c137c57" alt="" width="100%">
 </picture>
 
 </div>
@@ -35,18 +35,26 @@
 ## What I maintain
 
 <div align="center">
+<a href="https://github.com/ArtVsMark?tab=repositories">
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./assets/featured-dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="./assets/featured-light.svg">
-  <img src="./assets/featured-dark.svg" alt="Stepik-Python-Grader — Offline Python autograder: unlimited local checks, honest side-by-side comparison of solutions.. release v1.11.0, CI success, coverage 92.1%, pypi 1.11.0. 2 stars, 1666 commits, 43 issues, 12 releases, 657 prs. CLI · web UI · GUI · pytest plugin · OS sandbox · claude-code-playbook — Rules for agent sessions and a GitHub pipeline — each one carrying the incident it grew from.. CI success. 1 stars, 160 commits, 20 issues, 1 releases, 45 prs. docs · RU/EN · Glossary-Python — The RU/EN glossary the grader links into when a run fails.. 2 stars, 3 commits, 2 issues, 0 releases, 0 prs. content · tooling · claude-code-usage — Turns a three-step limit indicator into a number. Early: the spec is written, the tool is not.. pypi 2.0.0. 0 stars, 5 commits, 15 issues, 0 releases, 0 prs. Python · JSONL over git" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="./assets/featured-dark.svg?v=ecbd4197">
+  <source media="(prefers-color-scheme: light)" srcset="./assets/featured-light.svg?v=74b38e70">
+  <img src="./assets/featured-dark.svg?v=ecbd4197" alt="Stepik-Python-Grader — Offline Python autograder: unlimited local checks, honest side-by-side comparison of solutions. release v1.11.0, CI success, coverage 92.1%, pypi 1.11.0. 2 stars, 1666 commits, 43 issues, 12 releases, 658 prs. CLI · web UI · GUI · pytest plugin · OS sandbox · claude-code-playbook — Rules for agent sessions and a GitHub pipeline — each one carrying the incident it grew from. release none, CI success, coverage none, pypi none. 1 stars, 163 commits, 20 issues, 1 releases, 48 prs. docs · RU/EN · Glossary-Python — The RU/EN glossary the grader links into when a run fails. release none, CI none, coverage none, pypi none. 2 stars, 3 commits, 2 issues, 0 releases, 0 prs. content · tooling · claude-code-usage — Turns a three-step limit indicator into a number. Early: the spec is written, the tool is not. release none, CI none, coverage none, pypi 2.0.0. 0 stars, 5 commits, 15 issues, 0 releases, 0 prs. Python · JSONL over git" width="100%">
 </picture>
+</a>
 </div>
 
 <!--m:projects-->
-- **[Stepik-Python-Grader](https://github.com/ArtVsMark/Stepik-Python-Grader)** · [PyPI](https://pypi.org/project/stepik-python-grader/) · [Quick start](https://github.com/ArtVsMark/Stepik-Python-Grader/blob/main/README.en.md#quick-start-no-stepik-needed) · [History](https://github.com/ArtVsMark/Stepik-Python-Grader/blob/main/HISTORY.md)
-- **[claude-code-playbook](https://github.com/ArtVsMark/claude-code-playbook)**
-- **[claude-code-usage](https://github.com/ArtVsMark/claude-code-usage)**
-- **[Glossary-Python](https://github.com/ArtVsMark/Glossary-Python)**
+<div align="center">
+
+<a href="https://github.com/ArtVsMark/Stepik-Python-Grader"><picture><source media="(prefers-color-scheme: dark)" srcset="./assets/tile-stepik-python-grader-dark.svg?v=c11f5616"><source media="(prefers-color-scheme: light)" srcset="./assets/tile-stepik-python-grader-light.svg?v=28539d07"><img src="./assets/tile-stepik-python-grader-dark.svg?v=c11f5616" alt="Open Stepik-Python-Grader on GitHub" width="23%"></picture></a>
+<a href="https://github.com/ArtVsMark/claude-code-playbook"><picture><source media="(prefers-color-scheme: dark)" srcset="./assets/tile-claude-code-playbook-dark.svg?v=9f8a32b5"><source media="(prefers-color-scheme: light)" srcset="./assets/tile-claude-code-playbook-light.svg?v=edf662b3"><img src="./assets/tile-claude-code-playbook-dark.svg?v=9f8a32b5" alt="Open claude-code-playbook on GitHub" width="23%"></picture></a>
+<a href="https://github.com/ArtVsMark/claude-code-usage"><picture><source media="(prefers-color-scheme: dark)" srcset="./assets/tile-claude-code-usage-dark.svg?v=58ff0736"><source media="(prefers-color-scheme: light)" srcset="./assets/tile-claude-code-usage-light.svg?v=933998b2"><img src="./assets/tile-claude-code-usage-dark.svg?v=58ff0736" alt="Open claude-code-usage on GitHub" width="23%"></picture></a>
+<a href="https://github.com/ArtVsMark/Glossary-Python"><picture><source media="(prefers-color-scheme: dark)" srcset="./assets/tile-glossary-python-dark.svg?v=c3e901f8"><source media="(prefers-color-scheme: light)" srcset="./assets/tile-glossary-python-light.svg?v=7db11f01"><img src="./assets/tile-glossary-python-dark.svg?v=c3e901f8" alt="Open Glossary-Python on GitHub" width="23%"></picture></a>
+
+<sub><b>Stepik-Python-Grader</b> · [PyPI](https://pypi.org/project/stepik-python-grader/) · [Quick start](https://github.com/ArtVsMark/Stepik-Python-Grader/blob/main/README.en.md#quick-start-no-stepik-needed) · [History](https://github.com/ArtVsMark/Stepik-Python-Grader/blob/main/HISTORY.md)</sub>
+
+</div>
 <!--/m:projects-->
 
 <sub><b>Quick start</b></sub>
@@ -59,9 +67,9 @@ pipx install stepik-python-grader && stepik-grader
 
 <div align="center">
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./assets/divider-dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="./assets/divider-light.svg">
-  <img src="./assets/divider-dark.svg" alt="" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="./assets/divider-dark.svg?v=1c137c57">
+  <source media="(prefers-color-scheme: light)" srcset="./assets/divider-light.svg?v=e01c573a">
+  <img src="./assets/divider-dark.svg?v=1c137c57" alt="" width="100%">
 </picture>
 </div>
 
@@ -77,9 +85,9 @@ pipx install stepik-python-grader && stepik-grader
 
 <div align="center">
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./assets/divider-dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="./assets/divider-light.svg">
-  <img src="./assets/divider-dark.svg" alt="" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="./assets/divider-dark.svg?v=1c137c57">
+  <source media="(prefers-color-scheme: light)" srcset="./assets/divider-light.svg?v=e01c573a">
+  <img src="./assets/divider-dark.svg?v=1c137c57" alt="" width="100%">
 </picture>
 </div>
 
@@ -96,9 +104,9 @@ pipx install stepik-python-grader && stepik-grader
 
 <div align="center">
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./assets/divider-dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="./assets/divider-light.svg">
-  <img src="./assets/divider-dark.svg" alt="" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="./assets/divider-dark.svg?v=1c137c57">
+  <source media="(prefers-color-scheme: light)" srcset="./assets/divider-light.svg?v=e01c573a">
+  <img src="./assets/divider-dark.svg?v=1c137c57" alt="" width="100%">
 </picture>
 </div>
 
@@ -114,9 +122,9 @@ pipx install stepik-python-grader && stepik-grader
 
 <div align="center">
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./assets/divider-dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="./assets/divider-light.svg">
-  <img src="./assets/divider-dark.svg" alt="" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="./assets/divider-dark.svg?v=1c137c57">
+  <source media="(prefers-color-scheme: light)" srcset="./assets/divider-light.svg?v=e01c573a">
+  <img src="./assets/divider-dark.svg?v=1c137c57" alt="" width="100%">
 </picture>
 </div>
 
@@ -134,9 +142,9 @@ The grader has a **"First contribution in 15 minutes"** onramp, and every `good 
 
 <div align="center">
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./assets/divider-dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="./assets/divider-light.svg">
-  <img src="./assets/divider-dark.svg" alt="" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="./assets/divider-dark.svg?v=1c137c57">
+  <source media="(prefers-color-scheme: light)" srcset="./assets/divider-light.svg?v=e01c573a">
+  <img src="./assets/divider-dark.svg?v=1c137c57" alt="" width="100%">
 </picture>
 </div>
 
@@ -145,7 +153,7 @@ The grader has a **"First contribution in 15 minutes"** onramp, and every `good 
 **Мейнтейнер open-source на Python.** Флагман — [Stepik-Python-Grader](https://github.com/ArtVsMark/Stepik-Python-Grader):
 локальный грейдер, который не просто прогоняет тесты, а **сравнивает решения честно** — сначала по
 корректности, потом по benchmark-метрикам. Рядом — [claude-code-playbook](https://github.com/ArtVsMark/claude-code-playbook),
-каталог из <!--m:rules-->142<!--/m:rules--> правил, каждое с историей поломки, из которой выросло, и [claude-code-usage](https://github.com/ArtVsMark/claude-code-usage) —
+каталог из <!--m:rules-->143<!--/m:rules--> правил, каждое с историей поломки, из которой выросло, и [claude-code-usage](https://github.com/ArtVsMark/claude-code-usage) —
 остаток лимитов Claude Code в цифрах вместо трёхступенчатого светофора; пока спецификация.
 
 Качество держится механикой, а не памятью: гейты перед коммитом и мержем, зелёный CI на актуальной
