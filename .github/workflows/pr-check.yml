@@ -76,6 +76,15 @@ jobs:
       - name: Проверить сам гейт тем, что он обязан отвергнуть
         run: python scripts/check_bindings.py --selftest
 
+      # Таблица покрытия пластов в roles.md устарела бы к первому же новому
+      # файлу: она не знает, что дерево изменилось. Сверка идёт в обе стороны —
+      # файл без ведущего и пласт без предмета одинаково красные.
+      - name: Проверить, что у каждого файла есть ведущий
+        run: python scripts/check_roles.py
+
+      - name: Проверить сам гейт ролей тем, что он обязан отвергнуть
+        run: python scripts/check_roles.py --selftest
+
       - name: Проверить классификацию
         if: github.event_name == 'pull_request'
         env:
