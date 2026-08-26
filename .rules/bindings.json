@@ -330,7 +330,7 @@
     "075": {
       "status": "active",
       "mechanism": "gate",
-      "where": "scripts/build_metrics.py::patch_readme — пропавший маркер и недопроставленный alt роняют сборку"
+      "where": "scripts/build_metrics.py::patch_readme — пропавший маркер и недопроставленный alt роняют сборку; scripts/build_metrics.py::unanswered — молчание источника роняет её же, и проверяются сырые значения: сторож, стоявший после форматирования, пропускал «0000+ tests»"
     },
     "076": {
       "status": "not-applicable",
@@ -591,7 +591,9 @@
       "status": "unreviewed"
     },
     "137": {
-      "status": "unreviewed"
+      "status": "active",
+      "mechanism": "gate",
+      "where": "scripts/build_metrics.py::unanswered — сторож стоит до форматирования и смотрит на измеренное; scripts/build_metrics.py::order_of — форматирование применяется к уже проверенному. Инцидент правила — эта самая сборка: «0000+ tests» проходило мимо сравнения с «0»"
     },
     "138": {
       "status": "unreviewed"
