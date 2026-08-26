@@ -151,6 +151,184 @@ def repo_activity(repo: str) -> str:
     return _api(f"/repos/{repo}")["pushed_at"]
 
 
+#: Категории ранжирования акцента. Порядок в кортеже — только порядок показа;
+#: вес у всех пяти одинаковый, и это решение, а не умолчание: взвешивать
+#: значило бы вписать в витрину число, которого никто не измерял.
+FEATURED_FIELDS = ("stars", "commits", "issues", "releases", "prs")
+
+#: Сколько проектов показывает баннер. Потолок, а не настройка: его снижают,
+#: но не повышают — иначе «акцент» перестаёт быть акцентом.
+FEATURED_ACCENTS = 4
+
+#: Один акцент держится столько секунд. Паузы по наведению не будет: страницу
+#: профиля читает Markdown, картинка вставлена через <img> и событий не
+#: получает. Названо здесь, потому что в задаче #43 это стояло требованием.
+ACCENT_SECONDS = 15
+
+
+def _count(path: str) -> int:
+    """Длина коллекции, считанная по заголовку ``Link``, а не выкачиванием.
+
+    ``per_page=1`` плюс номер последней страницы — это один запрос вместо
+    семнадцати для репозитория с 1664 коммитами.
+
+    Приём работает не везде, и молчать об этом нельзя. Часть эндпойнтов
+    площадки перешла на курсорную разбивку: там в ``Link`` есть только
+    ``rel="next"`` со ссылкой ``after=…``, а последней страницы нет вовсе.
+    Первая редакция в этом случае возвращала длину страницы — то есть
+    **единицу** вместо сорока шести, и делала это молча. Теперь такой ответ
+    роняет сборку: посчитать нельзя, а правдоподобное число хуже отказа
+    (правила 039 и 075).
+    """
+    request = urllib.request.Request(
+        f"{API}{path}",
+        headers={
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+            **({"Authorization": f"Bearer {t}"} if (t := os.environ.get("GH_TOKEN")) else {}),
+        },
+    )
+    with urllib.request.urlopen(request, timeout=30) as response:
+        link = response.headers.get("Link", "")
+        body = json.loads(response.read())
+    last = re.search(r'[?&]page=(\d+)>;\s*rel="last"', link)
+    if last:
+        return int(last.group(1))
+    if 'rel="next"' in link:
+        raise RuntimeError(
+            f"{path}: страниц больше одной, но последней в Link нет — "
+            "курсорная разбивка, посчитать по номеру страницы нельзя"
+        )
+    # Единственная страница: её длина и есть ответ.
+    return len(body)
+
+
+def project_stats(repo: str) -> dict[str, int]:
+    """Пять измеренных категорий проекта.
+
+    Открытые задачи считаются вычитанием, а не полем ``open_issues_count``:
+    площадка кладёт в него и изменения тоже. У грейдера это 46 против 45
+    настоящих — тот же класс ошибки, из-за которого витрина однажды показывала
+    три задачи для новичка при четырёх открытых.
+
+    Поиск площадки для этого не годится: у него своё ограничение частоты и своя
+    выдача, а вычитание двух счётчиков даёт точный ответ на тех же
+    репозиторных запросах.
+    """
+    meta = _api(f"/repos/{repo}")
+    # `open_issues_count` — единственный счётчик задач, который площадка отдаёт
+    # числом. Считать их разбивкой нельзя: эндпойнт задач курсорный.
+    open_prs = _count(f"/repos/{repo}/pulls?state=open&per_page=1")
+    return {
+        "stars": meta["stargazers_count"],
+        "commits": _count(f"/repos/{repo}/commits?per_page=1"),
+        "issues": meta["open_issues_count"] - open_prs,
+        "releases": _count(f"/repos/{repo}/releases?per_page=1"),
+        "prs": _count(f"/repos/{repo}/pulls?state=all&per_page=1"),
+    }
+
+
+def rank_featured(stats: dict[str, dict[str, int]]) -> list[str]:
+    """Порядок акцентов: сумма мест по каждой категории, меньше — выше.
+
+    Почему сумма мест, а не сумма значений: категории несоизмеримы. У грейдера
+    1664 коммита и 2 звезды; сложив их, получим «коммиты», переименованные в
+    рейтинг. Место отвечает на единственный вопрос, который здесь имеет
+    смысл, — который из проектов по этой категории впереди.
+
+    Равные значения делят место поровну, иначе на итог начинает влиять порядок
+    в списке проектов, а он к делу не относится. При полном равенстве мест
+    порядок задаётся именем — лишь бы он не менялся от прогона к прогону.
+    """
+    places: dict[str, float] = {repo: 0.0 for repo in stats}
+    for field in FEATURED_FIELDS:
+        values = sorted({s[field] for s in stats.values()}, reverse=True)
+        place = {value: index for index, value in enumerate(values)}
+        for repo, s in stats.items():
+            places[repo] += place[s[field]]
+    return sorted(places, key=lambda repo: (places[repo], repo))
+
+
+def render_featured(entries: list[tuple[str, dict[str, int]]], dark: bool) -> str:
+    """Баннер акцентов: по одному проекту за раз, переключение по таймеру.
+
+    Анимация живёт ВНУТРИ картинки, потому что страница профиля — Markdown:
+    скриптов там нет. Тот же приём уже носит печатающаяся строка витрины.
+
+    ``prefers-reduced-motion`` уважается: при просьбе уменьшить движение
+    показывается первый акцент и не двигается ничего. Без этого баннер был бы
+    недоступен ровно тем, кому анимация мешает.
+
+    ВИДИМОСТЬ ЗАДАНА АТРИБУТОМ, А НЕ ТОЛЬКО СТИЛЕМ, и это про отказ. Картинку на
+    странице профиля отдаёт прокси площадки, и что именно она делает с блоком
+    ``<style>``, отсюда не проверить — печатающаяся строка витрины анимирована
+    SMIL, то есть доказательства про CSS у нас нет. Если стиль не доедет, при
+    ``opacity`` только в классе все четыре акцента лягут друг на друга и баннер
+    превратится в кашу. С атрибутами не доехавший стиль даёт статичную картинку
+    с первым акцентом — то есть худший исход остаётся читаемым.
+    """
+    width, height = 1000, 132
+    cycle = ACCENT_SECONDS * len(entries)
+    if dark:
+        card, stroke, name_c, num_c, lab_c = "#0D1117", "#30363D", "#F0F6FC", "#58A6FF", "#7D8590"
+    else:
+        card, stroke, name_c, num_c, lab_c = "#FFFFFF", "#D0D7DE", "#1F2328", "#0969DA", "#636C76"
+
+    # Подпись перечисляет ВСЕ акценты с их числами: текстовому читателю
+    # достаётся alt, и он не должен получить один кадр из четырёх.
+    label = " · ".join(
+        f"{title}: " + ", ".join(f"{stat[field]} {field}" for field in FEATURED_FIELDS)
+        for title, stat in entries
+    )
+    step = 100 / len(entries)
+    lines = []
+    lines.append(
+        f'<svg width="{width}" height="{height}" viewBox="0 0 {width} {height}" '
+        f'xmlns="http://www.w3.org/2000/svg" role="img" aria-label="{label}">'
+    )
+    lines.append("<style>")
+    lines.append(f"  .accent {{ animation: accent {cycle}s linear infinite; }}")
+    lines.append("  @keyframes accent {")
+    lines.append(
+        f"    0% {{ opacity: 0 }} {step * 0.06:.2f}% {{ opacity: 1 }}"
+        f" {step * 0.94:.2f}% {{ opacity: 1 }} {step:.2f}% {{ opacity: 0 }}"
+        " 100% { opacity: 0 }"
+    )
+    lines.append("  }")
+    lines.append("  @media (prefers-reduced-motion: reduce) {")
+    # Анимация снята — видимость возвращается к атрибутам, то есть к первому
+    # акценту. Отдельного правила для этого не нужно, и лишнего тут быть не
+    # должно: чем меньше зависит от стиля, тем читаемее отказ.
+    lines.append("    .accent { animation: none }")
+    lines.append("  }")
+    lines.append("</style>")
+    lines.append(
+        f'<rect x="0.5" y="0.5" width="{width - 1}" height="{height - 1}" rx="14" '
+        f'fill="{card}" stroke="{stroke}"/>'
+    )
+    for index, (title, stat) in enumerate(entries):
+        numbers = "".join(
+            f'<text x="{34 + column * 196}" y="106" fill="{num_c}" font-family="{FONT}" '
+            f'font-size="25" font-weight="800">{stat[field]}'
+            f'<tspan fill="{lab_c}" font-size="14" font-weight="600" dx="7">{field}</tspan>'
+            "</text>"
+            for column, field in enumerate(FEATURED_FIELDS)
+        )
+        lines.append(
+            f'  <g class="accent" opacity="{1 if index == 0 else 0}" '
+            f'style="animation-delay: {index * ACCENT_SECONDS}s">'
+        )
+        lines.append(f'    <rect x="34" y="26" width="44" height="4" rx="2" fill="{num_c}"/>')
+        lines.append(
+            f'    <text x="34" y="68" fill="{name_c}" font-family="{FONT}" font-size="29" '
+            f'font-weight="800" letter-spacing="-0.5">{title}</text>'
+        )
+        lines.append(f"    {numbers}")
+        lines.append("  </g>")
+    lines.append("</svg>")
+    return "\n".join(lines) + "\n"
+
+
 def render_projects(config: dict) -> str:
     """Таблица проектов: закреплённый первым, дальше по свежести пуша.
 
@@ -528,12 +706,50 @@ def selftest() -> int:
             broken.append(f"плитка на {count}: ожидалось «{expected}», вышло «{got}»")
         print(f"  плитка {count:>6} → «{got}»")
 
+    # ── ранжирование акцентов ──────────────────────────────────────────────
+    lead = {"stars": 9, "commits": 900, "issues": 90, "releases": 9, "prs": 90}
+    mid = {"stars": 5, "commits": 500, "issues": 50, "releases": 5, "prs": 50}
+    tail = {"stars": 0, "commits": 1, "issues": 0, "releases": 0, "prs": 0}
+    rank_cases = [
+        ("впереди по всем категориям — первый",
+         {"a": lead, "b": mid, "c": tail}, ["a", "b", "c"]),
+        ("порядок не зависит от порядка в словаре",
+         {"c": tail, "a": lead, "b": mid}, ["a", "b", "c"]),
+        ("равные значения делят место, ничья решается именем",
+         {"b": dict(mid), "a": dict(mid)}, ["a", "b"]),
+        ("звёзды не перевешивают четыре остальные категории",
+         {"a": {**mid, "stars": 0}, "b": {**tail, "stars": 99}}, ["a", "b"]),
+    ]
+    for name, stats, expected in rank_cases:
+        got = rank_featured(stats)
+        if got != expected:
+            broken.append(f"ранжирование, {name}: ожидалось {expected}, вышло {got}")
+        print(f"  порядок {got} — {name}")
+
+    # ── баннер: то, что обязано быть в картинке ────────────────────────────
+    accents = [("Alpha", lead), ("Beta", mid), ("Gamma", tail)]
+    svg = render_featured(accents, dark=True)
+    checks = [
+        ("подпись перечисляет все акценты, а не первый",
+         all(title in svg.split("aria-label=")[1].split('">')[0] for title, _ in accents)),
+        ("подпись несёт измеренные числа", "1664" not in svg and "900 commits" in svg),
+        ("просьба уменьшить движение уважается", "prefers-reduced-motion" in svg),
+        ("первый акцент виден без стиля", 'class="accent" opacity="1"' in svg),
+        ("остальные без стиля скрыты", svg.count('class="accent" opacity="0"') == len(accents) - 1),
+        ("у каждого акцента своя задержка",
+         all(f"animation-delay: {i * ACCENT_SECONDS}s" in svg for i in range(len(accents)))),
+    ]
+    for name, ok in checks:
+        if not ok:
+            broken.append(f"баннер: {name} — нет")
+        print(f"  {'да ' if ok else 'НЕТ'} — баннер: {name}")
+
     if broken:
         print("\nсамопроверка провалена:", file=sys.stderr)
         for line in broken:
             print(f"  {line}", file=sys.stderr)
         return 1
-    print("самопроверка пройдена: сторож отвергает то, что обязан")
+    print("самопроверка пройдена: сторож, ранжирование и баннер держат объявленное")
     return 0
 
 
@@ -570,8 +786,9 @@ def main() -> int:
     rules = int(export["count"])
     bindings = sync_bindings(export, write=not check)
 
+    config = json.loads(PROJECTS.read_text(encoding="utf-8"))
     values = {
-        "projects": render_projects(json.loads(PROJECTS.read_text(encoding="utf-8"))),
+        "projects": render_projects(config),
         "modules": modules,
         "required": required,
         "os": systems,
@@ -600,12 +817,28 @@ def main() -> int:
     plate = [(order_of(tests), "tests"), (coverage, "coverage (all OS)"), (str(checks), "checks per PR")]
     print(" · ".join(f"{name}: {value}" for value, name in plate))
 
+    # Акценты баннера. Через сторож пустых метрик эти числа НЕ проходят, и это
+    # решение, а не пропуск: ноль звёзд и ноль релизов — честное состояние
+    # молодого проекта, а не молчание источника. Молчание здесь ловится иначе —
+    # отказом самого запроса и сторожем курсорной разбивки в _count.
+    stats = {project["repo"]: project_stats(project["repo"]) for project in config["projects"]}
+    titles = {project["repo"]: project["title"] for project in config["projects"]}
+    accents = [(titles[repo], stats[repo]) for repo in rank_featured(stats)[:FEATURED_ACCENTS]]
+    print("акценты: " + " · ".join(f"{title} ({', '.join(str(s[f]) for f in FEATURED_FIELDS)})"
+                                   for title, s in accents))
+
     fresh = {}
     for theme, dark in (("dark", True), ("light", False)):
         svg = render(plate, dark)
         fresh[f"metrics-{theme}"] = ", ".join(f"{value} {name}" for value, name in plate)
+        banner = render_featured(accents, dark)
+        fresh[f"featured-{theme}"] = " · ".join(
+            f"{title}: " + ", ".join(f"{stat[field]} {field}" for field in FEATURED_FIELDS)
+            for title, stat in accents
+        )
         if not check:
             (ROOT / f"assets/metrics-{theme}.svg").write_text(svg, encoding="utf-8")
+            (ROOT / f"assets/featured-{theme}.svg").write_text(banner, encoding="utf-8")
     patch_readme(values, fresh, write=not check)
     print("проверка прошла: источники живы, маркеры на месте" if check
           else "assets/metrics-*.svg и README обновлены")
