@@ -33,11 +33,6 @@
       "repo": "ArtVsMark/Stepik-Python-Grader",
       "title": "Stepik-Python-Grader",
       "pin": true,
-      "links": {
-        "PyPI": "https://pypi.org/project/stepik-python-grader/",
-        "Quick start": "https://github.com/ArtVsMark/Stepik-Python-Grader/blob/main/README.en.md#quick-start-no-stepik-needed",
-        "History": "https://github.com/ArtVsMark/Stepik-Python-Grader/blob/main/HISTORY.md"
-      },
       "tagline": "Offline Python autograder: unlimited local checks, honest side-by-side comparison of solutions.",
       "stack": "CLI · web UI · GUI · pytest plugin · OS sandbox",
       "badges": {
