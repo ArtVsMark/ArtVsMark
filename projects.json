@@ -22,24 +22,32 @@
     "читатель. Проверяет scripts/build_metrics.py::check_badges."
   ],
   "featured_limit": 5,
-  "required_badges": ["version", "ci", "coverage", "package"],
+  "required_badges": [
+    "version",
+    "ci",
+    "coverage",
+    "package"
+  ],
   "projects": [
     {
       "repo": "ArtVsMark/Stepik-Python-Grader",
       "title": "Stepik-Python-Grader",
       "pin": true,
-      "links": {
-        "PyPI": "https://pypi.org/project/stepik-python-grader/",
-        "Quick start": "https://github.com/ArtVsMark/Stepik-Python-Grader/blob/main/README.en.md#quick-start-no-stepik-needed",
-        "History": "https://github.com/ArtVsMark/Stepik-Python-Grader/blob/main/HISTORY.md"
-      },
       "tagline": "Offline Python autograder: unlimited local checks, honest side-by-side comparison of solutions.",
       "stack": "CLI · web UI · GUI · pytest plugin · OS sandbox",
       "badges": {
-        "version": { "release": true },
-        "ci": { "workflow": "ci.yml" },
-        "coverage": { "endpoint": "coverage-combined" },
-        "package": { "pypi": "stepik-python-grader" }
+        "version": {
+          "release": true
+        },
+        "ci": {
+          "workflow": "ci.yml"
+        },
+        "coverage": {
+          "endpoint": "coverage-combined"
+        },
+        "package": {
+          "pypi": "stepik-python-grader"
+        }
       }
     },
     {
@@ -48,10 +56,18 @@
       "tagline": "Rules for agent sessions and a GitHub pipeline — each one carrying the incident it grew from.",
       "stack": "docs · RU/EN",
       "badges": {
-        "version": { "none": "релизов нет: каталог правил читают по ссылке на main, а не выпусками" },
-        "ci": { "workflow": "ci.yml" },
-        "coverage": { "none": "нечего покрывать: репозиторий текстовый, тестов у него нет" },
-        "package": { "none": "не публикуется пакетом: подключается действием и сырой ссылкой" }
+        "version": {
+          "none": "релизов нет: каталог правил читают по ссылке на main, а не выпусками"
+        },
+        "ci": {
+          "workflow": "ci.yml"
+        },
+        "coverage": {
+          "none": "нечего покрывать: репозиторий текстовый, тестов у него нет"
+        },
+        "package": {
+          "none": "не публикуется пакетом: подключается действием и сырой ссылкой"
+        }
       }
     },
     {
@@ -60,10 +76,18 @@
       "tagline": "Turns a three-step limit indicator into a number. Early: the spec is written, the tool is not.",
       "stack": "Python · JSONL over git",
       "badges": {
-        "version": { "none": "релизов нет: до первого выпуска не дошло" },
-        "ci": { "none": "прогонов нет: кода, который стоило бы проверять, ещё не написано" },
-        "coverage": { "none": "тестов нет по той же причине" },
-        "package": { "pypi": "claude-code-usage" }
+        "version": {
+          "none": "релизов нет: до первого выпуска не дошло"
+        },
+        "ci": {
+          "none": "прогонов нет: кода, который стоило бы проверять, ещё не написано"
+        },
+        "coverage": {
+          "none": "тестов нет по той же причине"
+        },
+        "package": {
+          "pypi": "claude-code-usage"
+        }
       }
     },
     {
@@ -72,10 +96,18 @@
       "tagline": "The RU/EN glossary the grader links into when a run fails.",
       "stack": "content · tooling",
       "badges": {
-        "version": { "none": "релизов нет: содержимое читают по ссылке, а не выпусками" },
-        "ci": { "none": "прогонов нет: правки содержательные, проверять нечем" },
-        "coverage": { "none": "тестов нет: репозиторий содержательный" },
-        "package": { "none": "не публикуется пакетом: подключается ссылками из грейдера" }
+        "version": {
+          "none": "релизов нет: содержимое читают по ссылке, а не выпусками"
+        },
+        "ci": {
+          "none": "прогонов нет: правки содержательные, проверять нечем"
+        },
+        "coverage": {
+          "none": "тестов нет: репозиторий содержательный"
+        },
+        "package": {
+          "none": "не публикуется пакетом: подключается ссылками из грейдера"
+        }
       }
     }
   ]

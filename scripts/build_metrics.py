@@ -575,10 +575,11 @@ def render_projects(config: dict) -> str:
     картинки, по одной на проект. Тогда клик ведёт туда, что видишь, а не туда,
     что выпало на общий адрес.
 
-    Глубокие ссылки — PyPI, быстрый старт, история — остаются строкой под
-    плитками: плитка ведёт в репозиторий, а посетителю, который пришёл
-    попробовать, нужен не репозиторий, а установка. Складывать их в плитку
-    нельзя по той же причине: адрес у неё один.
+    Глубоких ссылок под плитками нет: PyPI и быстрый старт дублировали блок
+    установки, который стоит абзацем ниже и даёт ровно то, за чем посетитель
+    туда шёл, — команду. История же в одном клике от репозитория, куда ведёт
+    сама плитка. Поле ``links`` в данных убрано вместе со строкой: данные,
+    которые никто не читает, устаревают молча, как и всё прочее.
 
     Показываются первые ``featured_limit``. Остаток не пропадает молча — под
     плитками сказано, сколько проектов не показано и где они лежат.
@@ -602,14 +603,6 @@ def render_projects(config: dict) -> str:
             f'<img src="./assets/tile-{name}-dark.svg" alt="" width="23%">'
             f'</picture></a>',
         ]
-
-    deep = []
-    for project in featured:
-        links = " · ".join(f"[{name}]({url})" for name, url in project.get("links", {}).items())
-        if links:
-            deep.append(f"<sub><b>{project['title']}</b> · {links}</sub>")
-    if deep:
-        rows += ["", "<br>".join(deep)]
 
     if hidden:
         rows += [
@@ -768,8 +761,17 @@ def sync_bindings(export: dict, write: bool = True) -> str:
     return f"ответ каталогу: записей {len(rules)}, нерассмотренных {unreviewed}, дописано {len(added)}"
 
 
-def render(tiles: list[tuple[str, str]], dark: bool) -> str:
+def render(tiles: list[tuple[str, str]], dark: bool, owner: str = "") -> str:
+    """Плитка измеренного. ``owner`` — чьи это числа.
+
+    Подпись не оформление. Три числа без имени проекта читаются как «всё, чем
+    занимается автор», тогда как это глубина механики ОДНОГО репозитория:
+    тестов и проверок у остальных нет вовсе. Утверждение, которого читатель не
+    может отнести к предмету, витрина на себя не берёт.
+    """
     width, height, gap = 1000, 118, 18
+    if owner:
+        height += 28
     tile_w = (width - gap * (len(tiles) - 1)) // len(tiles)
     if dark:
         card, stroke, num, lab = "#0D1117", "#30363D", "#F0F6FC", "#7D8590"
@@ -777,6 +779,8 @@ def render(tiles: list[tuple[str, str]], dark: bool) -> str:
         card, stroke, num, lab = "#FFFFFF", "#D0D7DE", "#1F2328", "#636C76"
 
     label = ", ".join(f"{value} {name}" for value, name in tiles)
+    if owner:
+        label = f"{owner}: {label}"
     out = [
         f'<svg width="{width}" height="{height}" viewBox="0 0 {width} {height}" '
         f'xmlns="http://www.w3.org/2000/svg" role="img" aria-label="{label}">',
@@ -784,18 +788,26 @@ def render(tiles: list[tuple[str, str]], dark: bool) -> str:
         '<stop offset="0%" stop-color="#58A6FF"/><stop offset="100%" stop-color="#7EE787"/>'
         "</linearGradient></defs>",
     ]
+    top = 0
+    if owner:
+        top = 28
+        out.append(
+            f'<text x="{width / 2:.0f}" y="17" fill="{lab}" font-family="{FONT}" '
+            f'font-size="13" font-weight="700" text-anchor="middle" '
+            f'letter-spacing="0.4">{escape(owner)}</text>'
+        )
     for index, (value, name) in enumerate(tiles):
         x = index * (tile_w + gap)
         font_size = 46 if len(value) <= 3 else 40
         out.append(
             f"  <g>\n"
-            f'    <rect x="{x + 0.5}" y="0.5" width="{tile_w - 1}" height="{height - 1}" '
-            f'rx="14" fill="{card}" stroke="{stroke}"/>\n'
-            f'    <rect x="{x + 22}" y="22" width="44" height="4" rx="2" fill="url(#a)"/>\n'
-            f'    <text x="{x + tile_w / 2:.0f}" y="73" fill="{num}" '
+            f'    <rect x="{x + 0.5}" y="{top + 0.5}" width="{tile_w - 1}" '
+            f'height="{height - top - 1}" rx="14" fill="{card}" stroke="{stroke}"/>\n'
+            f'    <rect x="{x + 22}" y="{top + 22}" width="44" height="4" rx="2" fill="url(#a)"/>\n'
+            f'    <text x="{x + tile_w / 2:.0f}" y="{top + 73}" fill="{num}" '
             f'font-family="{FONT}" font-size="{font_size}" font-weight="800" '
             f'text-anchor="middle" letter-spacing="-1">{value}</text>\n'
-            f'    <text x="{x + tile_w / 2:.0f}" y="98" fill="{lab}" font-family="{FONT}" '
+            f'    <text x="{x + tile_w / 2:.0f}" y="{top + 98}" fill="{lab}" font-family="{FONT}" '
             f'font-size="15.5" font-weight="600" text-anchor="middle">{name}</text>\n'
             f"  </g>"
         )
@@ -1141,7 +1153,6 @@ def main() -> int:
     required, systems, versions = protection_facts()
     experimental = experimental_versions(grader)
     releases = release_count()
-    coverage = badge("coverage-combined")
     glossary = badge("glossary").split()[0]
     open_for_newcomers = good_first_issues()
     export = rules_export()
@@ -1154,7 +1165,6 @@ def main() -> int:
     check_badges(config)
     values = {
         "projects": render_projects(config),
-        "modules": modules,
         "required": required,
         "os": systems,
         "py": versions,
@@ -1171,15 +1181,21 @@ def main() -> int:
     # красоты. Пока «4000+» собиралось раньше проверки, ноль тестов давал
     # «0000+» — строку, в которой сторож ноля не находит: он сравнивал с "0".
     # Метрика, попадающая в сторож уже строкой для показа, не проверена.
-    empty = unanswered({**values, "tests": tests, "coverage": coverage, "checks per PR": checks})
+    empty = unanswered({**values, "tests": tests, "checks per PR": checks,
+                        "test modules": modules})
     if empty:
         print(f"метрика не собралась ({', '.join(empty)}) — ничего не переписываю", file=sys.stderr)
         return 1
 
-    # Числа с плитки (tests, coverage, checks) в тексте README не повторяются:
-    # одно число — одно место. Текстовому читателю они достаются через alt
-    # картинки, а его тоже проставляет этот скрипт — см. sync_alt.
-    plate = [(order_of(tests), "tests"), (coverage, "coverage (all OS)"), (str(checks), "checks per PR")]
+    # Числа с плитки в тексте README не повторяются: одно число — одно место.
+    # Текстовому читателю они достаются через alt картинки, а его тоже
+    # проставляет этот скрипт — см. sync_alt.
+    #
+    # Покрытия здесь больше нет: оно приезжает плашкой в баннере, и держать его
+    # в двух местах значило бы завести два места, где одно число расходится.
+    # На его место встало число тест-модулей, которое взамен ушло из текста.
+    plate = [(order_of(tests), "tests"), (str(modules), "test modules"),
+             (str(checks), "checks per PR")]
     print(" · ".join(f"{name}: {value}" for value, name in plate))
 
     # Акценты баннера. Через сторож пустых метрик эти числа НЕ проходят, и это
@@ -1205,10 +1221,19 @@ def main() -> int:
         + ")"
         for a in accents))
 
+    # Чьи числа на плитке: закреплённый проект, а при его отсутствии — первый
+    # по свежести. Берётся из данных, а не вписывается: витрина не называет
+    # проект по памяти автора.
+    flagship = next(
+        (p["title"] for p in config["projects"] if p.get("pin")),
+        config["projects"][0]["title"] if config["projects"] else "",
+    )
+
     fresh = {}
     for theme, dark in (("dark", True), ("light", False)):
-        svg = render(plate, dark)
-        fresh[f"metrics-{theme}"] = ", ".join(f"{value} {name}" for value, name in plate)
+        svg = render(plate, dark, owner=flagship)
+        fresh[f"metrics-{theme}"] = f"{flagship}: " + ", ".join(
+            f"{value} {name}" for value, name in plate)
         banner = render_featured(accents, dark)
         fresh[f"featured-{theme}"] = accent_label(accents)
         if not check:
