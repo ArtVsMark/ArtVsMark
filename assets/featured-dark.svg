@@ -1,0 +1,32 @@
+<svg width="1000" height="132" viewBox="0 0 1000 132" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Stepik-Python-Grader: 2 stars, 1664 commits, 44 issues, 12 releases, 655 prs · claude-code-playbook: 1 stars, 153 commits, 20 issues, 1 releases, 39 prs · Glossary-Python: 2 stars, 3 commits, 2 issues, 0 releases, 0 prs · claude-code-usage: 0 stars, 5 commits, 15 issues, 0 releases, 0 prs">
+<style>
+  .accent { animation: accent 60s linear infinite; }
+  @keyframes accent {
+    0% { opacity: 0 } 1.50% { opacity: 1 } 23.50% { opacity: 1 } 25.00% { opacity: 0 } 100% { opacity: 0 }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .accent { animation: none }
+  }
+</style>
+<rect x="0.5" y="0.5" width="999" height="131" rx="14" fill="#0D1117" stroke="#30363D"/>
+  <g class="accent" opacity="1" style="animation-delay: 0s">
+    <rect x="34" y="26" width="44" height="4" rx="2" fill="#58A6FF"/>
+    <text x="34" y="68" fill="#F0F6FC" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="29" font-weight="800" letter-spacing="-0.5">Stepik-Python-Grader</text>
+    <text x="34" y="106" fill="#58A6FF" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="25" font-weight="800">2<tspan fill="#7D8590" font-size="14" font-weight="600" dx="7">stars</tspan></text><text x="230" y="106" fill="#58A6FF" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="25" font-weight="800">1664<tspan fill="#7D8590" font-size="14" font-weight="600" dx="7">commits</tspan></text><text x="426" y="106" fill="#58A6FF" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="25" font-weight="800">44<tspan fill="#7D8590" font-size="14" font-weight="600" dx="7">issues</tspan></text><text x="622" y="106" fill="#58A6FF" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="25" font-weight="800">12<tspan fill="#7D8590" font-size="14" font-weight="600" dx="7">releases</tspan></text><text x="818" y="106" fill="#58A6FF" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="25" font-weight="800">655<tspan fill="#7D8590" font-size="14" font-weight="600" dx="7">prs</tspan></text>
+  </g>
+  <g class="accent" opacity="0" style="animation-delay: 15s">
+    <rect x="34" y="26" width="44" height="4" rx="2" fill="#58A6FF"/>
+    <text x="34" y="68" fill="#F0F6FC" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="29" font-weight="800" letter-spacing="-0.5">claude-code-playbook</text>
+    <text x="34" y="106" fill="#58A6FF" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="25" font-weight="800">1<tspan fill="#7D8590" font-size="14" font-weight="600" dx="7">stars</tspan></text><text x="230" y="106" fill="#58A6FF" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="25" font-weight="800">153<tspan fill="#7D8590" font-size="14" font-weight="600" dx="7">commits</tspan></text><text x="426" y="106" fill="#58A6FF" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="25" font-weight="800">20<tspan fill="#7D8590" font-size="14" font-weight="600" dx="7">issues</tspan></text><text x="622" y="106" fill="#58A6FF" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="25" font-weight="800">1<tspan fill="#7D8590" font-size="14" font-weight="600" dx="7">releases</tspan></text><text x="818" y="106" fill="#58A6FF" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="25" font-weight="800">39<tspan fill="#7D8590" font-size="14" font-weight="600" dx="7">prs</tspan></text>
+  </g>
+  <g class="accent" opacity="0" style="animation-delay: 30s">
+    <rect x="34" y="26" width="44" height="4" rx="2" fill="#58A6FF"/>
+    <text x="34" y="68" fill="#F0F6FC" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="29" font-weight="800" letter-spacing="-0.5">Glossary-Python</text>
+    <text x="34" y="106" fill="#58A6FF" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="25" font-weight="800">2<tspan fill="#7D8590" font-size="14" font-weight="600" dx="7">stars</tspan></text><text x="230" y="106" fill="#58A6FF" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="25" font-weight="800">3<tspan fill="#7D8590" font-size="14" font-weight="600" dx="7">commits</tspan></text><text x="426" y="106" fill="#58A6FF" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="25" font-weight="800">2<tspan fill="#7D8590" font-size="14" font-weight="600" dx="7">issues</tspan></text><text x="622" y="106" fill="#58A6FF" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="25" font-weight="800">0<tspan fill="#7D8590" font-size="14" font-weight="600" dx="7">releases</tspan></text><text x="818" y="106" fill="#58A6FF" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="25" font-weight="800">0<tspan fill="#7D8590" font-size="14" font-weight="600" dx="7">prs</tspan></text>
+  </g>
+  <g class="accent" opacity="0" style="animation-delay: 45s">
+    <rect x="34" y="26" width="44" height="4" rx="2" fill="#58A6FF"/>
+    <text x="34" y="68" fill="#F0F6FC" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="29" font-weight="800" letter-spacing="-0.5">claude-code-usage</text>
+    <text x="34" y="106" fill="#58A6FF" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="25" font-weight="800">0<tspan fill="#7D8590" font-size="14" font-weight="600" dx="7">stars</tspan></text><text x="230" y="106" fill="#58A6FF" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="25" font-weight="800">5<tspan fill="#7D8590" font-size="14" font-weight="600" dx="7">commits</tspan></text><text x="426" y="106" fill="#58A6FF" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="25" font-weight="800">15<tspan fill="#7D8590" font-size="14" font-weight="600" dx="7">issues</tspan></text><text x="622" y="106" fill="#58A6FF" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="25" font-weight="800">0<tspan fill="#7D8590" font-size="14" font-weight="600" dx="7">releases</tspan></text><text x="818" y="106" fill="#58A6FF" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="25" font-weight="800">0<tspan fill="#7D8590" font-size="14" font-weight="600" dx="7">prs</tspan></text>
+  </g>
+</svg>

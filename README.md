@@ -40,11 +40,19 @@
 
 ## What I maintain
 
+<div align="center">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./assets/featured-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="./assets/featured-light.svg">
+  <img src="./assets/featured-dark.svg" alt="Stepik-Python-Grader: 2 stars, 1664 commits, 44 issues, 12 releases, 655 prs · claude-code-playbook: 1 stars, 153 commits, 20 issues, 1 releases, 39 prs · Glossary-Python: 2 stars, 3 commits, 2 issues, 0 releases, 0 prs · claude-code-usage: 0 stars, 5 commits, 15 issues, 0 releases, 0 prs" width="100%">
+</picture>
+</div>
+
 <!--m:projects-->
 | Project | What it does | Stack |
 |---|---|---|
 | **[Stepik-Python-Grader](https://github.com/ArtVsMark/Stepik-Python-Grader)**<br><sub>[PyPI](https://pypi.org/project/stepik-python-grader/) · [Quick start](https://github.com/ArtVsMark/Stepik-Python-Grader/blob/main/README.en.md#quick-start-no-stepik-needed) · [History](https://github.com/ArtVsMark/Stepik-Python-Grader/blob/main/HISTORY.md)</sub> | A local offline autograder for Python. Downloads task data from Stepik, runs correctness checks without a submit limit, and **compares several solutions honestly** — correctness first, benchmark metrics second. | <sub>CLI · web UI · GUI · pytest plugin · OS sandbox</sub> |
-| **[claude-code-playbook](https://github.com/ArtVsMark/claude-code-playbook)** | <!--m:rules-->140<!--/m:rules--> rules for running agent sessions and a GitHub pipeline — each one carrying the incident it grew from, not just the wording. Russian and English. | <sub>docs · RU/EN</sub> |
+| **[claude-code-playbook](https://github.com/ArtVsMark/claude-code-playbook)** | <!--m:rules-->142<!--/m:rules--> rules for running agent sessions and a GitHub pipeline — each one carrying the incident it grew from, not just the wording. Russian and English. | <sub>docs · RU/EN</sub> |
 | **[claude-code-usage](https://github.com/ArtVsMark/claude-code-usage)** | Turns a three-step limit indicator into an actual number: measures what a session spent, calibrates its own scale, reports what is left. Early — the spec is written, the tool is not. | <sub>Python · JSONL over git</sub> |
 | **[Glossary-Python](https://github.com/ArtVsMark/Glossary-Python)** | Supporting layer: the glossary the grader links into when a run fails. | <sub>content · tooling</sub> |
 <!--/m:projects-->

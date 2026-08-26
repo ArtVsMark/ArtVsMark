@@ -24,7 +24,7 @@
     "005": {
       "status": "active",
       "mechanism": "gate",
-      "where": "scripts/build_metrics.py::patch_readme — числа только между маркерами m:ключ"
+      "where": "scripts/build_metrics.py::patch_readme — числа только между маркерами m:ключ; scripts/build_metrics.py::render_featured — числа баннера тоже измерены, а не вписаны: они приходят из project_stats и попадают в подпись картинки той же сборкой"
     },
     "006": {
       "status": "active",
@@ -175,7 +175,7 @@
     "039": {
       "status": "active",
       "mechanism": "none",
-      "where": "scripts/build_metrics.py::main — «числа не изменились» отличается от отказа источника"
+      "where": "scripts/build_metrics.py::main — «числа не изменились» отличается от отказа источника; scripts/build_metrics.py::_count — курсорная разбивка это третий исход, а не единица: посчитать нельзя, и сборка падает вместо правдоподобного числа; .github/workflows/rules-inbox.yml — очередь, чистота и неотработавший механизм разведены кодами"
     },
     "040": {
       "status": "not-applicable",
@@ -226,7 +226,7 @@
     "050": {
       "status": "active",
       "mechanism": "gate",
-      "where": "scripts/build_metrics.py — FOCUS_LIMIT с пометкой «двигается только вниз» и projects.json:featured_limit"
+      "where": "scripts/build_metrics.py — FOCUS_LIMIT с пометкой «двигается только вниз», scripts/build_metrics.py::FEATURED_ACCENTS с той же пометкой и projects.json:featured_limit"
     },
     "051": {
       "status": "active",
@@ -628,6 +628,16 @@
       "status": "active",
       "mechanism": "gate",
       "where": "scripts/check_bindings.py::selftest, scripts/check_roles.py::selftest, scripts/check_labels.py::selftest, scripts/build_metrics.py::selftest — через каждый гейт нарочно прогоняется то, что он обязан отвергнуть, и то, что обязан пропустить: набор из одних отказов не видит ложного отказа. Прогоны стоят шагами в .github/workflows/pr-check.yml, а не запускаются руками"
+    },
+    "141": {
+      "status": "active",
+      "mechanism": "process-step",
+      "where": "предметы перебраны все четыре. scripts/build_metrics.py::patch_readme — маркер сверяется вместе с закрывающими знаками, поэтому m:rules не совпадает с m:required; scripts/build_metrics.py::sync_alt — имя картинки читается целиком до расширения; scripts/check_bindings.py::REFERENCE — путь берётся с ведущей точкой и до известного расширения, якорь сверяется словом целиком; scripts/check_roles.py::ROW — образец берётся внутри обратных кавычек. Гейта, который поймал бы будущее сравнение началом, нет: это свойство кода, а не вход проверки"
+    },
+    "142": {
+      "status": "active",
+      "mechanism": "process-step",
+      "where": "предметов три, перебраны все. .github/workflows/metrics.yml — отказ приезжает изменением, то есть в трекер и в почту владельцу; .github/workflows/rules-inbox.yml — очередь нерассмотренных правил ведёт задачу, а не красноту на вкладке прогонов. ТРЕТИЙ БЕЗ АДРЕСАТА: .github/workflows/attribution-history.yml краснеет по пушу в main, не блокирует ничего и никому не принадлежит — увидеть его можно только на вкладке прогонов. Пробел назван, а не выровнен: адресата надо завести"
     }
   }
 }
