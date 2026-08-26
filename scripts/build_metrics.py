@@ -442,6 +442,49 @@ def patch_readme(values: dict[str, object], fresh: dict[str, str], write: bool =
         readme.write_text(text, encoding="utf-8")
 
 
+# Ноль допустим ровно у одной метрики: пустой пул задач для новичка — это
+# состояние трекера, а не сбой сборки. У остальных ноль означает, что источник
+# не ответил, и переписывать витрину по нему нельзя.
+ZERO_IS_A_STATE = {"gfi"}
+
+
+def unanswered(measured: dict[str, object]) -> list[str]:
+    """Метрики, по которым источник не ответил.
+
+    Проверяются СЫРЫЕ значения — до того, как число превратится в строку для
+    показа. Сторож, стоявший после форматирования, пропускал «0000+ tests»:
+    ноль тестов давал именно такую плитку, а сравнение шло с ``"0"``.
+
+    Ноль ищется по цифрам, а не по равенству строке: измеренное значение
+    приходит с единицей измерения (``"0%"`` от бейджа покрытия), и сравнение
+    с ``"0"`` там не срабатывает так же, как не срабатывало на ``"0000+"``.
+    Пусто — это отсутствие ответа, а не маленькое число: ``0.5%`` и ``3.14``
+    сторож пропускает, потому что среди цифр есть ненулевая.
+    """
+    empty = []
+    for key, value in measured.items():
+        text = str(value).strip()
+        if not text:
+            # Пустая строка — не ответ ни для одной метрики, включая gfi:
+            # «ноль задач» и «трекер промолчал» это разные вещи.
+            empty.append(key)
+            continue
+        digits = [character for character in text if character.isdigit()]
+        if digits and set(digits) == {"0"} and key not in ZERO_IS_A_STATE:
+            empty.append(key)
+    return empty
+
+
+def order_of(count: int) -> str:
+    """Порядок числа для плитки: 4321 → «4000+».
+
+    Меньше тысячи порядка не имеет, и показывать его как «0000+» нельзя:
+    это выглядит как несобравшаяся метрика при живом источнике. Сторож такой
+    случай не поймает и не должен — источник ответил честно, врёт запись.
+    """
+    return f"{count // 1000}000+" if count >= 1000 else str(count)
+
+
 def main() -> int:
     """``--check`` прогоняет всё то же самое, но ничего не пишет.
 
@@ -470,10 +513,6 @@ def main() -> int:
     rules = int(export["count"])
     bindings = sync_bindings(export, write=not check)
 
-    # Числа с плитки (tests, coverage, checks) в тексте README не повторяются:
-    # одно число — одно место. Текстовому читателю они достаются через alt
-    # картинки, а его тоже проставляет этот скрипт — см. sync_alt.
-    plate = [(f"{tests // 1000}000+", "tests"), (coverage, "coverage (all OS)"), (str(checks), "checks per PR")]
     values = {
         "projects": render_projects(json.loads(PROJECTS.read_text(encoding="utf-8"))),
         "modules": modules,
@@ -486,21 +525,23 @@ def main() -> int:
         "gfi": open_for_newcomers,
         "rules": rules,
     }
-    print(" · ".join(f"{name}: {value}" for value, name in plate))
     print(bindings)
     print(" · ".join(f"{key}: {value}" for key, value in values.items() if key != "projects"))
 
-    # Ноль допустим ровно у одной метрики: пустой пул задач для новичка — это
-    # состояние трекера, а не сбой сборки. У остальных ноль означает, что
-    # источник не ответил, и переписывать витрину по нему нельзя.
-    empty = [
-        key
-        for key, value in {**values, **{name: value for value, name in plate}}.items()
-        if not str(value).strip() or (str(value) == "0" and key != "gfi")
-    ]
+    # Сторож стоит ДО форматирования плитки, и это не порядок строк ради
+    # красоты. Пока «4000+» собиралось раньше проверки, ноль тестов давал
+    # «0000+» — строку, в которой сторож ноля не находит: он сравнивал с "0".
+    # Метрика, попадающая в сторож уже строкой для показа, не проверена.
+    empty = unanswered({**values, "tests": tests, "coverage": coverage, "checks per PR": checks})
     if empty:
         print(f"метрика не собралась ({', '.join(empty)}) — ничего не переписываю", file=sys.stderr)
         return 1
+
+    # Числа с плитки (tests, coverage, checks) в тексте README не повторяются:
+    # одно число — одно место. Текстовому читателю они достаются через alt
+    # картинки, а его тоже проставляет этот скрипт — см. sync_alt.
+    plate = [(order_of(tests), "tests"), (coverage, "coverage (all OS)"), (str(checks), "checks per PR")]
+    print(" · ".join(f"{name}: {value}" for value, name in plate))
 
     fresh = {}
     for theme, dark in (("dark", True), ("light", False)):
