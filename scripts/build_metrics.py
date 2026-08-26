@@ -258,7 +258,25 @@ def rank_featured(stats: dict[str, dict[str, int]]) -> list[str]:
 TAGLINE_LIMIT = 110
 
 
-def render_featured(entries: list[tuple[str, str, dict[str, int]]], dark: bool) -> str:
+def accent_label(accents: list[dict]) -> str:
+    """Подпись картинки: всё, что в ней нарисовано, словами.
+
+    Текстовому читателю достаётся только эта строка, и она обязана нести не
+    один кадр из четырёх, а все: название, описание, показатели, стек и числа.
+    Тише всех на этой витрине врал именно ``alt``.
+    """
+    parts = []
+    for accent in accents:
+        pieces = [f"{accent['title']} — {accent['tagline']}"]
+        if accent["badges"]:
+            pieces.append(", ".join(f"{name} {value}" for name, value, _ in accent["badges"]))
+        pieces.append(", ".join(f"{accent['stats'][f]} {f}" for f in FEATURED_FIELDS))
+        pieces.append(accent["stack"])
+        parts.append(". ".join(pieces))
+    return " · ".join(parts)
+
+
+def render_featured(accents: list[dict], dark: bool) -> str:
     """Баннер акцентов: по одному проекту за раз, переключение по таймеру.
 
     Анимация живёт ВНУТРИ картинки, потому что страница профиля — Markdown:
@@ -272,11 +290,16 @@ def render_featured(entries: list[tuple[str, str, dict[str, int]]], dark: bool) 
     странице профиля отдаёт прокси площадки, и что именно она делает с блоком
     ``<style>``, отсюда не проверить — печатающаяся строка витрины анимирована
     SMIL, то есть доказательства про CSS у нас нет. Если стиль не доедет, при
-    ``opacity`` только в классе все четыре акцента лягут друг на друга и баннер
+    ``opacity`` только в классе все акценты лягут друг на друга и баннер
     превратится в кашу. С атрибутами не доехавший стиль даёт статичную картинку
     с первым акцентом — то есть худший исход остаётся читаемым.
+
+    ССЫЛОК ЗДЕСЬ НЕТ И НЕ БУДЕТ. Внутри картинки, вставленной через ``<img>``,
+    ``<a>`` не кликается вовсе. Поэтому пути внутрь проектов остаются текстом
+    под баннером: это не «текст лучше», это единственное место, где они
+    работают.
     """
-    long = [title for title, tagline, _ in entries if len(tagline) > TAGLINE_LIMIT]
+    long = [a["title"] for a in accents if len(a["tagline"]) > TAGLINE_LIMIT]
     if long:
         raise SystemExit(
             f"описание не влезает в баннер (потолок {TAGLINE_LIMIT} знаков): {', '.join(long)}.\n"
@@ -284,66 +307,64 @@ def render_featured(entries: list[tuple[str, str, dict[str, int]]], dark: bool) 
             "  обязана говорить, что она урезана, а описание — не то место, где это уместно."
         )
 
-    width, height = 1000, 152
-    cycle = ACCENT_SECONDS * len(entries)
+    width, height = 1000, 190
+    cycle = ACCENT_SECONDS * len(accents)
     if dark:
         card, stroke, name_c, num_c, lab_c = "#0D1117", "#30363D", "#F0F6FC", "#58A6FF", "#7D8590"
     else:
         card, stroke, name_c, num_c, lab_c = "#FFFFFF", "#D0D7DE", "#1F2328", "#0969DA", "#636C76"
 
-    # Подпись перечисляет ВСЕ акценты с их числами: текстовому читателю
-    # достаётся alt, и он не должен получить один кадр из четырёх.
-    label = " · ".join(
-        f"{escape(title)} — {escape(tagline)} "
-        + ", ".join(f"{stat[field]} {field}" for field in FEATURED_FIELDS)
-        for title, tagline, stat in entries
-    )
-    step = 100 / len(entries)
-    lines = []
-    lines.append(
+    step = 100 / len(accents)
+    lines = [
         f'<svg width="{width}" height="{height}" viewBox="0 0 {width} {height}" '
-        f'xmlns="http://www.w3.org/2000/svg" role="img" aria-label="{label}">'
-    )
-    lines.append("<style>")
-    lines.append(f"  .accent {{ animation: accent {cycle}s linear infinite; }}")
-    lines.append("  @keyframes accent {")
-    lines.append(
+        f'xmlns="http://www.w3.org/2000/svg" role="img" aria-label="{escape(accent_label(accents))}">',
+        "<style>",
+        f"  .accent {{ animation: accent {cycle}s linear infinite; }}",
+        "  @keyframes accent {",
         f"    0% {{ opacity: 0 }} {step * 0.06:.2f}% {{ opacity: 1 }}"
         f" {step * 0.94:.2f}% {{ opacity: 1 }} {step:.2f}% {{ opacity: 0 }}"
-        " 100% { opacity: 0 }"
-    )
-    lines.append("  }")
-    lines.append("  @media (prefers-reduced-motion: reduce) {")
-    # Анимация снята — видимость возвращается к атрибутам, то есть к первому
-    # акценту. Отдельного правила для этого не нужно, и лишнего тут быть не
-    # должно: чем меньше зависит от стиля, тем читаемее отказ.
-    lines.append("    .accent { animation: none }")
-    lines.append("  }")
-    lines.append("</style>")
-    lines.append(
-        f'<rect x="0.5" y="0.5" width="{width - 1}" height="{height - 1}" rx="14" '
-        f'fill="{card}" stroke="{stroke}"/>'
-    )
-    for index, (title, tagline, stat) in enumerate(entries):
-        numbers = "".join(
-            f'<text x="{34 + column * 196}" y="126" fill="{num_c}" font-family="{FONT}" '
-            f'font-size="25" font-weight="800">{stat[field]}'
-            f'<tspan fill="{lab_c}" font-size="14" font-weight="600" dx="7">{field}</tspan>'
-            "</text>"
-            for column, field in enumerate(FEATURED_FIELDS)
-        )
+        " 100% { opacity: 0 }",
+        "  }",
+        "  @media (prefers-reduced-motion: reduce) {",
+        "    .accent { animation: none }",
+        "  }",
+        "</style>",
+        f'<rect x="0.5" y="0.5" width="{width - 1}" height="{height - 1}" rx="16" '
+        f'fill="{card}" stroke="{stroke}"/>',
+    ]
+    for index, accent in enumerate(accents):
         lines.append(
             f'  <g class="accent" opacity="{1 if index == 0 else 0}" '
             f'style="animation-delay: {index * ACCENT_SECONDS}s">'
         )
-        lines.append(f'    <rect x="34" y="26" width="44" height="4" rx="2" fill="{num_c}"/>')
+        lines.append(f'    <rect x="36" y="28" width="46" height="4" rx="2" fill="{num_c}"/>')
         lines.append(
-            f'    <text x="34" y="64" fill="{name_c}" font-family="{FONT}" font-size="28" '
-            f'font-weight="800" letter-spacing="-0.5">{title}</text>'
+            f'    <text x="36" y="68" fill="{name_c}" font-family="{FONT}" font-size="29" '
+            f'font-weight="800" letter-spacing="-0.6">{escape(accent["title"])}</text>'
         )
         lines.append(
-            f'    <text x="34" y="90" fill="{lab_c}" font-family="{FONT}" font-size="15" '
-            f'font-weight="500">{escape(tagline)}</text>'
+            f'    <text x="36" y="94" fill="{lab_c}" font-family="{FONT}" font-size="15" '
+            f'font-weight="500">{escape(accent["tagline"])}</text>'
+        )
+        # Показатели: слева направо, каждый своей ширины. Пусто — законное
+        # состояние: у молодого проекта показателей может не быть вовсе, и
+        # рисовать пустую плашку значило бы врать плашкой.
+        offset = 36
+        for label, value, tone in accent["badges"]:
+            markup, badge_width = pill(offset, 110, label, value, tone, dark)
+            lines.append(f"    {markup}")
+            offset += badge_width + 8
+        lines.append(
+            f'    <text x="{width - 36}" y="127" fill="{lab_c}" font-family="{FONT}" '
+            f'font-size="12.5" font-weight="600" text-anchor="end">'
+            f'{escape(accent["stack"])}</text>'
+        )
+        numbers = "".join(
+            f'<text x="{36 + column * 194}" y="166" fill="{num_c}" font-family="{FONT}" '
+            f'font-size="25" font-weight="800">{accent["stats"][field]}'
+            f'<tspan fill="{lab_c}" font-size="13.5" font-weight="600" dx="7">{field}</tspan>'
+            "</text>"
+            for column, field in enumerate(FEATURED_FIELDS)
         )
         lines.append(f"    {numbers}")
         lines.append("  </g>")
@@ -358,34 +379,84 @@ def render_featured(entries: list[tuple[str, str, dict[str, int]]], dark: bool) 
 #: витрина уже проходила на гейте меток (правило 068).
 BADGE_KINDS = ("version", "ci", "coverage", "package")
 
-#: Единый вид: маленький, плоский, с коротким кэшем — бейдж, который врёт
-#: сутками, ничем не лучше числа, вписанного руками.
-SHIELD = "?style=flat-square&cacheSeconds=300"
 
+def project_badges(repo: str, answers: dict) -> list[tuple[str, str, str]]:
+    """Показатели проекта значениями, а не чужими картинками.
 
-def badge_markdown(repo: str, kind: str, answer: dict) -> str | None:
-    """Разметка одного бейджа или ``None``, если предмета нет.
+    Раньше здесь стояли бейджи ``img.shields.io`` — четыре внешние картинки на
+    проект. Отказались от них по трём причинам, и ни одна не про красоту:
 
-    Ссылка ведёт туда, где показатель проверяется: релизы, прогоны, PyPI.
-    Бейдж без ссылки — картинка, по которой читателю некуда пойти.
+    * **числа и так измерены нами.** Просить чужой сервис сходить за версией,
+      которую сборка уже знает, значит завести второй источник того же числа —
+      два места, где оно может разойтись;
+    * **проверить их из окна нельзя.** Прокси окна не пускает этот хост, и
+      живой бейдж от опечатки в ссылке отсюда неотличим. Утверждение, которое
+      нельзя проверить, витрина на себя не берёт;
+    * **чужой хост — это чужая доступность.** Картинка, которая однажды не
+      отрисуется, выглядит как сломанная страница, а не как чужой сбой.
+
+    Тон значения — не украшение: он говорит то, чего не говорит само значение.
+    Красный «CI failing» читается с расстояния, зелёный «passing» — тоже.
     """
-    if "none" in answer:
-        return None
-    if kind == "version":
-        return (f"[![release](https://img.shields.io/github/v/release/{repo}{SHIELD}&label=release)]"
-                f"(https://github.com/{repo}/releases)")
-    if kind == "ci":
-        workflow = answer["workflow"]
-        return (f"[![CI](https://img.shields.io/github/actions/workflow/status/{repo}/{workflow}"
-                f"{SHIELD}&label=CI)](https://github.com/{repo}/actions/workflows/{workflow})")
-    if kind == "coverage":
-        endpoint = answer["endpoint"]
-        url = (f"https://raw.githubusercontent.com/{repo}/badges/.github/badges/{endpoint}.json")
-        return (f"[![coverage](https://img.shields.io/endpoint?url={url}{SHIELD.replace('?', '&')})]"
-                f"(https://github.com/{repo}/tree/badges)")
-    package = answer["pypi"]
-    return (f"[![pypi](https://img.shields.io/pypi/v/{package}{SHIELD}&label=pypi)]"
-            f"(https://pypi.org/project/{package}/)")
+    badges: list[tuple[str, str, str]] = []
+    for kind in BADGE_KINDS:
+        answer = answers.get(kind, {})
+        if "none" in answer:
+            continue
+        if kind == "version":
+            tag = _api(f"/repos/{repo}/releases/latest").get("tag_name")
+            badges.append(("release", tag or "—", "info" if tag else "muted"))
+        elif kind == "ci":
+            runs = _api(
+                f"/repos/{repo}/actions/workflows/{answer['workflow']}"
+                "/runs?branch=main&status=completed&per_page=1"
+            ).get("workflow_runs", [])
+            state = runs[0]["conclusion"] if runs else "unknown"
+            badges.append(("CI", state, "ok" if state == "success" else "warn"))
+        elif kind == "coverage":
+            payload = _api(
+                f"/repos/{repo}/contents/.github/badges/{answer['endpoint']}.json?ref=badges"
+            )
+            value = json.loads(base64.b64decode(payload["content"]))["message"]
+            badges.append(("coverage", value, "ok"))
+        else:
+            package = answer["pypi"]
+            with urllib.request.urlopen(
+                urllib.request.Request(f"https://pypi.org/pypi/{package}/json",
+                                       headers={"User-Agent": "artvsmark-profile"}),
+                timeout=30,
+            ) as response:
+                version = json.loads(response.read())["info"]["version"]
+            badges.append(("pypi", version, "info"))
+    return badges
+
+
+def pill(x: int, y: int, label: str, value: str, tone: str, dark: bool) -> tuple[str, int]:
+    """Один показатель: подпись и значение в скруглённой плашке.
+
+    Ширина считается по числу знаков, а не измеряется: шрифта у нас нет, и
+    измерить его нечем. Коэффициент подобран так, чтобы текст не упирался в
+    край при самом широком значении, — запас лучше обрезки.
+    """
+    if dark:
+        back, edge, muted = "#161B22", "#30363D", "#8B949E"
+        tones = {"ok": "#3FB950", "warn": "#F85149", "info": "#58A6FF", "muted": "#8B949E"}
+    else:
+        back, edge, muted = "#F6F8FA", "#D0D7DE", "#636C76"
+        tones = {"ok": "#1A7F37", "warn": "#CF222E", "info": "#0969DA", "muted": "#636C76"}
+
+    label_w = len(label) * 6.4
+    value_w = len(value) * 6.9
+    width = int(13 + label_w + 7 + value_w + 13)
+    svg = (
+        f'<g><rect x="{x}" y="{y}" width="{width}" height="24" rx="12" '
+        f'fill="{back}" stroke="{edge}"/>'
+        f'<text x="{x + 13}" y="{y + 16}" fill="{muted}" font-family="{FONT}" '
+        f'font-size="12" font-weight="600">{escape(label)}'
+        f'<tspan fill="{tones[tone]}" font-weight="700" dx="7">{escape(value)}</tspan>'
+        f"</text></g>"
+    )
+    return svg, width
 
 
 def check_badges(config: dict) -> None:
@@ -464,16 +535,7 @@ def render_projects(config: dict) -> str:
         links = " · ".join(f"[{name}]({url})" for name, url in project.get("links", {}).items())
         if links:
             parts.append(links)
-        parts.append(f"<sub>{project['stack']}</sub>")
-        badges = " ".join(
-            markdown
-            for kind in BADGE_KINDS
-            if (markdown := badge_markdown(project["repo"], kind, project["badges"].get(kind, {})))
-        )
-        row = "- " + " · ".join(parts)
-        if badges:
-            row += f"<br>  {badges}"
-        rows.append(row)
+        rows.append("- " + " · ".join(parts))
 
     if hidden:
         rows += [
@@ -846,14 +908,24 @@ def selftest() -> int:
         print(f"  порядок {got} — {name}")
 
     # ── баннер: то, что обязано быть в картинке ────────────────────────────
-    accents = [("Alpha", "первый по всему", lead), ("Beta", "середина", mid),
-               ("Gamma", "хвост", tail)]
+    accents = [
+        {"title": "Alpha", "tagline": "первый по всему", "stack": "CLI · web",
+         "badges": [("release", "v1.2.3", "info"), ("CI", "success", "ok")], "stats": lead},
+        {"title": "Beta", "tagline": "середина", "stack": "docs",
+         "badges": [("CI", "failure", "warn")], "stats": mid},
+        {"title": "Gamma", "tagline": "хвост", "stack": "content", "badges": [], "stats": tail},
+    ]
     svg = render_featured(accents, dark=True)
+    label = svg.split('aria-label="')[1].split('">')[0]
     checks = [
         ("подпись перечисляет все акценты, а не первый",
-         all(title in svg.split("aria-label=")[1].split('">')[0] for title, _, _ in accents)),
+         all(a["title"] in label for a in accents)),
         ("подпись несёт описание, а не только числа",
-         all(tagline in svg.split("aria-label=")[1].split('">')[0] for _, tagline, _ in accents)),
+         all(a["tagline"] in label for a in accents)),
+        ("подпись несёт показатели", "release v1.2.3" in label and "CI failure" in label),
+        ("подпись несёт стек", all(a["stack"] in label for a in accents)),
+        ("проект без показателей не рисует пустую плашку",
+         svg.count('rx="12"') == sum(len(a["badges"]) for a in accents)),
         ("подпись несёт измеренные числа", "1664" not in svg and "900 commits" in svg),
         ("просьба уменьшить движение уважается", "prefers-reduced-motion" in svg),
         ("первый акцент виден без стиля", 'class="accent" opacity="1"' in svg),
@@ -904,7 +976,8 @@ def selftest() -> int:
 
     # ── описание не влезает в баннер ───────────────────────────────────────
     try:
-        render_featured([("X", "д" * (TAGLINE_LIMIT + 1), lead)], dark=True)
+        render_featured([{"title": "X", "tagline": "д" * (TAGLINE_LIMIT + 1),
+                          "stack": "s", "badges": [], "stats": lead}], dark=True)
         broken.append("баннер: слишком длинное описание пропущено")
         print("  пропущен  — баннер: описание длиннее потолка")
     except SystemExit:
@@ -992,24 +1065,29 @@ def main() -> int:
     # отказом самого запроса и сторожем курсорной разбивки в _count.
     stats = {project["repo"]: project_stats(project["repo"]) for project in config["projects"]}
     titles = {project["repo"]: project["title"] for project in config["projects"]}
-    taglines = {project["repo"]: project["tagline"] for project in config["projects"]}
-    accents = [
-        (titles[repo], taglines[repo], stats[repo])
-        for repo in rank_featured(stats)[:FEATURED_ACCENTS]
-    ]
-    print("акценты: " + " · ".join(f"{title} ({', '.join(str(s[f]) for f in FEATURED_FIELDS)})"
-                                   for title, _, s in accents))
+    by_repo = {project["repo"]: project for project in config["projects"]}
+    accents = []
+    for repo in rank_featured(stats)[:FEATURED_ACCENTS]:
+        project = by_repo[repo]
+        accents.append({
+            "title": project["title"],
+            "tagline": project["tagline"],
+            "stack": project["stack"],
+            "badges": project_badges(repo, project["badges"]),
+            "stats": stats[repo],
+        })
+    print("акценты: " + " · ".join(
+        f"{a['title']} ({', '.join(str(a['stats'][f]) for f in FEATURED_FIELDS)}"
+        + (f"; {', '.join(f'{n} {v}' for n, v, _ in a['badges'])}" if a["badges"] else "")
+        + ")"
+        for a in accents))
 
     fresh = {}
     for theme, dark in (("dark", True), ("light", False)):
         svg = render(plate, dark)
         fresh[f"metrics-{theme}"] = ", ".join(f"{value} {name}" for value, name in plate)
         banner = render_featured(accents, dark)
-        fresh[f"featured-{theme}"] = " · ".join(
-            f"{title} — {tagline} "
-            + ", ".join(f"{stat[field]} {field}" for field in FEATURED_FIELDS)
-            for title, tagline, stat in accents
-        )
+        fresh[f"featured-{theme}"] = accent_label(accents)
         if not check:
             (ROOT / f"assets/metrics-{theme}.svg").write_text(svg, encoding="utf-8")
             (ROOT / f"assets/featured-{theme}.svg").write_text(banner, encoding="utf-8")
