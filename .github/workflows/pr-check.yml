@@ -42,6 +42,10 @@ jobs:
     steps:
       - name: Забрать витрину
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Гейтам авторства нужна история и общая ветка: мелкого клона хватает
+          # на сборку, но не на диапазон origin/main..HEAD.
+          fetch-depth: 0
 
       - name: Забрать грейдер (только рабочее дерево)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -100,6 +104,27 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python scripts/check_labels.py ${{ github.event.pull_request.number }}
+
+      # Автор коммита держался памятью окна: контейнерное умолчание
+      # «Claude <noreply@anthropic.com>» проставляется глобально при старте и
+      # попадало в main пять раз. Соглашение без механизма не соблюдается.
+      - name: Проверить, что подписи авторов не контейнерные
+        run: python scripts/check_author.py
+
+      - name: Проверить сам гейт подписей тем, что он обязан отвергнуть
+        run: python scripts/check_author.py --selftest
+
+      # Трейлеры — предмет каталога, а не наш: логика живёт там и подключается
+      # ссылкой на версию. Своей копии не заводим (правило 090); подключение
+      # закреплено по SHA, и почему — сказано в rules-inbox.yml.
+      - name: Сверить трейлеры со списком согласованных имён
+        uses: ArtVsMark/claude-code-playbook/.github/actions/attribution@96a90ffeb312fbcf40b7097ed7c9ce8ddfc1f2eb # main, 2026-08-22
+        with:
+          authors: .github/authors.txt
+          # Пусто: подрезать нечего, диапазон и так только коммиты изменения.
+          baseline: ""
+          mode: branch
+          catalogue-ref: 96a90ffeb312fbcf40b7097ed7c9ce8ddfc1f2eb
 
       - name: Убедиться, что вхолостую значит вхолостую
         run: |
