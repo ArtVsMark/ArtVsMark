@@ -146,7 +146,69 @@ def verdict(labels: set[str], files: list[str]) -> tuple[list[str], set[str], se
     return complaints, content, zones
 
 
+def selftest() -> int:
+    """Прогоняет через гейт то, что он обязан отвергнуть и обязан пропустить.
+
+    Правило 140. Здесь оно особенно к месту: этот гейт уже один раз оказался
+    обещанием — в докстроке стоял разрешительный список меток, а в коде
+    «всё, кроме hold», и семь меток из двенадцати проходили классификацию.
+    Читалось при этом правильно с обеих сторон: неверна была только связь.
+
+    Набор двусторонний. Ложный отказ здесь дороже пропуска: гейт, требующий
+    метку там, где она не нужна, приучает ставить метки наугад.
+    """
+    # Файл-нейтраль: правка скрипта своей зоны не требует, поэтому на таких
+    # случаях проверяется ровно метка и ничего кроме неё. README.md сюда не
+    # годится — изменение целиком из документации требует documentation, и
+    # случай начал бы проверять две вещи разом. Первый черновик набора на этом
+    # и упал.
+    plain = ["scripts/checks.py"]
+    cases = [
+        ("метка вне списка", {"question"}, plain, True),
+        ("hold в одиночку", {"hold"}, plain, True),
+        ("умолчание площадки вместо содержания", {"good first issue"}, plain, True),
+        ("меток нет вовсе", set(), plain, True),
+        ("правка прогона без github_actions", {"bug"}, [".github/workflows/pr-check.yml"], True),
+        ("правка dependabot без dependencies", {"bug"}, [".github/dependabot.yml"], True),
+        ("изменение целиком из документации без documentation", {"bug"},
+         ["HISTORY.md", ".rules/roles.md"], True),
+        ("дифф не прочитан — пустой список файлов", {"bug"}, [], True),
+        ("метка содержания и зона совпали", {"bug", "github_actions"},
+         [".github/workflows/pr-check.yml"], False),
+        ("изменение целиком из документации", {"documentation"}, ["HISTORY.md", ".rules/roles.md"], False),
+        ("hold рядом с содержанием не мешает", {"bug", "hold"}, plain, False),
+        ("правка скрипта своей зоны не требует", {"bug"}, plain, False),
+        ("смешанный дифф: документация не требуется", {"bug"},
+         ["HISTORY.md", "scripts/checks.py"], False),
+    ]
+    broken = []
+    for name, labels, files, must_reject in cases:
+        complaints, _, _ = verdict(labels, files)
+        if bool(complaints) is not must_reject:
+            broken.append(f"{name}: ожидалось {'отказ' if must_reject else 'пропуск'}, вышло наоборот")
+        print(f"  {'отвергнут' if complaints else 'пропущен '} — {name}")
+
+    # Отказ обязан НАЗЫВАТЬ предмет: «метка вне списка» без её имени и «не та
+    # зона» без имени зоны — это отказ, по которому нечего чинить (правило 083).
+    named, _, _ = verdict({"question"}, plain)
+    if not any("question" in line for line in named):
+        broken.append("отказ на посторонней метке не называет её поимённо")
+    zoned, _, _ = verdict({"bug"}, [".github/workflows/pr-check.yml"])
+    if not any("github_actions" in line for line in zoned):
+        broken.append("отказ на непокрытой зоне не называет недостающую метку")
+
+    if broken:
+        print("\nсамопроверка провалена:", file=sys.stderr)
+        for line in broken:
+            print(f"  {line}", file=sys.stderr)
+        return 1
+    print("самопроверка пройдена: гейт отвергает то, что обязан, и называет предмет")
+    return 0
+
+
 def main() -> int:
+    if "--selftest" in sys.argv[1:]:
+        return selftest()
     if len(sys.argv) < 2:
         print(__doc__)
         return 1
