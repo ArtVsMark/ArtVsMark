@@ -9,12 +9,20 @@
     "",
     "featured_limit — потолок, а не настройка: его снижают, но не повышают",
     "(правило 050 каталога). Всё, что за потолком, не исчезает молча —",
-    "сборка пишет под таблицей, сколько проектов не показано и где они.",
+    "сборка пишет под списком, сколько проектов не показано и где они.",
     "",
-    "blurb пишется руками: это редактура, её измерять нечем. Числа внутри",
-    "blurb ставятся маркерами <!--m:ключ--> и переписываются той же сборкой."
+    "tagline — короткое описание для баннера акцентов. Пишется руками: это",
+    "редактура, её измерять нечем. Длина держится в пределах строки картинки;",
+    "сборка падает, если не влезает, — обрезать описание молча нельзя.",
+    "",
+    "badges — ответ проекта по каждому ОБЯЗАТЕЛЬНОМУ показателю. Их четыре:",
+    "версия, CI, покрытие, пакет. У каждого либо бейдж, либо названная",
+    "причина, почему предмета нет. Пустого ответа не бывает: 'у нас этого",
+    "нет' и 'мы не дошли' — разные вещи, и различать их обязан гейт, а не",
+    "читатель. Проверяет scripts/build_metrics.py::check_badges."
   ],
   "featured_limit": 5,
+  "required_badges": ["version", "ci", "coverage", "package"],
   "projects": [
     {
       "repo": "ArtVsMark/Stepik-Python-Grader",
@@ -25,26 +33,50 @@
         "Quick start": "https://github.com/ArtVsMark/Stepik-Python-Grader/blob/main/README.en.md#quick-start-no-stepik-needed",
         "History": "https://github.com/ArtVsMark/Stepik-Python-Grader/blob/main/HISTORY.md"
       },
-      "blurb": "A local offline autograder for Python. Downloads task data from Stepik, runs correctness checks without a submit limit, and **compares several solutions honestly** — correctness first, benchmark metrics second.",
-      "stack": "CLI · web UI · GUI · pytest plugin · OS sandbox"
+      "tagline": "Offline Python autograder: unlimited local checks, honest side-by-side comparison of solutions.",
+      "stack": "CLI · web UI · GUI · pytest plugin · OS sandbox",
+      "badges": {
+        "version": { "release": true },
+        "ci": { "workflow": "ci.yml" },
+        "coverage": { "endpoint": "coverage-combined" },
+        "package": { "pypi": "stepik-python-grader" }
+      }
     },
     {
       "repo": "ArtVsMark/claude-code-playbook",
       "title": "claude-code-playbook",
-      "blurb": "<!--m:rules-->—<!--/m:rules--> rules for running agent sessions and a GitHub pipeline — each one carrying the incident it grew from, not just the wording. Russian and English.",
-      "stack": "docs · RU/EN"
+      "tagline": "Rules for agent sessions and a GitHub pipeline — each one carrying the incident it grew from.",
+      "stack": "docs · RU/EN",
+      "badges": {
+        "version": { "none": "релизов нет: каталог правил читают по ссылке на main, а не выпусками" },
+        "ci": { "workflow": "ci.yml" },
+        "coverage": { "none": "нечего покрывать: репозиторий текстовый, тестов у него нет" },
+        "package": { "none": "не публикуется пакетом: подключается действием и сырой ссылкой" }
+      }
     },
     {
       "repo": "ArtVsMark/claude-code-usage",
       "title": "claude-code-usage",
-      "blurb": "Turns a three-step limit indicator into an actual number: measures what a session spent, calibrates its own scale, reports what is left. Early — the spec is written, the tool is not.",
-      "stack": "Python · JSONL over git"
+      "tagline": "Turns a three-step limit indicator into a number. Early: the spec is written, the tool is not.",
+      "stack": "Python · JSONL over git",
+      "badges": {
+        "version": { "none": "релизов нет: до первого выпуска не дошло" },
+        "ci": { "none": "прогонов нет: кода, который стоило бы проверять, ещё не написано" },
+        "coverage": { "none": "тестов нет по той же причине" },
+        "package": { "pypi": "claude-code-usage" }
+      }
     },
     {
       "repo": "ArtVsMark/Glossary-Python",
       "title": "Glossary-Python",
-      "blurb": "Supporting layer: the glossary the grader links into when a run fails.",
-      "stack": "content · tooling"
+      "tagline": "The RU/EN glossary the grader links into when a run fails.",
+      "stack": "content · tooling",
+      "badges": {
+        "version": { "none": "релизов нет: содержимое читают по ссылке, а не выпусками" },
+        "ci": { "none": "прогонов нет: правки содержательные, проверять нечем" },
+        "coverage": { "none": "тестов нет: репозиторий содержательный" },
+        "package": { "none": "не публикуется пакетом: подключается ссылками из грейдера" }
+      }
     }
   ]
 }
