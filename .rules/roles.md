@@ -79,6 +79,7 @@
 | `.github/workflows/pr-check.yml` | конвейер | окно; секреты за владельцем |
 | `.github/workflows/automerge.yml` | конвейер | окно; секреты за владельцем |
 | `.github/workflows/metrics.yml` | конвейер | окно; секреты за владельцем |
+| `.github/workflows/rules-inbox.yml` | связь с каталогом правил | окно предлагает, владелец спорит |
 | `.github/workflows/snake.yml` | внешний артефакт на витрине | окно как инженер платформы |
 | `.github/pull_request_template.md` | вопросы ревизора автору | ревизор предлагает, владелец решает |
 | `.github/dependabot.yml` | зависимости и SHA-пины | окно как инженер платформы |
