@@ -51,6 +51,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import os
 import pathlib
@@ -267,7 +268,7 @@ def accent_label(accents: list[dict]) -> str:
     """
     parts = []
     for accent in accents:
-        pieces = [f"{accent['title']} — {accent['tagline']}"]
+        pieces = [f"{accent['title']} — {accent['tagline'].rstrip('.')}"]
         if accent["badges"]:
             pieces.append(", ".join(f"{name} {value}" for name, value, _ in accent["badges"]))
         pieces.append(", ".join(f"{accent['stats'][f]} {f}" for f in FEATURED_FIELDS))
@@ -379,6 +380,12 @@ def render_featured(accents: list[dict], dark: bool) -> str:
 #: витрина уже проходила на гейте меток (правило 068).
 BADGE_KINDS = ("version", "ci", "coverage", "package")
 
+#: Как показатель подписан на витрине. Имя ключа и имя на плашке — разные вещи:
+#: ключ служебный, подпись читает посетитель. Держатся вместе, иначе показатель
+#: без предмета подписывается ключом, а с предметом — как придётся: у витрины
+#: так и вышло в первой редакции — «release» рядом с «version none».
+BADGE_LABELS = {"version": "release", "ci": "CI", "coverage": "coverage", "package": "pypi"}
+
 
 def project_badges(repo: str, answers: dict) -> list[tuple[str, str, str]]:
     """Показатели проекта значениями, а не чужими картинками.
@@ -402,23 +409,31 @@ def project_badges(repo: str, answers: dict) -> list[tuple[str, str, str]]:
     for kind in BADGE_KINDS:
         answer = answers.get(kind, {})
         if "none" in answer:
+            # Плашка остаётся и говорит «none». Пропустить её значило бы
+            # показать четыре показателя у одного проекта и один у другого —
+            # читатель достроит недостающее сам, и достроит в сторону «просто
+            # не показали». «Предмета нет» и «не дошли руки» так снова
+            # склеиваются, а ради их различия ответ и заводился. Причина
+            # остаётся в projects.json: она по-русски и служебная, а витрину
+            # читает англоязычный посетитель.
+            badges.append((BADGE_LABELS[kind], "none", "muted"))
             continue
         if kind == "version":
             tag = _api(f"/repos/{repo}/releases/latest").get("tag_name")
-            badges.append(("release", tag or "—", "info" if tag else "muted"))
+            badges.append((BADGE_LABELS["version"], tag or "—", "info" if tag else "muted"))
         elif kind == "ci":
             runs = _api(
                 f"/repos/{repo}/actions/workflows/{answer['workflow']}"
                 "/runs?branch=main&status=completed&per_page=1"
             ).get("workflow_runs", [])
             state = runs[0]["conclusion"] if runs else "unknown"
-            badges.append(("CI", state, "ok" if state == "success" else "warn"))
+            badges.append((BADGE_LABELS["ci"], state, "ok" if state == "success" else "warn"))
         elif kind == "coverage":
             payload = _api(
                 f"/repos/{repo}/contents/.github/badges/{answer['endpoint']}.json?ref=badges"
             )
             value = json.loads(base64.b64decode(payload["content"]))["message"]
-            badges.append(("coverage", value, "ok"))
+            badges.append((BADGE_LABELS["coverage"], value, "ok"))
         else:
             package = answer["pypi"]
             with urllib.request.urlopen(
@@ -427,7 +442,7 @@ def project_badges(repo: str, answers: dict) -> list[tuple[str, str, str]]:
                 timeout=30,
             ) as response:
                 version = json.loads(response.read())["info"]["version"]
-            badges.append(("pypi", version, "info"))
+            badges.append((BADGE_LABELS["package"], version, "info"))
     return badges
 
 
@@ -502,24 +517,71 @@ def check_badges(config: dict) -> None:
         )
 
 
+def slug(repo: str) -> str:
+    """Имя файла плитки. Только строчные и дефис — по этому виду их находят
+    и подпись, и отпечаток содержимого."""
+    return repo.split("/")[1].lower()
+
+
+def render_tile(project: dict, dark: bool) -> str:
+    """Плитка проекта — кнопка, а не витрина показателей.
+
+    Зачем отдельная картинка на проект: у одной картинки может быть только одна
+    ссылка, а баннер крутится по четырём. Клик по кадру с одним проектом,
+    ведущий на другой, — враньё, поэтому баннер ведёт «во все репозитории», а
+    переход в конкретный проект даёт эта плитка.
+
+    Внутри самой плитки ссылки нет и быть не может: ``<a>`` внутри картинки,
+    вставленной через ``<img>``, не кликается. Кликается ОБЁРТКА — ссылка вокруг
+    картинки в разметке страницы. Отсюда правило: одна плитка — один адрес.
+
+    Ни показателей, ни стека здесь нет намеренно: они в баннере. Повторять их
+    значило бы завести второе место, где одно и то же может разойтись, — и
+    первая редакция это подтвердила сразу: стек грейдера в плитку не влез и
+    обрезался краем. Плитка — кнопка, а кнопке подпись не нужна.
+    """
+    width, height = 246, 68
+    if dark:
+        card, stroke, name_c, mark = "#0D1117", "#30363D", "#F0F6FC", "#58A6FF"
+    else:
+        card, stroke, name_c, mark = "#FFFFFF", "#D0D7DE", "#1F2328", "#0969DA"
+
+    title = project["title"]
+    # Кегль подбирается под длину: имена проектов различаются вдвое, и единый
+    # кегль либо мельчит короткие, либо упирает длинные в стрелку.
+    size = 16 if len(title) <= 20 else 14
+    # Подпись описывает ДЕЙСТВИЕ, а не картинку: плитка — кнопка, и читателю
+    # экрана важно, куда она ведёт, а не как выглядит.
+    label = f"Open {title} on GitHub"
+    return "\n".join([
+        f'<svg width="{width}" height="{height}" viewBox="0 0 {width} {height}" '
+        f'xmlns="http://www.w3.org/2000/svg" role="img" aria-label="{escape(label)}">',
+        f'<rect x="0.5" y="0.5" width="{width - 1}" height="{height - 1}" rx="12" '
+        f'fill="{card}" stroke="{stroke}"/>',
+        f'<rect x="18" y="20" width="26" height="3" rx="1.5" fill="{mark}"/>',
+        f'<text x="18" y="49" fill="{name_c}" font-family="{FONT}" font-size="{size}" '
+        f'font-weight="800" letter-spacing="-0.3">{escape(title)}</text>',
+        f'<text x="{width - 18}" y="49" fill="{mark}" font-family="{FONT}" font-size="16" '
+        f'font-weight="800" text-anchor="end">&#8594;</text>',
+        "</svg>",
+    ]) + "\n"
+
+
 def render_projects(config: dict) -> str:
-    """Список проектов: закреплённый первым, дальше по свежести пуша.
+    """Ряд кликабельных плиток: по плитке на проект, каждая — ссылка.
 
-    Строка на проект — название, ссылки, стек. Описания здесь НЕТ намеренно:
-    оно переехало в баннер акцентов, и держать его в двух местах значило бы
-    завести два места, где оно может разойтись.
+    Текстового списка здесь больше нет. Он существовал ровно затем, что ссылка
+    внутри картинки не работает; плитки решают это иначе — ссылкой ВОКРУГ
+    картинки, по одной на проект. Тогда клик ведёт туда, что видишь, а не туда,
+    что выпало на общий адрес.
 
-    Ссылки, наоборот, остались текстом и останутся: баннер вставлен через
-    ``<img>``, и ссылка внутри картинки не кликается вовсе. Это не вкусовщина
-    про «текст лучше» — без этой строки посетителю некуда идти.
+    Глубокие ссылки — PyPI, быстрый старт, история — остаются строкой под
+    плитками: плитка ведёт в репозиторий, а посетителю, который пришёл
+    попробовать, нужен не репозиторий, а установка. Складывать их в плитку
+    нельзя по той же причине: адрес у неё один.
 
     Показываются первые ``featured_limit``. Остаток не пропадает молча — под
-    списком сказано, сколько проектов не поместилось и где они лежат.
-    Сворачиваемый блок для остатка не годится: там, где страницу читают
-    текстом, он схлопывается в заголовок без содержимого.
-
-    Возвращается с переводами строк по краям: список markdown обязан
-    начинаться с начала строки, а маркер стоит вплотную перед ним.
+    плитками сказано, сколько проектов не показано и где они лежат.
     """
     limit = config["featured_limit"]
     projects = config["projects"]
@@ -529,13 +591,25 @@ def render_projects(config: dict) -> str:
     ordered.sort(key=lambda project: not project.get("pin", False))  # сортировка стабильна
     featured, hidden = ordered[:limit], ordered[limit:]
 
-    rows = []
+    rows = ['<div align="center">', ""]
     for project in featured:
-        parts = [f"**[{project['title']}](https://github.com/{project['repo']})**"]
+        name = slug(project["repo"])
+        rows += [
+            f'<a href="https://github.com/{project["repo"]}">'
+            f'<picture>'
+            f'<source media="(prefers-color-scheme: dark)" srcset="./assets/tile-{name}-dark.svg">'
+            f'<source media="(prefers-color-scheme: light)" srcset="./assets/tile-{name}-light.svg">'
+            f'<img src="./assets/tile-{name}-dark.svg" alt="" width="23%">'
+            f'</picture></a>',
+        ]
+
+    deep = []
+    for project in featured:
         links = " · ".join(f"[{name}]({url})" for name, url in project.get("links", {}).items())
         if links:
-            parts.append(links)
-        rows.append("- " + " · ".join(parts))
+            deep.append(f"<sub><b>{project['title']}</b> · {links}</sub>")
+    if deep:
+        rows += ["", "<br>".join(deep)]
 
     if hidden:
         rows += [
@@ -543,6 +617,7 @@ def render_projects(config: dict) -> str:
             f"<sub>{limit} shown, most recently active first · {len(hidden)} more on the "
             "[repositories tab](https://github.com/ArtVsMark?tab=repositories)</sub>",
         ]
+    rows += ["", "</div>"]
     return "\n" + "\n".join(rows) + "\n"
 
 
@@ -737,6 +812,39 @@ def aria_label(svg: pathlib.Path) -> str:
     return match.group(1) if match else ""
 
 
+def asset_version(name: str) -> str:
+    """Отпечаток содержимого картинки — восемь знаков хеша.
+
+    Нужен не для красоты адреса, а против кэша. Картинки на странице профиля
+    отдаёт прокси площадки, и ключом кэша служит АДРЕС. Сборка переписывает
+    файлы, не меняя имён, — значит адрес прежний, и читателю сколько-то времени
+    показывают вчерашнюю картинку. Проверено на живом примере: страница
+    показывала баннер без плашек и с числом коммитов на два меньше, когда в
+    репозитории уже лежал новый.
+
+    Это ровно то, от чего витрина защищается сборкой: число, устаревшее молча.
+    Гейт на маркеры тут не помогает — в репозитории всё верно, врёт показ.
+    """
+    return hashlib.sha256((ROOT / "assets" / f"{name}.svg").read_bytes()).hexdigest()[:8]
+
+
+def stamp_assets(text: str) -> tuple[str, int]:
+    """Проставляет отпечаток каждой ссылке на картинку витрины.
+
+    Меняет и ``src``, и ``srcset``: тёмную с светлой кэшируют по отдельности, и
+    забытый ``srcset`` означал бы, что половина читателей по-прежнему видит
+    старое.
+
+    Возвращает число заменённых ссылок: ноль означает, что разметка изменилась
+    и картинки перестали находиться, — а это отказ, а не «нечего делать».
+    """
+
+    def replace(match: re.Match[str]) -> str:
+        return f"./assets/{match.group('name')}.svg?v={asset_version(match.group('name'))}"
+
+    return re.subn(r"\./assets/(?P<name>[a-z-]+)\.svg(?:\?v=[0-9a-f]+)?", replace, text)
+
+
 def sync_alt(text: str, fresh: dict[str, str] | None = None) -> tuple[str, int]:
     """Приводит alt каждой картинки витрины к её же ``aria-label``.
 
@@ -757,7 +865,7 @@ def sync_alt(text: str, fresh: dict[str, str] | None = None) -> tuple[str, int]:
         return f"{match.group('head')}{label.replace(chr(34), chr(39))}{match.group('tail')}"
 
     return re.subn(
-        r'(?P<head><img src="\./assets/(?P<name>[a-z-]+)\.svg" alt=")[^"]*(?P<tail>")',
+        r'(?P<head><img src="\./assets/(?P<name>[a-z-]+)\.svg(?:\?v=[0-9a-f]+)?" alt=")[^"]*(?P<tail>")',
         replace,
         text,
     )
@@ -796,6 +904,17 @@ def patch_readme(values: dict[str, object], fresh: dict[str, str], write: bool =
     text, patched = sync_alt(text, fresh)
     if patched != expected:
         raise SystemExit(f"alt проставлен у {patched} картинок из {expected} — разметка изменилась")
+
+    # Отпечаток содержимого в адресе: прокси площадки кэширует картинки ПО
+    # АДРЕСУ, а сборка переписывает их, не меняя имён. Без отпечатка читатель
+    # какое-то время видит вчерашнюю картинку при верном репозитории — то есть
+    # число, устаревшее молча, ровно то, от чего эта сборка и заведена.
+    text, stamped = stamp_assets(text)
+    if not stamped:
+        raise SystemExit(
+            "ни одной ссылки на картинки витрины не нашлось — разметка изменилась.\n"
+            "  Отпечаток содержимого проставить некуда, а без него страница показывает кэш."
+        )
 
     if write:
         readme.write_text(text, encoding="utf-8")
@@ -924,8 +1043,12 @@ def selftest() -> int:
          all(a["tagline"] in label for a in accents)),
         ("подпись несёт показатели", "release v1.2.3" in label and "CI failure" in label),
         ("подпись несёт стек", all(a["stack"] in label for a in accents)),
-        ("проект без показателей не рисует пустую плашку",
+        ("плашка есть у каждого показателя, включая отсутствующий",
          svg.count('rx="12"') == sum(len(a["badges"]) for a in accents)),
+        ("подпись не двоит точку на стыке описания и показателей",
+         ".." not in label),
+        ("показатель подписан одинаково и с предметом, и без него",
+         set(BADGE_LABELS) == set(BADGE_KINDS)),
         ("подпись несёт измеренные числа", "1664" not in svg and "900 commits" in svg),
         ("просьба уменьшить движение уважается", "prefers-reduced-motion" in svg),
         ("первый акцент виден без стиля", 'class="accent" opacity="1"' in svg),
@@ -1091,6 +1214,11 @@ def main() -> int:
         if not check:
             (ROOT / f"assets/metrics-{theme}.svg").write_text(svg, encoding="utf-8")
             (ROOT / f"assets/featured-{theme}.svg").write_text(banner, encoding="utf-8")
+            # Плитки пишутся до правки README: их подпись и отпечаток берутся
+            # из самих файлов, и на первом прогоне их иначе ещё нет.
+            for project in config["projects"]:
+                (ROOT / f"assets/tile-{slug(project['repo'])}-{theme}.svg").write_text(
+                    render_tile(project, dark), encoding="utf-8")
     patch_readme(values, fresh, write=not check)
     print("проверка прошла: источники живы, маркеры на месте" if check
           else "assets/metrics-*.svg и README обновлены")
