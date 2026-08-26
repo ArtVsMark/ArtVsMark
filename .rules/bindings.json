@@ -11,15 +11,15 @@
     "002": {
       "status": "active",
       "mechanism": "process-step",
-      "where": "README.md § What holds the quality и scripts/merge_pr.py::refuse_outside_actions — утверждения проверяемы, а известное правило превращено в гейт"
+      "where": "README.md § What holds the quality и .github/workflows/pr-check.yml — утверждения проверяемы, а обязательная проверка в защите main держит их машинно"
     },
     "003": {
       "status": "not-applicable",
       "why": "конвейер витрины не смотрит на имена веток: работу он находит по открытым PR и их проверкам"
     },
     "004": {
-      "status": "rejected",
-      "why": "сборка витрины намеренно падает целиком: элементы связаны — страница переписывается одним куском, и пропуск метрики оставил бы на ней вчерашнее число"
+      "status": "not-applicable",
+      "why": "обхода объектов не осталось: слияние отдано штатному автомержу площадки, и она ведёт каждое изменение отдельно, а не списком. Прежний вердикт «rejected» разбирал сборку метрик — не тот предмет; настоящим предметом был обход открытых PR, и там правило нарушалось"
     },
     "005": {
       "status": "active",
@@ -47,7 +47,7 @@
     "010": {
       "status": "active",
       "mechanism": "gate",
-      "where": "scripts/merge_pr.py::checks_are_green — пустой список проверок не считается зелёным"
+      "where": ".github/workflows/automerge.yml — автомерж не включается, пока в защите main нет обязательной проверки: без неё изменение «чисто» сразу и сливается на пустом списке"
     },
     "011": {
       "status": "active",
@@ -197,7 +197,7 @@
     "045": {
       "status": "active",
       "mechanism": "gate",
-      "where": "scripts/build_metrics.py::count_rules и merge-when-green.yml — отсутствие источника или токена не выдаётся за успех"
+      "where": "scripts/build_metrics.py::rules_export и .github/workflows/metrics.yml — отказ источника роняет сборку, отсутствие токена владельца тоже отказ, а не тихий переход на штатный"
     },
     "046": {
       "status": "active",
@@ -215,7 +215,7 @@
     "049": {
       "status": "active",
       "mechanism": "process-step",
-      "where": "scripts/merge_pr.py — что готово к слиянию, вычисляется из живых PR и их проверок, а не из реестра"
+      "where": ".github/workflows/automerge.yml — что готово к слиянию, решает площадка по живому состоянию изменения и обязательным проверкам, а не отдельный реестр"
     },
     "050": {
       "status": "active",
@@ -225,7 +225,7 @@
     "051": {
       "status": "active",
       "mechanism": "process-step",
-      "where": "scripts/merge_pr.py — метка hold останавливает слияние; падает только достоверное"
+      "where": "scripts/check_labels.py — внешнему участнику предупреждение, владельцу отказ; .github/workflows/automerge.yml — ненастроенная защита это предупреждение, а не красный прогон"
     },
     "052": {
       "status": "not-applicable",
@@ -274,8 +274,9 @@
       "where": ".rules/roles.md — у каждой роли свой вопрос, свой артефакт и своё возражение"
     },
     "063": {
-      "status": "not-applicable",
-      "why": "автоматика витрины ничего чужого не правит — она переписывает свою же страницу"
+      "status": "active",
+      "mechanism": "gate",
+      "where": ".github/workflows/automerge.yml — автомерж включается по конъюнкции: не черновик И открыт И без метки hold И защита с обязательной проверкой есть; каждый пропуск назван причиной"
     },
     "064": {
       "status": "active",
@@ -322,8 +323,9 @@
       "where": ".github/dependabot.yml — SHA-пины действий двигает он; версия Python задана в одном месте"
     },
     "074": {
-      "status": "not-applicable",
-      "why": "необратимых шагов нет: публикация витрины — коммит, который откатывается"
+      "status": "active",
+      "mechanism": "gate",
+      "where": "защита main: обязательная проверка PR check плюс запрет force-push и удаления — слияние необратимо, историю main не переписываем"
     },
     "075": {
       "status": "active",
@@ -392,7 +394,7 @@
     "090": {
       "status": "active",
       "mechanism": "process-step",
-      "where": "scripts/checks.py — общая утилита вынесена выше обеих подсистем; и scripts/build_metrics.py::count_rules — число правил берётся из экспорта каталога, а не из своей копии определения"
+      "where": "scripts/build_metrics.py::rules_export — число правил берётся из экспорта каталога, а не из своей копии чужого определения; scripts/checks.py — свёртка по имени вынесена выше подсистем, хотя после ухода конвейера слияния потребитель у неё остался один"
     },
     "091": {
       "status": "not-applicable",
@@ -482,7 +484,7 @@
     "111": {
       "status": "active",
       "mechanism": "none",
-      "where": ".github/workflows/merge-when-green.yml — совет только там, где нужен секрет владельца; остальное конвейер делает сам"
+      "where": ".github/workflows/automerge.yml — совет только там, где нужна настройка владельца (секрет, защита ветки, разрешение squash); остальное конвейер делает сам"
     },
     "112": {
       "status": "not-applicable",
@@ -532,8 +534,8 @@
     },
     "123": {
       "status": "active",
-      "mechanism": "gate",
-      "where": "scripts/merge_pr.py — сообщение слияния пересобирается с трейлерами, а сам merge запрещён вне Actions: на записи учётные данные подменяются, и автором стал бы бот"
+      "mechanism": "process-step",
+      "where": "squash площадки: тело собирается из сообщений коммитов ветки вместе с трейлерами, автором ставится автор изменения. Проверки на конечной истории у витрины пока нет — см. issue #34"
     },
     "124": {
       "status": "not-applicable",
@@ -545,8 +547,9 @@
       "where": "scripts/build_metrics.py — генератор читает источники и ничего из собственного вывода; README и assets правит только сборка"
     },
     "126": {
-      "status": "not-applicable",
-      "why": "замораживающей автоматики нет"
+      "status": "active",
+      "mechanism": "process-step",
+      "where": "метка hold останавливает автомерж, и снимается она не через слияние; .github/workflows/automerge.yml"
     },
     "127": {
       "status": "active",
@@ -568,7 +571,9 @@
       "why": "бэклог витрины — одна-две задачи: сопоставлять новое правило не с чем"
     },
     "131": {
-      "status": "unreviewed"
+      "status": "active",
+      "mechanism": "process-step",
+      "where": "CLAUDE.md § Критические запреты — из окна не сливают руками. Гейт по окружению исчез вместе со скриптом слияния намеренно: при squash автором становится автор изменения, и подмена учётных данных на записи предмета больше не имеет"
     },
     "132": {
       "status": "unreviewed"
