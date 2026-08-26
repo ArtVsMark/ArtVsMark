@@ -37,9 +37,9 @@
 <div align="center">
 <a href="https://github.com/ArtVsMark?tab=repositories">
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./assets/featured-dark.svg?v=ecbd4197">
-  <source media="(prefers-color-scheme: light)" srcset="./assets/featured-light.svg?v=74b38e70">
-  <img src="./assets/featured-dark.svg?v=ecbd4197" alt="Stepik-Python-Grader — Offline Python autograder: unlimited local checks, honest side-by-side comparison of solutions. release v1.11.0, CI success, coverage 92.1%, pypi 1.11.0. 2 stars, 1666 commits, 43 issues, 12 releases, 658 prs. CLI · web UI · GUI · pytest plugin · OS sandbox · claude-code-playbook — Rules for agent sessions and a GitHub pipeline — each one carrying the incident it grew from. release none, CI success, coverage none, pypi none. 1 stars, 163 commits, 20 issues, 1 releases, 48 prs. docs · RU/EN · Glossary-Python — The RU/EN glossary the grader links into when a run fails. release none, CI none, coverage none, pypi none. 2 stars, 3 commits, 2 issues, 0 releases, 0 prs. content · tooling · claude-code-usage — Turns a three-step limit indicator into a number. Early: the spec is written, the tool is not. release none, CI none, coverage none, pypi 2.0.0. 0 stars, 5 commits, 15 issues, 0 releases, 0 prs. Python · JSONL over git" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="./assets/featured-dark.svg?v=f3da73ae">
+  <source media="(prefers-color-scheme: light)" srcset="./assets/featured-light.svg?v=c9c05516">
+  <img src="./assets/featured-dark.svg?v=f3da73ae" alt="Stepik-Python-Grader — Offline Python autograder: unlimited local checks, honest side-by-side comparison of solutions. release v1.11.0, CI success, coverage 92.1%, pypi 1.11.0. 2 stars, 1667 commits, 43 issues, 12 releases, 659 prs. CLI · web UI · GUI · pytest plugin · OS sandbox · claude-code-playbook — Rules for agent sessions and a GitHub pipeline — each one carrying the incident it grew from. release 0.1.0, CI success, coverage none, pypi none. 1 stars, 165 commits, 20 issues, 1 releases, 50 prs. docs · RU/EN · Glossary-Python — The RU/EN glossary the grader links into when a run fails. release none, CI none, coverage none, pypi none. 2 stars, 3 commits, 2 issues, 0 releases, 0 prs. content · tooling · claude-code-usage — Turns a three-step limit indicator into a number. Early: the spec is written, the tool is not. release none, CI none, coverage none, pypi 2.0.0. 0 stars, 5 commits, 15 issues, 0 releases, 0 prs. Python · JSONL over git" width="100%">
 </picture>
 </a>
 </div>
