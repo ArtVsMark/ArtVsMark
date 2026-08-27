@@ -387,6 +387,48 @@ BADGE_KINDS = ("version", "ci", "coverage", "package")
 BADGE_LABELS = {"version": "release", "ci": "CI", "coverage": "coverage", "package": "pypi"}
 
 
+def verify_absence(repo: str, kind: str, why: str) -> None:
+    """Проверяет, что «предмета нет» — правда, а не память автора.
+
+    Отказ по показателю — такое же утверждение о чужом репозитории, как число,
+    вписанное руками, и устаревает он так же молча. Так и вышло: у каталога
+    правил в ответе стояло «релизов нет», а релиз был — просто помеченный
+    предварительным, и `releases/latest` его не показывал. Страница получила
+    плашку «release none» рядом с числом «1 releases» в одном кадре.
+
+    Проверяется только однозначное. Пакет сюда не входит: имя пакета при отказе
+    не объявлено, а искать его по имени репозитория значит ловить чужой пакет с
+    похожим названием — ложный отказ дороже пропуска (правило 051). Пробел
+    назван здесь, а не выровнен.
+    """
+    if kind == "version":
+        if _api(f"/repos/{repo}/releases?per_page=1"):
+            found = "выпуски есть, хотя бы один — возможно, предварительный"
+        else:
+            return
+    elif kind == "ci":
+        if _api(f"/repos/{repo}/actions/workflows").get("total_count", 0):
+            found = "прогоны в репозитории есть"
+        else:
+            return
+    elif kind == "coverage":
+        branches = _api(f"/repos/{repo}/branches?per_page=100")
+        if any(branch["name"] == "badges" for branch in branches):
+            found = "ветка badges существует, значит показатель публикуется"
+        else:
+            return
+    else:
+        return  # пакет не проверяется: см. докстроку
+
+    raise SystemExit(
+        f"{repo}: ответ по показателю «{kind}» неверен.\n"
+        f"  Записано: {why}\n"
+        f"  На деле:  {found}\n\n"
+        "  Отказ — утверждение о чужом репозитории, и устаревает он молча.\n"
+        "  Замените «none» на источник значения либо исправьте причину."
+    )
+
+
 def project_badges(repo: str, answers: dict) -> list[tuple[str, str, str]]:
     """Показатели проекта значениями, а не чужими картинками.
 
@@ -409,6 +451,7 @@ def project_badges(repo: str, answers: dict) -> list[tuple[str, str, str]]:
     for kind in BADGE_KINDS:
         answer = answers.get(kind, {})
         if "none" in answer:
+            verify_absence(repo, kind, answer["none"])
             # Плашка остаётся и говорит «none». Пропустить её значило бы
             # показать четыре показателя у одного проекта и один у другого —
             # читатель достроит недостающее сам, и достроит в сторону «просто
@@ -419,7 +462,24 @@ def project_badges(repo: str, answers: dict) -> list[tuple[str, str, str]]:
             badges.append((BADGE_LABELS[kind], "none", "muted"))
             continue
         if kind == "version":
-            tag = _api(f"/repos/{repo}/releases/latest").get("tag_name")
+            # `releases/latest` не видит черновиков и предварительных выпусков:
+            # у каталога правил единственный релиз помечен предварительным, и
+            # эндпойнт отдавал 404 при существующем выпуске. Отсюда запасной
+            # путь по полному списку — иначе плашка говорила бы «нет релизов»
+            # рядом с числом «1 releases» в той же картинке.
+            try:
+                tag = _api(f"/repos/{repo}/releases/latest").get("tag_name")
+            except urllib.error.HTTPError as absent:
+                # 404 здесь — не сбой, а «нет выпуска, который площадка считает
+                # последним»: черновики и предварительные в этот эндпойнт не
+                # попадают. Отличать от настоящей ошибки обязательно, иначе
+                # молчаливый except спрячет сеть и права.
+                if absent.code != 404:
+                    raise
+                tag = None
+            if not tag:
+                releases = _api(f"/repos/{repo}/releases?per_page=1")
+                tag = releases[0]["tag_name"] if releases else None
             badges.append((BADGE_LABELS["version"], tag or "—", "info" if tag else "muted"))
         elif kind == "ci":
             runs = _api(

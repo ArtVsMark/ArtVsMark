@@ -57,7 +57,7 @@
       "stack": "docs · RU/EN",
       "badges": {
         "version": {
-          "none": "релизов нет: каталог правил читают по ссылке на main, а не выпусками"
+          "release": true
         },
         "ci": {
           "workflow": "ci.yml"
