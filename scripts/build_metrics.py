@@ -58,6 +58,7 @@ import os
 import pathlib
 import re
 import statistics
+import subprocess
 import sys
 import urllib.error
 import urllib.parse
@@ -1253,6 +1254,19 @@ def selftest() -> int:
         for line in broken:
             print(f"  {line}", file=sys.stderr)
         return 1
+    # Исход «вызвано без клона грейдера» объявлен в main и до сих пор не
+    # прогонялся: он живёт за проверкой каталога, а не в разбираемой функции
+    # (правило 145). Сети не требует — отказ наступает раньше первого запроса.
+    probe = subprocess.run(
+        [sys.executable, __file__, "/nonexistent-grader"],
+        capture_output=True, text=True,
+    )
+    if probe.returncode != 1:
+        broken.append(f"вызов без клона грейдера дал код {probe.returncode}, а не 1")
+    if "нет клона грейдера" not in probe.stderr:
+        broken.append("отказ без клона грейдера не называет предмет")
+    print(f"  код {probe.returncode} — вызов без клона грейдера: отказ назван")
+
     print("самопроверка пройдена: сторож, ранжирование и баннер держат объявленное")
     return 0
 
