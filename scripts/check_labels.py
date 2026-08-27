@@ -39,6 +39,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import subprocess
 import sys
 import urllib.request
 
@@ -178,6 +179,40 @@ def verdict(labels: set[str], files: list[str]) -> tuple[list[str], set[str], se
     return complaints, content, zones
 
 
+def outcome(number: int, complaints: list[str], content: set[str],
+            zones: set[str], author: str) -> tuple[int, str]:
+    """Код возврата и текст по находкам классификации.
+
+    Вынесено из ``main`` не ради красоты. Ответ у гейта РАЗНЫЙ в зависимости от
+    автора: внешнему участнику предупреждение, владельцу отказ. Это утверждение
+    записано вердиктом по правилу 051 в ``.rules/bindings.json`` — и до этой
+    правки не выполнялось ни разу: ветка жила в ``main`` рядом с обращением к
+    площадке, и достать её самопроверкой было нечем.
+
+    Правило 145 про это: необъявленная ветка обычно не «работает неверно», а
+    НЕ СУЩЕСТВУЕТ, и при чтении это неотличимо. Правило 146 добавляет вторую
+    половину: зелёный гейт подтверждал себя, а утверждение, ради которого он
+    построен, держалось чтением кода.
+
+    Почему мягко к внешнему: у него нет прав ставить метки в чужом репозитории,
+    и отказ требовал бы от него невозможного. Метку проставит принимающий.
+    """
+    if not complaints:
+        covered = f"; зоны из диффа покрыты: {', '.join(sorted(zones))}" if zones else ""
+        return 0, f"PR #{number}: классификация есть — {', '.join(sorted(content))}{covered}"
+
+    complaint = (
+        f"PR #{number}: классификация неполна. Метка — вход механизма, а не украшение:\n"
+        f"по ней видно зону работы до чтения различий.\n"
+        + "\n".join(f"— {line}" for line in complaints)
+        + f"\nМетки конвейера ({', '.join(sorted(PIPELINE))}) классификацией не считаются."
+    )
+    if author.lower() != OWNER.lower():
+        return 0, (f"::warning::{complaint}\n"
+                   "Автор — не владелец репозитория: правило мягкое, метку проставит принимающий.")
+    return 1, f"::error::{complaint}"
+
+
 def selftest() -> int:
     """Прогоняет через гейт то, что он обязан отвергнуть и обязан пропустить.
 
@@ -259,6 +294,29 @@ def selftest() -> int:
     if stray:
         broken.append(f"таблица заголовков выводит метки вне CONTENT: {sorted(stray)}")
 
+    # Исходы самого гейта — по каждому, а не только по успешному (145). Ветка
+    # «внешнему участнику мягко» — это ещё и проверка УТВЕРЖДЕНИЯ, записанного
+    # вердиктом 051: до сих пор оно держалось чтением кода, а не выполнением.
+    outcomes = [
+        ("классификация полна", [], "ArtVsMark", 0, "классификация есть"),
+        ("находки у владельца — отказ", ["метка вне списка: question"], "ArtVsMark", 1, "::error::"),
+        ("находки у внешнего — предупреждение",
+         ["метка вне списка: question"], "postoronniy", 0, "::warning::"),
+        ("регистр логина роли не меняет",
+         ["метка вне списка: question"], "artvsmark", 1, "::error::"),
+    ]
+    for name, complaints, author, want_code, want_mark in outcomes:
+        code, text = outcome(7, complaints, {"bug"}, set(), author)
+        if code != want_code or want_mark not in text:
+            broken.append(f"{name}: ожидалось {want_code}/{want_mark}, вышло {code}/{text[:40]}")
+        print(f"  код {code}, {want_mark:<11} — {name}")
+
+    # Вызов без изменения — тоже объявленный исход, и живёт он в main.
+    probe = subprocess.run([sys.executable, __file__], capture_output=True, text=True)
+    if probe.returncode != 1:
+        broken.append(f"вызов без номера изменения дал код {probe.returncode}, а не 1")
+    print(f"  код {probe.returncode}, без номера  — вызов без изменения")
+
     if broken:
         print("\nсамопроверка провалена:", file=sys.stderr)
         for line in broken:
@@ -285,24 +343,9 @@ def main() -> int:
     pull = _api(f"/repos/{REPO}/pulls/{number}")
     labels = {label["name"] for label in pull["labels"]}
     complaints, content, zones = verdict(labels, changed_files(number))
-
-    if not complaints:
-        covered = f"; зоны из диффа покрыты: {', '.join(sorted(zones))}" if zones else ""
-        print(f"PR #{number}: классификация есть — {', '.join(sorted(content))}{covered}")
-        return 0
-
-    complaint = (
-        f"PR #{number}: классификация неполна. Метка — вход механизма, а не украшение:\n"
-        f"по ней видно зону работы до чтения различий.\n"
-        + "\n".join(f"— {line}" for line in complaints)
-        + f"\nМетки конвейера ({', '.join(sorted(PIPELINE))}) классификацией не считаются."
-    )
-    if pull["user"]["login"].lower() != OWNER.lower():
-        print(f"::warning::{complaint}")
-        print("Автор — не владелец репозитория: правило мягкое, метку проставит принимающий.")
-        return 0
-    print(f"::error::{complaint}")
-    return 1
+    code, text = outcome(number, complaints, content, zones, pull["user"]["login"])
+    print(text)
+    return code
 
 
 if __name__ == "__main__":
