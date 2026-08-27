@@ -74,17 +74,55 @@ jobs:
           echo "::warning::MERGE_QUEUE_TOKEN не задан — автомерж не включается. Нужен PAT владельца. GITHUB_TOKEN не подходит: с ним автором коммита в main станет бот."
           echo "SKIP=1" >> "$GITHUB_ENV"
 
+      # Разбор исходов живёт скриптом, а не выражением в шаге: шаг нельзя
+      # прогнать тем, что он обязан отвергнуть, а скрипт можно — и он прогоняется
+      # (правило 140, `scripts/gh_outcome.py --selftest` в pr-check.yml).
+      #
+      # БЕРЁТСЯ ВЕРСИЯ ИЗ ИЗМЕНЕНИЯ, И ЭТО РАЗОБРАНО, А НЕ ПРОПУЩЕНО. Первый
+      # черновик брал её с общей ветки: рядом лежит личный токен владельца, и
+      # выполнять при нём код, приехавший этим же изменением, выглядело подменой
+      # доверия. Защита оказалась театром — на событии `pull_request` площадка
+      # берёт САМ ЭТОТ ФАЙЛ из изменения, и переписать шаг целиком дешевле, чем
+      # править вызываемый им скрипт. Закреплять один файл, оставив открытым
+      # тот, что его зовёт, значит платить за видимость.
+      #
+      # Настоящая граница проходит не здесь: у изменения из форка секретов нет
+      # вовсе, и шаг выше уводит работу в SKIP ещё до этого места.
+      #
+      # Практическая цена у театра тоже была: на общей ветке скрипта ещё нет в
+      # тот момент, когда его вводит первое же изменение, — шаг падал с кодом 2
+      # на несуществующем файле, ровно тем тупиком, который чинит (#65).
+      - name: Забрать разбор исходов
+        if: env.SKIP != '1'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          sparse-checkout: scripts/gh_outcome.py
+          sparse-checkout-cone-mode: false
+
       - name: состояние изменения
         id: pr
         if: env.SKIP != '1'
         env:
           GH_TOKEN: ${{ env.MERGE_QUEUE_TOKEN }}
         run: |
-          set -euo pipefail
-          gh pr view "$PR" --repo "$GITHUB_REPOSITORY" \
+          set -uo pipefail
+          out=$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" \
             --json isDraft,state,baseRefName,autoMergeRequest \
             --jq '"draft=\(.isDraft)", "state=\(.state)", "base=\(.baseRefName)",
-                  "armed=\(.autoMergeRequest != null)"' >> "$GITHUB_OUTPUT"
+                  "armed=\(.autoMergeRequest != null)"' 2>&1) && rc=0 || rc=$?
+          verdict=$(printf '%s\n' "$out" | python3 scripts/gh_outcome.py --code "$rc") \
+            || verdict="broken: разбор исходов не отработал — scripts/gh_outcome.py"
+          case "$verdict" in
+            ok:*)
+              printf '%s\n' "$out" >> "$GITHUB_OUTPUT" ;;
+            state:*)
+              echo "::warning::Состояние #$PR не прочитано — автомерж не включается: ${verdict#state: }. С изменением всё в порядке: включится следующим прогоном, когда источник ответит."
+              echo "SKIP=1" >> "$GITHUB_ENV" ;;
+            *)
+              echo "::error::Состояние #$PR не прочитано: ${verdict#broken: }"
+              exit 1 ;;
+          esac
 
       # Черновик — «ещё не беру». Пропуск, а не отказ: красное на штатном
       # состоянии приучает читать красное как фон. Уже включённый автомерж —
@@ -101,20 +139,41 @@ jobs:
 
       # Метка `hold` — стоп-кран владельца, и она сильнее всего остального.
       # Автомерж здесь по умолчанию: отключается меткой, а не включается ею.
+      #
+      # Нечитаемые метки — пропуск, а не «меток нет»: стоп-кран мог быть уже
+      # поставлен, и отличить это от пустого списка нечем. Ошибаться здесь надо
+      # в сторону несработавшего автомержа, а не сработавшего вопреки hold.
       - name: пропустить помеченные hold
         if: env.SKIP != '1'
         env:
           GH_TOKEN: ${{ env.MERGE_QUEUE_TOKEN }}
         run: |
-          set -euo pipefail
-          if gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json labels \
-               --jq '.labels[].name' | grep -qx hold; then
+          set -uo pipefail
+          out=$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json labels \
+            --jq '.labels[].name' 2>&1) && rc=0 || rc=$?
+          verdict=$(printf '%s\n' "$out" | python3 scripts/gh_outcome.py --code "$rc") \
+            || verdict="broken: разбор исходов не отработал — scripts/gh_outcome.py"
+          case "$verdict" in
+            ok:*) ;;
+            state:*)
+              echo "::warning::Метки #$PR не прочитаны — автомерж не включается: ${verdict#state: }. Стоп-кран hold мог стоять, и проверить это нечем."
+              echo "SKIP=1" >> "$GITHUB_ENV"
+              exit 0 ;;
+            *)
+              echo "::error::Метки #$PR не прочитаны: ${verdict#broken: }"
+              exit 1 ;;
+          esac
+          if printf '%s\n' "$out" | grep -qx hold; then
             echo "#$PR: метка hold — пропуск"
             echo "SKIP=1" >> "$GITHUB_ENV"
           fi
 
       # Без обязательной проверки автомерж сливает мимо гейтов. Проверяется до
       # включения; пробел называется вслух, а не заминается (правило 046).
+      #
+      # Раньше здесь любой отказ становился предупреждением. Это два исхода из
+      # трёх: «источник не ответил» и «источник ответил отказом» — разные вещи,
+      # и второе прятать нельзя (039).
       - name: обязательная проверка на общей ветке есть
         if: env.SKIP != '1'
         env:
@@ -122,20 +181,27 @@ jobs:
           BASE: ${{ steps.pr.outputs.base }}
         run: |
           set -uo pipefail
-          contexts=$(gh api "repos/$GITHUB_REPOSITORY/rules/branches/$BASE" \
+          out=$(gh api "repos/$GITHUB_REPOSITORY/rules/branches/$BASE" \
             --jq '[.[] | select(.type=="required_status_checks")
                        | .parameters.required_status_checks[].context] | length' 2>&1) && rc=0 || rc=$?
-          if [ "$rc" -ne 0 ]; then
-            echo "::warning::Состояние защиты ветки $BASE не прочитано — автомерж не включается. $contexts"
-            echo "SKIP=1" >> "$GITHUB_ENV"
-            exit 0
-          fi
-          if [ "$contexts" -eq 0 ]; then
+          verdict=$(printf '%s\n' "$out" | python3 scripts/gh_outcome.py --code "$rc") \
+            || verdict="broken: разбор исходов не отработал — scripts/gh_outcome.py"
+          case "$verdict" in
+            ok:*) ;;
+            state:*)
+              echo "::warning::Состояние защиты ветки $BASE не прочитано — автомерж не включается: ${verdict#state: }"
+              echo "SKIP=1" >> "$GITHUB_ENV"
+              exit 0 ;;
+            *)
+              echo "::error::Состояние защиты ветки $BASE не прочитано: ${verdict#broken: }"
+              exit 1 ;;
+          esac
+          if [ "$out" -eq 0 ]; then
             echo "::warning::У ветки $BASE нет обязательных проверок — автомерж слил бы мимо гейтов, поэтому не включается. Settings -> Rules -> Require status checks to pass."
             echo "SKIP=1" >> "$GITHUB_ENV"
             exit 0
           fi
-          echo "обязательных проверок на $BASE: $contexts"
+          echo "обязательных проверок на $BASE: $out"
 
       - name: включить автомерж
         if: env.SKIP != '1'
@@ -150,21 +216,32 @@ jobs:
           # Это та самая оговорка, ради которой правило 001 написано с «только
           # там, где REST не умеет»; `gh` делает этот вызов за нас.
           out=$(gh pr merge "$PR" --repo "$GITHUB_REPOSITORY" --auto --squash 2>&1) && rc=0 || rc=$?
-          if [ "$rc" -ne 0 ]; then
-            case "$out" in
-              *"lean status"*|*"already"*)
-                echo "::warning::#$PR уже в чистом состоянии — ждать нечего, автомерж включить нельзя. Слить должен человек."
-                exit 0 ;;
-              *uto-merge*|*"not enabled"*)
-                echo "::error::Автомерж в репозитории не разрешён. Settings -> General -> Allow auto-merge."
-                exit 1 ;;
-              *quash*)
-                echo "::error::Squash запрещён. Settings -> General -> Allow squash merging. Именно squash атрибутирует коммит автору изменения, а не тому, кто нажал."
-                exit 1 ;;
-              *)
-                echo "::error::Автомерж не включился: $out"
-                exit 1 ;;
-            esac
+          if [ "$rc" -eq 0 ]; then
+            printf '%s\n' "$out"
+            echo "автомерж включён: сольётся, когда обязательные проверки позеленеют"
+            exit 0
           fi
-          printf '%s\n' "$out"
-          echo "автомерж включён: сольётся, когда обязательные проверки позеленеют"
+          # Отказ источника разбирается ПЕРЕД ответами площадки, и порядок здесь
+          # не вкусовой: «API rate limit already exceeded» содержит слово
+          # `already` и до этой правки попадало в ветку «уже в чистом
+          # состоянии» — то есть исчерпанный лимит объявлялся успехом.
+          verdict=$(printf '%s\n' "$out" | python3 scripts/gh_outcome.py --code "$rc") \
+            || verdict="broken: разбор исходов не отработал — scripts/gh_outcome.py"
+          if [ "${verdict%%:*}" = state ]; then
+            echo "::warning::Автомерж на #$PR не включился: ${verdict#state: }. С изменением всё в порядке — включится следующим прогоном."
+            exit 0
+          fi
+          case "$out" in
+            *"lean status"*|*"already enabled"*)
+              echo "::warning::#$PR уже в чистом состоянии — ждать нечего, автомерж включить нельзя. Слить должен человек."
+              exit 0 ;;
+            *uto-merge*|*"not enabled"*)
+              echo "::error::Автомерж в репозитории не разрешён. Settings -> General -> Allow auto-merge."
+              exit 1 ;;
+            *quash*)
+              echo "::error::Squash запрещён. Settings -> General -> Allow squash merging. Именно squash атрибутирует коммит автору изменения, а не тому, кто нажал."
+              exit 1 ;;
+            *)
+              echo "::error::Автомерж не включился: ${verdict#broken: }"
+              exit 1 ;;
+          esac

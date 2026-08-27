@@ -77,6 +77,7 @@
 | `scripts/check_bindings.py` | конвейер | окно; секреты за владельцем |
 | `scripts/check_roles.py` | конвейер | окно; секреты за владельцем |
 | `scripts/check_author.py` | конвейер | окно; секреты за владельцем |
+| `scripts/gh_outcome.py` | конвейер | окно; секреты за владельцем |
 | `.github/workflows/pr-check.yml` | конвейер | окно; секреты за владельцем |
 | `.github/workflows/automerge.yml` | конвейер | окно; секреты за владельцем |
 | `.github/workflows/metrics.yml` | конвейер | окно; секреты за владельцем |

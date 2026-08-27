@@ -175,7 +175,7 @@
     "039": {
       "status": "active",
       "mechanism": "none",
-      "where": "scripts/build_metrics.py::main — «числа не изменились» отличается от отказа источника; scripts/build_metrics.py::_count — курсорная разбивка это третий исход, а не единица: посчитать нельзя, и сборка падает вместо правдоподобного числа; .github/workflows/rules-inbox.yml — очередь, чистота и неотработавший механизм разведены кодами"
+      "where": "scripts/build_metrics.py::main — «числа не изменились» отличается от отказа источника; scripts/build_metrics.py::_count — курсорная разбивка это третий исход, а не единица: посчитать нельзя, и сборка падает вместо правдоподобного числа; .github/workflows/rules-inbox.yml — очередь, чистота и неотработавший механизм разведены кодами; scripts/gh_outcome.py::classify — у обращения к площадке три исхода: ответил, не ответил (бюджет запросов, сеть, пятисотка), ответил отказом. Второй это предупреждение, третий красное, и неразобранный отказ тоже красное — молчаливый пропуск на незнакомом делает сломанный конвейер похожим на работающий; .github/workflows/automerge.yml — каждый шаг с `gh` разбирает исход этим разбором, а не считает любой отказ поломкой изменения"
     },
     "040": {
       "status": "not-applicable",
@@ -231,7 +231,7 @@
     "051": {
       "status": "active",
       "mechanism": "process-step",
-      "where": "scripts/check_labels.py — внешнему участнику предупреждение, владельцу отказ; .github/workflows/automerge.yml — ненастроенная защита это предупреждение, а не красный прогон"
+      "where": "scripts/check_labels.py — внешнему участнику предупреждение, владельцу отказ; .github/workflows/automerge.yml — ненастроенная защита это предупреждение, а не красный прогон; исчерпанный бюджет запросов тоже: он состояние источника, а не поломка изменения, и красное на нём запирало изменение в `unstable`, откуда автомерж уже не включить (scripts/gh_outcome.py::SOURCE_SILENT)"
     },
     "052": {
       "status": "not-applicable",
@@ -627,7 +627,7 @@
     "140": {
       "status": "active",
       "mechanism": "gate",
-      "where": "scripts/check_bindings.py::selftest, scripts/check_roles.py::selftest, scripts/check_labels.py::selftest, scripts/build_metrics.py::selftest — через каждый гейт нарочно прогоняется то, что он обязан отвергнуть, и то, что обязан пропустить: набор из одних отказов не видит ложного отказа. Прогоны стоят шагами в .github/workflows/pr-check.yml, а не запускаются руками"
+      "where": "scripts/check_bindings.py::selftest, scripts/check_roles.py::selftest, scripts/check_labels.py::selftest, scripts/build_metrics.py::selftest, scripts/gh_outcome.py::selftest — через каждый гейт нарочно прогоняется то, что он обязан отвергнуть, и то, что обязан пропустить: набор из одних отказов не видит ложного отказа. Прогоны стоят шагами в .github/workflows/pr-check.yml, а не запускаются руками"
     },
     "141": {
       "status": "active",
