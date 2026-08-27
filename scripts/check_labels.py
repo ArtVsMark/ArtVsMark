@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import urllib.request
 
@@ -53,6 +54,37 @@ CONTENT = frozenset({"bug", "enhancement", "documentation", "github_actions", "d
 # изменением, а не что это за изменение. Список нужен, чтобы не жаловаться на
 # них как на постороннее.
 PIPELINE = frozenset({"hold"})
+
+#: Тип коммита по Conventional Commits — метка содержания. Нужна прогону
+#: `open-pr.yml`: изменение открывается пушем, и без метки классификация красная
+#: с первой секунды, а красное как фон обесценивает красное настоящее.
+#:
+#: Таблица живёт здесь, а не выражением в шаге прогона, по той же причине, по
+#: которой там же оказался разбор исходов: шаг нельзя прогнать тем, что он
+#: обязан отвергнуть, а функцию можно. Предмет тот же, что у гейта, — метки
+#: содержания, и второй копии списка не заводится (правило 090).
+SUBJECT_LABEL: tuple[tuple[str, str], ...] = (
+    ("fix", "bug"),
+    ("feat", "enhancement"),
+    ("docs", "documentation"),
+    ("ci", "github_actions"),
+    ("build", "github_actions"),
+    ("deps", "dependencies"),
+)
+
+
+def label_for_subject(subject: str) -> str:
+    """Метка содержания по заголовку коммита, либо пустая строка.
+
+    Пустая строка — не «нет метки», а «не разобрано»: вызывающий обязан сказать
+    это вслух, а не поставить метку наугад. Неверная метка хуже отсутствующей —
+    по ней зону работы читают до диффа (правило 064).
+    """
+    head = subject.strip().split(":", 1)[0].strip().lower()
+    # Область в скобках и восклицательный знак ломающего изменения к типу не
+    # относятся: `feat(profile)!` — это `feat`.
+    kind = re.split(r"[(!]", head, maxsplit=1)[0].strip()
+    return next((label for prefix, label in SUBJECT_LABEL if kind == prefix), "")
 
 # Зоны, выводимые из диффа: предикат по пути — метка, без которой изменение в
 # этой зоне классифицировано не полностью.
@@ -197,18 +229,54 @@ def selftest() -> int:
     if not any("github_actions" in line for line in zoned):
         broken.append("отказ на непокрытой зоне не называет недостающую метку")
 
+    # Вывод метки по заголовку — вход прогона `open-pr.yml`, и ошибка здесь
+    # ставит НЕВЕРНУЮ метку, то есть врёт о зоне работы. Проверяется обеими
+    # сторонами: что разбирается и что осознанно не разбирается.
+    subjects = [
+        ("fix(automerge): исчерпанный бюджет запросов", "bug"),
+        ("feat(profile): плитка называет флагман", "enhancement"),
+        ("docs(profile): подтверждение прогоном", "documentation"),
+        ("ci: закрепить действия по SHA", "github_actions"),
+        ("build(deps): поднять actions/checkout", "github_actions"),
+        ("deps: поднять setup-python", "dependencies"),
+        ("feat!: ломающее изменение", "enhancement"),
+        ("fix(profile)!: и область, и восклицательный знак", "bug"),
+        ("  FEAT(profile): регистр и отступы  ", "enhancement"),
+        ("refactor(scripts): тип вне таблицы", ""),
+        ("правка без типа вовсе", ""),
+        ("", ""),
+        ("fixture: не fix, а другое слово целиком", ""),
+    ]
+    for subject, expected in subjects:
+        got = label_for_subject(subject)
+        if got != expected:
+            broken.append(f"заголовок {subject!r}: ожидалась метка {expected!r}, вышла {got!r}")
+        print(f"  {got or '— не разобрано':<14} — {subject.strip()[:52] or '(пустой заголовок)'}")
+
+    # Вывод обязан оставаться внутри списка меток содержания: разойдись он с
+    # ним — прогон ставил бы метку, которую этот же гейт отвергает.
+    stray = {label for _, label in SUBJECT_LABEL} - CONTENT
+    if stray:
+        broken.append(f"таблица заголовков выводит метки вне CONTENT: {sorted(stray)}")
+
     if broken:
         print("\nсамопроверка провалена:", file=sys.stderr)
         for line in broken:
             print(f"  {line}", file=sys.stderr)
         return 1
-    print("самопроверка пройдена: гейт отвергает то, что обязан, и называет предмет")
+    print("самопроверка пройдена: гейт отвергает то, что обязан, называет предмет и выводит метку по заголовку")
     return 0
 
 
 def main() -> int:
     if "--selftest" in sys.argv[1:]:
         return selftest()
+    if "--label-for-subject" in sys.argv[1:]:
+        # Вход прогона `open-pr.yml`. Печатается только метка: пусто значит
+        # «не разобрано», и решение, что с этим делать, принимает вызывающий.
+        i = sys.argv.index("--label-for-subject")
+        print(label_for_subject(sys.argv[i + 1] if len(sys.argv) > i + 1 else ""))
+        return 0
     if len(sys.argv) < 2:
         print(__doc__)
         return 1
