@@ -387,6 +387,23 @@ BADGE_KINDS = ("version", "ci", "coverage", "package")
 BADGE_LABELS = {"version": "release", "ci": "CI", "coverage": "coverage", "package": "pypi"}
 
 
+def _badge_files(repo: str) -> list[str]:
+    """Имена значков в ветке по умолчанию. Пусто — каталога значков нет.
+
+    404 здесь — законный ответ «такого каталога нет», а не сбой: у большинства
+    репозиториев значков не бывает вовсе. Остальные коды поднимаются, иначе
+    молчаливый except спрячет сеть и права (правило 039).
+    """
+    try:
+        entries = _api(f"/repos/{repo}/contents/.github/badges")
+    except urllib.error.HTTPError as absent:
+        if absent.code != 404:
+            raise
+        return []
+    return [e["name"] for e in entries
+            if e["type"] == "file" and "coverage" in e["name"]]
+
+
 def verify_absence(repo: str, kind: str, why: str) -> None:
     """Проверяет, что «предмета нет» — правда, а не память автора.
 
@@ -412,9 +429,16 @@ def verify_absence(repo: str, kind: str, why: str) -> None:
         else:
             return
     elif kind == "coverage":
+        # Обе площадки, а не одна: с тех пор как значок научились класть в
+        # ветку по умолчанию, проверка только ветки `badges` пропускала бы
+        # ровно тот случай, ради которого она написана. Так и вышло у каталога
+        # правил: покрытие появилось в main, а ответ витрины ещё говорил
+        # «тестов нет».
         branches = _api(f"/repos/{repo}/branches?per_page=100")
         if any(branch["name"] == "badges" for branch in branches):
             found = "ветка badges существует, значит показатель публикуется"
+        elif _badge_files(repo):
+            found = "в ветке по умолчанию лежит значок покрытия"
         else:
             return
     else:
@@ -489,9 +513,26 @@ def project_badges(repo: str, answers: dict) -> list[tuple[str, str, str]]:
             state = runs[0]["conclusion"] if runs else "unknown"
             badges.append((BADGE_LABELS["ci"], state, "ok" if state == "success" else "warn"))
         elif kind == "coverage":
-            payload = _api(
-                f"/repos/{repo}/contents/.github/badges/{answer['endpoint']}.json?ref=badges"
-            )
+            # Две формы ответа, потому что покрытие публикуют двумя способами,
+            # и обе законны:
+            #
+            #   {"endpoint": "имя"} — значок на отдельной ветке `badges`. Так
+            #     делает грейдер: его CI считает покрытие по всем ОС и
+            #     коммитит результат ботом, мимо общей ветки;
+            #   {"badge": "имя"} — значок в ветке по умолчанию, рядом с кодом.
+            #     Так делает каталог правил, и это не прихоть: версия живёт на
+            #     отдельной ветке потому, что она свойство ИСТОРИИ и тегов, а
+            #     покрытие — свойство ДЕРЕВА и меняется тем же изменением, что
+            #     и код. Там его и держит гейт, сверяя с замером.
+            #
+            # Одну форму на обе площадки не свести: у них разный ref, и
+            # угадывать его перебором значило бы прятать ошибку в данных за
+            # второй попыткой.
+            if "badge" in answer:
+                path = f".github/badges/{answer['badge']}.json"
+            else:
+                path = f".github/badges/{answer['endpoint']}.json?ref=badges"
+            payload = _api(f"/repos/{repo}/contents/{path}")
             value = json.loads(base64.b64decode(payload["content"]))["message"]
             badges.append((BADGE_LABELS["coverage"], value, "ok"))
         else:
@@ -1149,6 +1190,11 @@ def selftest() -> int:
         ("отказ с причиной — законный ответ",
          config_of({**full, "coverage": {"none": "тестов нет: репозиторий текстовый"}}), False),
         ("показатель, которого сборка не умеет", config_of({**full, "stars": {"none": "x"}}), True),
+        # Значок в ветке по умолчанию — такой же законный ответ, как значок на
+        # ветке `badges`. Случай заведён потому, что вторая форма появилась
+        # позже первой: договор, знающий одну форму, отверг бы каталог правил.
+        ("покрытие значком в ветке по умолчанию",
+         config_of({**full, "coverage": {"badge": "coverage"}}), False),
     ]
     for name, cfg, must_reject in badge_cases:
         try:
