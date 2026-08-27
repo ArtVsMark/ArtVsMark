@@ -81,6 +81,8 @@
 | `.github/workflows/pr-check.yml` | конвейер | окно; секреты за владельцем |
 | `.github/workflows/automerge.yml` | конвейер | окно; секреты за владельцем |
 | `.github/workflows/open-pr.yml` | конвейер | окно; секреты за владельцем |
+| `.github/workflows/main-red.yml` | конвейер | окно; секреты за владельцем |
+| `.github/main-red-issue.md` | конвейер | окно предлагает, владелец спорит |
 | `.github/workflows/metrics.yml` | конвейер | окно; секреты за владельцем |
 | `.github/workflows/rules-inbox.yml` | связь с каталогом правил | окно предлагает, владелец спорит |
 | `.github/workflows/attribution-history.yml` | атрибуция в итоговой истории | окно; список имён за владельцем |
