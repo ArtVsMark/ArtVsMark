@@ -63,7 +63,7 @@
           "workflow": "ci.yml"
         },
         "coverage": {
-          "badge": "coverage"
+          "endpoint": "coverage"
         },
         "package": {
           "none": "не публикуется пакетом: подключается действием и сырой ссылкой"
