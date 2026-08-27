@@ -78,15 +78,24 @@ jobs:
       # прогнать тем, что он обязан отвергнуть, а скрипт можно — и он прогоняется
       # (правило 140, `scripts/gh_outcome.py --selftest` в pr-check.yml).
       #
-      # Берётся версия с ОБЩЕЙ ветки, а не из изменения. Здесь в окружении лежит
-      # личный токен владельца, и выполнять рядом с ним код, приехавший этим же
-      # изменением, значит отдать токен автору изменения. Разбор — часть
-      # конвейера, а не предмет проверки.
+      # БЕРЁТСЯ ВЕРСИЯ ИЗ ИЗМЕНЕНИЯ, И ЭТО РАЗОБРАНО, А НЕ ПРОПУЩЕНО. Первый
+      # черновик брал её с общей ветки: рядом лежит личный токен владельца, и
+      # выполнять при нём код, приехавший этим же изменением, выглядело подменой
+      # доверия. Защита оказалась театром — на событии `pull_request` площадка
+      # берёт САМ ЭТОТ ФАЙЛ из изменения, и переписать шаг целиком дешевле, чем
+      # править вызываемый им скрипт. Закреплять один файл, оставив открытым
+      # тот, что его зовёт, значит платить за видимость.
+      #
+      # Настоящая граница проходит не здесь: у изменения из форка секретов нет
+      # вовсе, и шаг выше уводит работу в SKIP ещё до этого места.
+      #
+      # Практическая цена у театра тоже была: на общей ветке скрипта ещё нет в
+      # тот момент, когда его вводит первое же изменение, — шаг падал с кодом 2
+      # на несуществующем файле, ровно тем тупиком, который чинит (#65).
       - name: Забрать разбор исходов
         if: env.SKIP != '1'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.base.sha || github.event.repository.default_branch }}
           fetch-depth: 1
           sparse-checkout: scripts/gh_outcome.py
           sparse-checkout-cone-mode: false
@@ -102,7 +111,8 @@ jobs:
             --json isDraft,state,baseRefName,autoMergeRequest \
             --jq '"draft=\(.isDraft)", "state=\(.state)", "base=\(.baseRefName)",
                   "armed=\(.autoMergeRequest != null)"' 2>&1) && rc=0 || rc=$?
-          verdict=$(printf '%s\n' "$out" | python3 scripts/gh_outcome.py --code "$rc")
+          verdict=$(printf '%s\n' "$out" | python3 scripts/gh_outcome.py --code "$rc") \
+            || verdict="broken: разбор исходов не отработал — scripts/gh_outcome.py"
           case "$verdict" in
             ok:*)
               printf '%s\n' "$out" >> "$GITHUB_OUTPUT" ;;
@@ -141,7 +151,8 @@ jobs:
           set -uo pipefail
           out=$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json labels \
             --jq '.labels[].name' 2>&1) && rc=0 || rc=$?
-          verdict=$(printf '%s\n' "$out" | python3 scripts/gh_outcome.py --code "$rc")
+          verdict=$(printf '%s\n' "$out" | python3 scripts/gh_outcome.py --code "$rc") \
+            || verdict="broken: разбор исходов не отработал — scripts/gh_outcome.py"
           case "$verdict" in
             ok:*) ;;
             state:*)
@@ -173,7 +184,8 @@ jobs:
           out=$(gh api "repos/$GITHUB_REPOSITORY/rules/branches/$BASE" \
             --jq '[.[] | select(.type=="required_status_checks")
                        | .parameters.required_status_checks[].context] | length' 2>&1) && rc=0 || rc=$?
-          verdict=$(printf '%s\n' "$out" | python3 scripts/gh_outcome.py --code "$rc")
+          verdict=$(printf '%s\n' "$out" | python3 scripts/gh_outcome.py --code "$rc") \
+            || verdict="broken: разбор исходов не отработал — scripts/gh_outcome.py"
           case "$verdict" in
             ok:*) ;;
             state:*)
@@ -213,7 +225,8 @@ jobs:
           # не вкусовой: «API rate limit already exceeded» содержит слово
           # `already` и до этой правки попадало в ветку «уже в чистом
           # состоянии» — то есть исчерпанный лимит объявлялся успехом.
-          verdict=$(printf '%s\n' "$out" | python3 scripts/gh_outcome.py --code "$rc")
+          verdict=$(printf '%s\n' "$out" | python3 scripts/gh_outcome.py --code "$rc") \
+            || verdict="broken: разбор исходов не отработал — scripts/gh_outcome.py"
           if [ "${verdict%%:*}" = state ]; then
             echo "::warning::Автомерж на #$PR не включился: ${verdict#state: }. С изменением всё в порядке — включится следующим прогоном."
             exit 0
