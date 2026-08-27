@@ -1,0 +1,149 @@
+# Изменение открывает ВЛАДЕЛЕЦ, а не окно.
+#
+# ЗАЧЕМ. Площадка ставит автором squash-коммита автора ИЗМЕНЕНИЯ — не того, кто
+# нажал, и не автора коммитов ветки. Пока изменения открывал токен владельца,
+# соглашение соблюдалось само: `.rules/README.md` § Атрибуция коммитов. В окне,
+# где на запись отвечает бот, оно перевернулось молча — коммит `ca7dfcd` в `main`
+# подписан `claude[bot]`, единственный из пятнадцати, а владелец уехал в
+# `Co-authored-by`, которого нет в `.github/authors.txt`. Гейт
+# `attribution-history` покраснел справедливо, и переписать это нельзя: историю
+# `main` не переписывают.
+#
+# ПОЧЕМУ ПО ПУШУ, А НЕ ПО `workflow_dispatch`. Окну закрыт запуск прогонов:
+# площадка отвечает `403 Resource not accessible by integration`. Пуш в ветку
+# окну доступен, и он же — естественный момент «беру на слияние». Замерено, а не
+# предположено.
+#
+# ПОЧЕМУ МЕТКА `hold` СТАВИТСЯ СРАЗУ. Автомерж здесь по умолчанию, и изменение,
+# открытое пушем, иначе поехало бы в `main` раньше, чем окно успело дописать
+# тело и проверить себя. `hold` снимает окно, когда изменение готово, — стоп-кран
+# ставится механизмом, а не автором (правило 064).
+#
+# ПОЧЕМУ МЕТКА СОДЕРЖАНИЯ ВЫВОДИТСЯ ИЗ ЗАГОЛОВКА КОММИТА. Без неё классификация
+# на изменении красная с первой секунды, а красное как фон — то, чего витрина
+# избегает. Вывод механический (Conventional Commits), окно правит его одним
+# вызовом, если не угадано. Неизвестный тип — не догадка, а предупреждение:
+# лучше пустая метка, чем неверная.
+name: open-pr
+
+on:
+  push:
+    branches-ignore: [main, badges, output]
+  # У событийной автоматики всегда есть ручная кнопка (правило 104).
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "ветка, для которой открыть изменение"
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: open-pr-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  open:
+    name: open-pr
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      MERGE_QUEUE_TOKEN: ${{ secrets.MERGE_QUEUE_TOKEN }}
+      BRANCH: ${{ inputs.branch || github.ref_name }}
+    steps:
+      # Секрета нет — предупреждение и выход, а не отказ: ненастроенная
+      # возможность не есть поломка (правило 051). Молча уйти на штатный токен
+      # нельзя — ради авторства этот прогон и существует.
+      - name: токен владельца задан
+        if: env.MERGE_QUEUE_TOKEN == ''
+        run: |
+          echo "::warning::MERGE_QUEUE_TOKEN не задан — изменение не открывается. Нужен PAT владельца: именно его личность площадка поставит автором squash-коммита в main."
+          echo "SKIP=1" >> "$GITHUB_ENV"
+
+      - name: Забрать историю ветки
+        if: env.SKIP != '1'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: изменение уже открыто?
+        if: env.SKIP != '1'
+        env:
+          GH_TOKEN: ${{ env.MERGE_QUEUE_TOKEN }}
+        run: |
+          set -uo pipefail
+          out=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" \
+            --state open --json number --jq 'length' 2>&1) && rc=0 || rc=$?
+          verdict=$(printf '%s\n' "$out" | python3 scripts/gh_outcome.py --code "$rc") \
+            || verdict="broken: разбор исходов не отработал — scripts/gh_outcome.py"
+          case "$verdict" in
+            ok:*) ;;
+            state:*)
+              echo "::warning::Открытые изменения ветки $BRANCH не прочитаны: ${verdict#state: }. Повторный пуш откроет."
+              echo "SKIP=1" >> "$GITHUB_ENV"
+              exit 0 ;;
+            *)
+              echo "::error::Открытые изменения ветки $BRANCH не прочитаны: ${verdict#broken: }"
+              exit 1 ;;
+          esac
+          if [ "$out" != "0" ]; then
+            echo "$BRANCH: изменение уже открыто — пропуск"
+            echo "SKIP=1" >> "$GITHUB_ENV"
+          fi
+
+      # Пустая ветка — не повод для красного: так выглядит пуш ветки, ещё не
+      # разошедшейся с общей. Это состояние, а не поломка.
+      - name: ветка разошлась с main?
+        if: env.SKIP != '1'
+        run: |
+          set -uo pipefail
+          git fetch --no-tags origin main:refs/remotes/origin/main 2>/dev/null || true
+          ahead=$(git rev-list --count origin/main.."$GITHUB_SHA" 2>/dev/null || echo 0)
+          echo "коммитов впереди main: $ahead"
+          if [ "$ahead" -eq 0 ]; then
+            echo "::warning::$BRANCH не разошлась с main — открывать нечего."
+            echo "SKIP=1" >> "$GITHUB_ENV"
+          fi
+
+      - name: открыть изменение от имени владельца
+        if: env.SKIP != '1'
+        env:
+          GH_TOKEN: ${{ env.MERGE_QUEUE_TOKEN }}
+        run: |
+          set -uo pipefail
+          # Заголовок — тема ветки, то есть ПЕРВЫЙ коммит после main: следующие
+          # обычно правят его же. Тело собирается из сообщений всех коммитов —
+          # тем же порядком, каким его потом соберёт squash.
+          title=$(git log --format=%s --reverse "origin/main..$GITHUB_SHA" | head -1)
+          body=$(git log --format='%B' --reverse "origin/main..$GITHUB_SHA")
+
+          # Таблица «тип — метка» живёт в scripts/check_labels.py, рядом с
+          # гейтом, который эти же метки проверяет: второй копии списка не
+          # заводится (090), и она прогоняется самопроверкой (140).
+          label=$(python3 scripts/check_labels.py --label-for-subject "$title") \
+            || { echo "::error::Вывод метки не отработал — scripts/check_labels.py"; exit 1; }
+          [ -n "$label" ] || echo "::warning::Тип в заголовке «$title» не разобран — метка содержания не поставлена. Поставьте её: без неё классификация красная."
+
+          printf '%s\n' "$body" > /tmp/pr-body.md
+          {
+            printf '\n---\n\n'
+            printf 'Изменение открыто прогоном `open-pr` от имени владельца: автором squash-коммита в `main` площадка ставит автора ИЗМЕНЕНИЯ, и открывать его должен тот, чью личность этот коммит обязан нести.\n\n'
+            printf 'Метка `hold` стоит намеренно — автомерж здесь по умолчанию. Снимите её, когда тело заполнено и проверки названы.\n'
+          } >> /tmp/pr-body.md
+
+          out=$(gh pr create --repo "$GITHUB_REPOSITORY" --base main --head "$BRANCH" \
+            --title "$title" --body-file /tmp/pr-body.md \
+            ${label:+--label "$label"} --label hold 2>&1) && rc=0 || rc=$?
+          if [ "$rc" -ne 0 ]; then
+            verdict=$(printf '%s\n' "$out" | python3 scripts/gh_outcome.py --code "$rc") \
+              || verdict="broken: разбор исходов не отработал — scripts/gh_outcome.py"
+            if [ "${verdict%%:*}" = state ]; then
+              echo "::warning::Изменение для $BRANCH не открылось: ${verdict#state: }. Повторный пуш откроет."
+              exit 0
+            fi
+            echo "::error::Изменение для $BRANCH не открылось: $out"
+            exit 1
+          fi
+          printf '%s\n' "$out"
+          echo "изменение открыто владельцем; метка содержания: ${label:-НЕ ПОСТАВЛЕНА}, стоп-кран hold стоит"
