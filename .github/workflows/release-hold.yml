@@ -1,0 +1,104 @@
+# Стоп-кран снимает механизм, когда снимать его больше не о чем.
+#
+# ЦЕНА, ЗАПЛАЧЕННАЯ ЗДЕСЬ. Изменение открывает `open-pr` и ставит `hold`:
+# автомерж по умолчанию, а тело в момент открытия ещё пустое. Дальше окно
+# заполняло тело и снимало метку — и последний шаг держался ПАМЯТЬЮ. 28 августа
+# он подвёл на изменении, которое чинило красную общую ветку: изменение стояло
+# готовым, проверки зелёные, и ждало, пока кто-то вспомнит. Шаг, который
+# работает, пока кто-то не забудет, механизмом не является.
+#
+# ПОЧЕМУ `workflow_run`, А НЕ `pull_request`. Решение принимается ПОСЛЕ того,
+# как проверки досчитались, — на самом изменении такого события нет. Заодно
+# `workflow_run` берёт этот файл с общей ветки, а не из изменения: шаг снимает
+# стоп-кран, и брать его версию оттуда, что он же и выпускает, нельзя.
+#
+# ЧЕМ ОН НЕ СПОРИТ С ЧЕЛОВЕКОМ. Решение читается из ТЕЛА изменения, которое
+# правит человек, а не из метки, которую правят обе стороны. Вернуть `hold`
+# рукой без строки `<!-- hold: причина -->` значило бы объявить войну: следующий
+# прогон снял бы её снова. С этой строкой метка держится сколько угодно, и
+# причина при этом читается.
+name: release-hold
+
+on:
+  workflow_run:
+    workflows: ["PR check"]
+    types: [completed]
+  # У событийной автоматики всегда есть ручная кнопка (правило 104).
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: "номер изменения"
+        required: true
+
+permissions:
+  contents: read
+  # Снимается только метка конвейера. Метки содержания принадлежат автору и
+  # этим прогоном не трогаются (правило 064).
+  pull-requests: write
+
+concurrency:
+  group: release-hold-${{ github.event.workflow_run.head_branch || inputs.pr }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: release-hold
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Забрать решение со стоп-крана
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          sparse-checkout: scripts/hold.py
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Снять стоп-кран, если держать больше нечем
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+          RESULT: ${{ github.event.workflow_run.conclusion }}
+          PR_INPUT: ${{ inputs.pr }}
+        run: |
+          set +e
+          # Номер берётся по ветке, а не из `pull_requests` события: у
+          # `workflow_run` этот массив бывает пустым, и «пусто» неотличимо от
+          # «изменения нет».
+          if [ -n "$PR_INPUT" ]; then
+            number="$PR_INPUT"; result="success"
+          else
+            number=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" \
+                       --state open --json number --jq '.[0].number // empty')
+            result="$RESULT"
+          fi
+          if [ -z "$number" ]; then
+            echo "открытого изменения на $BRANCH нет — снимать нечего"
+            exit 0
+          fi
+
+          gh pr view "$number" --repo "$GITHUB_REPOSITORY" --json body \
+            --jq .body > "$RUNNER_TEMP/body.md"
+          labels=$(gh pr view "$number" --repo "$GITHUB_REPOSITORY" --json labels \
+                     --jq '[.labels[].name] | join(",")')
+          verdict=$(python3 scripts/hold.py --body-file "$RUNNER_TEMP/body.md" \
+                      --labels "$labels" --checks "$result")
+          rc=$?
+          set -e
+          if [ "$rc" -ne 0 ]; then
+            echo "::error::Решение о стоп-кране не отработало (код $rc) — scripts/hold.py"
+            exit 1
+          fi
+
+          case "$verdict" in
+            release:*)
+              gh pr edit "$number" --repo "$GITHUB_REPOSITORY" --remove-label hold
+              echo "::notice::Стоп-кран с #$number снят: ${verdict#release: }" ;;
+            keep:*)
+              echo "#$number: стоп-кран остаётся — ${verdict#keep: }" ;;
+            *)
+              echo "#$number: ${verdict#nothing: }" ;;
+          esac
