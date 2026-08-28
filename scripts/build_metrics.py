@@ -55,6 +55,7 @@
 from __future__ import annotations
 
 import base64
+import datetime as dt
 import hashlib
 import functools
 import json
@@ -805,12 +806,22 @@ def render_projects(config: dict) -> str:
             f'</picture></a>',
         ]
 
+    # ОТМЕТКА СВЕЖЕСТИ. Витрина показывает живые числа, и до 28 августа
+    # умалчивала, НАСКОЛЬКО живые. Суточная сборка пропустила день — площадка не
+    # гарантирует запуск по расписанию, — и страница сутки показывала вчерашнее,
+    # ничем этого не выдавая. Заметил владелец, а не механизм.
+    #
+    # ЧТО ИМЕННО ОБЕЩАЕТ ЭТА ДАТА. День, когда числа последний раз ИЗМЕНИЛИСЬ,
+    # а не когда сборка бежала: строка пишется вместе с данными и вместе с ними
+    # доезжает изменением. Замри сборка — замрёт и дата, и застрявшая страница
+    # видна без всякого прогона. Вопрос «бежала ли сборка» — другой, и на него
+    # отвечает .github/workflows/staleness.yml, а не эта строка (правило 056:
+    # сигнал говорит, чего он НЕ значит).
+    tail = [f"data as of {dt.date.today().isoformat()}"]
     if hidden:
-        rows += [
-            "",
-            f"<sub>{limit} shown, most recently active first · {len(hidden)} more on the "
-            "[repositories tab](https://github.com/ArtVsMark?tab=repositories)</sub>",
-        ]
+        tail.append(f"{limit} shown, most recently active first · {len(hidden)} more on the "
+                    "[repositories tab](https://github.com/ArtVsMark?tab=repositories)")
+    rows += ["", f"<sub>{' · '.join(tail)}</sub>"]
     rows += ["", "</div>"]
     return "\n" + "\n".join(rows) + "\n"
 

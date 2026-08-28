@@ -81,6 +81,8 @@
 | `scripts/check_page.py` | текст витрины | окно держит гейт, владелец решает содержание |
 | `scripts/check_mechanisms.py` | конвейер | окно; секреты за владельцем |
 | `scripts/check_journal.py` | журнал решений | окно держит гейт, владелец решает содержание записи |
+| `scripts/staleness.py` | свежесть витрины | окно ведёт задачу, закрывает её владелец |
+| `.github/workflows/staleness.yml` | конвейер | окно; секреты за владельцем |
 | `.github/workflows/pr-check.yml` | конвейер | окно; секреты за владельцем |
 | `.github/workflows/automerge.yml` | конвейер | окно; секреты за владельцем |
 | `.github/workflows/open-pr.yml` | конвейер | окно; секреты за владельцем |
