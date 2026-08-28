@@ -29,6 +29,8 @@ from __future__ import annotations
 import subprocess
 import sys
 
+import checks
+
 #: Умолчание, которое облачный контейнер проставляет в глобальной настройке.
 #: Оно попадало в main пять раз, пока соглашение держалось памятью окна.
 FORBIDDEN = {"Claude <noreply@anthropic.com>"}
@@ -111,7 +113,7 @@ def main() -> int:
     bad = [r for r in records if r[0].strip() in FORBIDDEN]
 
     if bad:
-        print(f"коммит подписан контейнерным умолчанием ({len(bad)} из {len(records)}):", file=sys.stderr)
+        print(checks.annotate("error", f"подписано контейнерным умолчанием коммитов: {len(bad)} из {len(records)}"), file=sys.stderr)
         for author, sha, subject in bad:
             print(f"  • {sha} {subject[:60]}\n        автор: {author}", file=sys.stderr)
         print(

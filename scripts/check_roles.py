@@ -28,6 +28,8 @@ import re
 import subprocess
 import sys
 
+import checks
+
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 ROLES = ROOT / ".rules/roles.md"
 # Таблица живёт между маркерами: так её видно и человеку, и разбору, а
@@ -106,7 +108,7 @@ def main() -> int:
         return 2
 
     if orphans:
-        print("файлы без ведущего:", file=sys.stderr)
+        print(checks.annotate("error", f"файлы без ведущего: {len(orphans)}"), file=sys.stderr)
         for path in orphans:
             print(f"  {path}", file=sys.stderr)
         print(
@@ -116,7 +118,7 @@ def main() -> int:
             file=sys.stderr,
         )
     if barren:
-        print("строки без артефактов:", file=sys.stderr)
+        print(checks.annotate("error", f"строки без артефактов: {len(barren)}"), file=sys.stderr)
         for glob in barren:
             print(f"  {glob}", file=sys.stderr)
         print(

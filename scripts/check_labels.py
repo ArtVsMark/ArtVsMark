@@ -42,6 +42,8 @@ import os
 import re
 import subprocess
 import sys
+
+import checks
 import urllib.error
 import urllib.request
 
@@ -210,9 +212,9 @@ def outcome(number: int, complaints: list[str], content: set[str],
         + f"\nМетки конвейера ({', '.join(sorted(PIPELINE))}) классификацией не считаются."
     )
     if author.lower() != OWNER.lower():
-        return 0, (f"::warning::{complaint}\n"
+        return 0, (checks.annotate("warning", complaint) + "\n"
                    "Автор — не владелец репозитория: правило мягкое, метку проставит принимающий.")
-    return 1, f"::error::{complaint}"
+    return 1, checks.annotate("error", complaint)
 
 
 def selftest() -> int:
@@ -322,19 +324,35 @@ def selftest() -> int:
     # Исходы самого гейта — по каждому, а не только по успешному (145). Ветка
     # «внешнему участнику мягко» — это ещё и проверка УТВЕРЖДЕНИЯ, записанного
     # вердиктом 051: до сих пор оно держалось чтением кода, а не выполнением.
+    #
+    # Ожидание задано УРОВНЕМ, а не готовой строкой «::error::»: разметку
+    # печатает scripts/checks.py::annotate, и она появляется только внутри
+    # прогона. Набор, сверявший буквы, отвалился ровно в тот день, когда
+    # разметка стала общей, — то есть пересказывал условие вместо того, чтобы
+    # спросить механизм (правило 150). Теперь он зовёт того же помощника.
     outcomes = [
-        ("классификация полна", [], "ArtVsMark", 0, "классификация есть"),
-        ("находки у владельца — отказ", ["метка вне списка: question"], "ArtVsMark", 1, "::error::"),
+        ("классификация полна", [], "ArtVsMark", 0, None, "классификация есть"),
+        ("находки у владельца — отказ",
+         ["метка вне списка: question"], "ArtVsMark", 1, "error", ""),
         ("находки у внешнего — предупреждение",
-         ["метка вне списка: question"], "postoronniy", 0, "::warning::"),
+         ["метка вне списка: question"], "postoronniy", 0, "warning", ""),
         ("регистр логина роли не меняет",
-         ["метка вне списка: question"], "artvsmark", 1, "::error::"),
+         ["метка вне списка: question"], "artvsmark", 1, "error", ""),
     ]
-    for name, complaints, author, want_code, want_mark in outcomes:
-        code, text = outcome(7, complaints, {"bug"}, set(), author)
-        if code != want_code or want_mark not in text:
-            broken.append(f"{name}: ожидалось {want_code}/{want_mark}, вышло {code}/{text[:40]}")
-        print(f"  код {code}, {want_mark:<11} — {name}")
+    saved = os.environ.get("GITHUB_ACTIONS")
+    os.environ["GITHUB_ACTIONS"] = "true"      # разметка живёт в прогоне
+    try:
+        for name, complaints, author, want_code, level, want_text in outcomes:
+            code, text = outcome(7, complaints, {"bug"}, set(), author)
+            want_mark = checks.annotate(level, "") if level else want_text
+            if code != want_code or want_mark not in text:
+                broken.append(f"{name}: ожидалось {want_code}/{want_mark!r}, "
+                              f"вышло {code}/{text[:40]!r}")
+            print(f"  код {code}, {(want_mark or want_text)[:11]:<11} — {name}")
+    finally:
+        os.environ.pop("GITHUB_ACTIONS", None)
+        if saved is not None:
+            os.environ["GITHUB_ACTIONS"] = saved
 
     # Вызов без изменения — тоже объявленный исход, и живёт он в main.
     probe = subprocess.run([sys.executable, __file__], capture_output=True, text=True)

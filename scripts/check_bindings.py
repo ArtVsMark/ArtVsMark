@@ -34,6 +34,8 @@ import pathlib
 import re
 import sys
 
+import checks
+
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 BINDINGS = ROOT / ".rules/bindings.json"
 WORKFLOWS = ROOT / ".github/workflows"
@@ -159,7 +161,7 @@ def main() -> int:
         return 2
 
     if dead:
-        print("вердикты показывают в пустоту:", file=sys.stderr)
+        print(checks.annotate("error", f"вердикты показывают в пустоту, мёртвых ссылок: {len(dead)}"), file=sys.stderr)
         for line in dead:
             print(f"  {line}", file=sys.stderr)
         print(

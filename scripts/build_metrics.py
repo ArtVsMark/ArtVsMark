@@ -1418,8 +1418,8 @@ def main() -> int:
     left = orphaned(export, json.loads(BINDINGS.read_text(encoding="utf-8"))["rules"])
     if check and left:
         print(bindings)
-        print(f"\nответ витрины отвечает по правилам, которых в каталоге больше нет: "
-              f"{', '.join(left)}", file=sys.stderr)
+        print(checks.annotate("error", "ответ витрины отвечает по правилам, которых "
+                              f"в каталоге больше нет: {', '.join(left)}"), file=sys.stderr)
         print("  Правило могли удалить как переоткрывающее уже сказанное — так ушло 143."
               "\n  Решения у этого нет механического: ответ мог быть верным сам по себе, а мог"
               "\n  держаться удалённым правилом. Уберите запись или перенесите её смысл в"
@@ -1451,7 +1451,8 @@ def main() -> int:
     empty = unanswered({**values, "tests": tests, "checks per PR": checks,
                         "test modules": modules})
     if empty:
-        print(f"метрика не собралась ({', '.join(empty)}) — ничего не переписываю", file=sys.stderr)
+        print(checks.annotate("error", f"метрика не собралась ({', '.join(empty)}) "
+                              "— ничего не переписываю"), file=sys.stderr)
         return 1
 
     # Числа с плитки в тексте README не повторяются: одно число — одно место.

@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Механизмы витрины держат то, что объявили, — и объявляют то, чего не держат.
 
-ЗАЧЕМ. Замер по всем действующим вердиктам показал: у десяти из семидесяти шести
-не бежит ничего. Решение владельца — всё, что можно сделать механическим,
-делается механическим. Этот гейт забирает четыре таких правила разом, потому что
-у них общий предмет: **объявленное сверяется с сделанным**.
+ЗАЧЕМ. Замер по всем действующим вердиктам показал: у десяти из семидесяти
+шести не бежало ничего, а ещё сорок пять держались словом «шаг процесса» —
+которое каталог 28 августа расколол, измерив у себя, что под ним 27 записей из
+44 означали «ничем». Решение владельца: всё, что можно сделать механическим,
+делается механическим. Этот гейт забирает такие правила разом, потому что у них
+общий предмет — **объявленное сверяется с сделанным**.
 
 Что проверяется и какое правило этим закрывается:
 
@@ -26,7 +28,23 @@
 * **147 — у отменяющего переключателя есть адресат.** `open-pr.yml` будится на
   ЛЮБОЙ рабочей ветке (`branches-ignore`), а не по имени. Переключатель по имени
   отменяет операцию молча: у соседа правило пролежало сутки на ветке без единого
-  прогона, потому что префикс не совпал.
+  прогона, потому что префикс не совпал;
+
+* **100, 104, 149, 022/073 — утверждения «у ВСЕХ прогонов так».** Таймаут у
+  каждой работы, ручная кнопка у каждого прогона, `$RUNNER_TEMP` вместо общего
+  `/tmp`, одна версия языка на все прогоны. Четыре вердикта говорили «у всех», и
+  проверялось это чтением восьми файлов глазами — то есть до первого нового
+  файла. Перебор машина делает даром и без пропусков (`audit_runners`);
+
+* **151 — причина доезжает до окна.** Гейт печатает находку командой площадки, а
+  не в поток ошибок. Замер: окну витрины логи прогонов закрыты, и на чужом
+  красном остаётся ровно «Process completed with exit code 1». До 28 августа так
+  печатал ОДИН гейт из восьми;
+
+* **014 и 150 — набор есть, бежит и зовёт механизм.** У каждого способного
+  отвергнуть скрипта есть самопроверка (014, первая половина); `pr-check.yml`
+  её зовёт (014, вторая половина — иначе набор держит до первой правки); и
+  внутри неё есть вызов функции модуля, а не пересказ его условия (150).
 
 ЧЕГО ЭТОТ ГЕЙТ НЕ ДЕЛАЕТ. Он не судит, ВЕРНА ли причина в вердикте, — только
 что она названа. Отличить «нечем проверить» от отговорки машина не может, и
@@ -43,6 +61,8 @@ import json
 import pathlib
 import re
 import sys
+
+import checks
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SCRIPTS = ROOT / "scripts"
@@ -127,6 +147,117 @@ def audit_workflows(sources: dict[str, str]) -> list[str]:
     return found
 
 
+#: Общий каталог исполнителя. Прогон, пишущий сюда, полагается на то, что сосед
+#: не помешает; ``$RUNNER_TEMP`` площадка выдаёт каждому прогону свой (149).
+SHARED_TMP = re.compile(r"(?<![\w$/])/tmp/")
+
+
+def audit_runners(flows: dict[str, str]) -> list[str]:
+    """Утверждения о прогонах, которые до 28 августа держались одной прозой.
+
+    Четыре вердикта говорили «у ВСЕХ прогонов так», и проверялось это чтением
+    восьми файлов глазами. Утверждение вида «у всех» проверяется перебором —
+    ровно то, что машина делает даром и без пропусков.
+
+    Разбирается YAML, а не текст: ``timeout-minutes`` встречается и у шага, и у
+    работы, и грепом одно от другого не отличить — файл с одним таймаутом у
+    единственного шага прошёл бы как «у работы есть».
+    """
+    import yaml  # локально: гейт не должен падать импортом на машине без него
+
+    found = []
+    versions: dict[str, set[str]] = {}
+    for name, text in sorted(flows.items()):
+        doc = yaml.safe_load(text) or {}
+        # `on` YAML читает как True: ключ надо искать обоими написаниями.
+        triggers = doc.get("on", doc.get(True, {})) or {}
+        if isinstance(triggers, dict) and "workflow_dispatch" not in triggers:
+            found.append(f"{name}: нет ручной кнопки — у событийной автоматики "
+                         f"она обязательна, иначе прогон нельзя позвать (104)")
+        for job, body in (doc.get("jobs") or {}).items():
+            if isinstance(body, dict) and "timeout-minutes" not in body:
+                found.append(f"{name}: у работы {job} нет timeout-minutes — "
+                             f"умолчание площадки шесть часов (100)")
+            for step in (body or {}).get("steps", []) if isinstance(body, dict) else []:
+                version = (step or {}).get("with", {}).get("python-version")
+                if version is not None:
+                    versions.setdefault(str(version), set()).add(name)
+        if SHARED_TMP.search(text):
+            found.append(f"{name}: пишет в общий /tmp — площадка выдаёт "
+                         f"$RUNNER_TEMP каждому прогону свой (149)")
+
+    # Версия языка задана в ОДНОМ месте: две разные означают, что проверки и
+    # сборка бегут на разных языках, и разойдутся они молча (022).
+    if len(versions) > 1:
+        where = "; ".join(f"{v} — {', '.join(sorted(f))}" for v, f in sorted(versions.items()))
+        found.append(f"версий Python в прогонах больше одной: {where} (022, 073)")
+    return found
+
+
+#: Имена, по которым скрипт печатает находку командой площадки. Замер правила
+#: 151: окну логи прогонов закрыты, и до него доходит только то, что напечатано
+#: командой, — всё прочее сворачивается в «Process completed with exit code 1».
+ANNOTATOR = "annotate"
+
+
+def audit_voice(sources: dict[str, str]) -> list[str]:
+    """Гейты, чья находка не доедет до окна: причина в поток, а не командой.
+
+    ГРАНИЦА. Проверяется, что помощник ЗОВЁТСЯ, а не что позван на каждом
+    отказе: разобрать, все ли ветки отказа он покрывает, значило бы судить о
+    смысле кода. Это названо здесь прямо, чтобы зелёное не читалось шире, чем
+    измерено (правило 146).
+    """
+    found = []
+    for name, source in sorted(sources.items()):
+        if not can_fail(source):
+            continue
+        tree = ast.parse(source)
+        if not any(_called(node) == ANNOTATOR
+                   for node in ast.walk(tree) if isinstance(node, ast.Call)):
+            found.append(f"{name}: находка печатается в поток, а не командой "
+                         f"площадки — до окна доедет «exit code 1» (151)")
+        # Гейт без отрицательного набора — обещание. 014: механизм проверяется
+        # тем, что он ОБЯЗАН отвергнуть, и набор этот бежит в конвейере, а не
+        # рукой при заведении.
+        if not any(isinstance(n, ast.FunctionDef) and n.name == "selftest"
+                   for n in ast.walk(tree)):
+            found.append(f"{name}: способен отвергнуть, а отрицательного набора "
+                         f"нет — гейт не проверен тем, что обязан ловить (014)")
+            continue
+        # 150: набор ЗОВЁТ механизм, а не пересказывает его условие. Машине
+        # видно ровно это — что внутри набора есть вызов другой функции модуля;
+        # верность случаев она не судит.
+        own = {n.name for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)}
+        body = next(n for n in ast.walk(tree)
+                    if isinstance(n, ast.FunctionDef) and n.name == "selftest")
+        if not any(_called(c) in own - {"selftest"}
+                   for c in ast.walk(body) if isinstance(c, ast.Call)):
+            found.append(f"{name}: самопроверка не зовёт механизм — она "
+                         f"пересказывает условие и разойдётся с ним молча (150)")
+    return found
+
+
+def audit_harness(sources: dict[str, str], flows: dict[str, str]) -> list[str]:
+    """Наборы, которых конвейер не зовёт: они существуют и ничего не держат.
+
+    Вторая половина правила 014. Первая — что набор ЕСТЬ (audit_voice); эта —
+    что он БЕЖИТ. Набор, который гоняют рукой при заведении гейта, держит
+    ровно до следующей правки: замер 28 августа — `checks.py` получил
+    самопроверку и не был вписан в прогон, и заметить это удалось глазами.
+
+    Спрашивается один прогон — `pr-check.yml`: набор обязан отказывать
+    ИЗМЕНЕНИЮ, а не будиться расписанием, когда правка уже в общей ветке.
+    """
+    check = flows.get("pr-check.yml", "")
+    if not check:
+        return ["pr-check.yml: прогона проверок нет — наборы не бегут нигде (014)"]
+    return [f"{name}: самопроверка есть, а pr-check.yml её не зовёт — "
+            f"набор держит до первой правки (014)"
+            for name, source in sorted(sources.items())
+            if "def selftest" in source and f"scripts/{name} --selftest" not in check]
+
+
 #: Хост площадки. Разбирается ВЫЗОВ, а не текст: первый черновик искал строкой и
 #: поймал сам себя — образец с адресом внутри регулярного выражения неотличим от
 #: обращения, если смотреть на буквы. Разбор дерева эту разницу видит.
@@ -170,6 +301,52 @@ def audit_calls(sources: dict[str, str]) -> list[str]:
                                  f"отладка этого стоит дорого: адрес в браузере "
                                  f"открывается, а сборка падает (107)")
     return found
+
+
+#: Образцы для отрицательного набора. Прогон-образец полон намеренно: каждый
+#: случай ломает в нём РОВНО ОДНО, и видно, на что именно гейт отвечает.
+GOOD_FLOW = (
+    "name: a\n"
+    "on:\n"
+    "  push:\n"
+    "  workflow_dispatch:\n"
+    "jobs:\n"
+    "  one:\n"
+    "    runs-on: ubuntu-latest\n"
+    "    timeout-minutes: 10\n"
+    "    steps:\n"
+    "      - run: echo\n"
+)
+PY_FLOW = (
+    "name: a\n"
+    "on:\n"
+    "  workflow_dispatch:\n"
+    "jobs:\n"
+    "  one:\n"
+    "    runs-on: ubuntu-latest\n"
+    "    timeout-minutes: 10\n"
+    "    steps:\n"
+    "      - uses: actions/setup-python@v6\n"
+    "        with:\n"
+    '          python-version: "{v}"\n'
+)
+#: Образец гейта: докстрока с исходами, вызов помощника, набор, зовущий
+#: механизм. Каждый случай ниже ломает ровно одну из трёх частей.
+VOICE_OK = (
+    '"""Гейт.\n'
+    "\n"
+    "Iskhody: 0, 1, 2.\n"
+    '"""\n'
+    "def audit():\n"
+    "    return []\n"
+    "\n"
+    "def selftest():\n"
+    "    return audit()\n"
+    "\n"
+    "def main():\n"
+    "    print(checks.annotate(LEVEL, FOUND))\n"
+    "    return 1\n"
+)
 
 
 def selftest() -> int:
@@ -219,8 +396,50 @@ def selftest() -> int:
           "x.yml": "run: |\n  while true; do\n    sleep 30\n  done\n"}, True),
         ("переключатель по имени ветки", audit_workflows,
          {"open-pr.yml": "on:\n  push:\n    branches: ['agent/**']\n"}, True),
+
+        ("прогон полон", audit_runners, {"a.yml": GOOD_FLOW}, False),
+        ("нет ручной кнопки", audit_runners,
+         {"a.yml": GOOD_FLOW.replace("  workflow_dispatch:\n", "")}, True),
+        ("нет таймаута у работы", audit_runners,
+         {"a.yml": GOOD_FLOW.replace("    timeout-minutes: 10\n", "")}, True),
+        ("таймаут у шага, а не у работы", audit_runners,
+         {"a.yml": GOOD_FLOW.replace("    timeout-minutes: 10\n", "")
+                            .replace("      - run: echo\n",
+                                     "      - run: echo\n        timeout-minutes: 5\n")}, True),
+        ("пишет в общий /tmp", audit_runners,
+         {"a.yml": GOOD_FLOW.replace("run: echo", "run: echo x > /tmp/body.md")}, True),
+        ("$RUNNER_TEMP общим не считается", audit_runners,
+         {"a.yml": GOOD_FLOW.replace("run: echo", "run: echo x > $RUNNER_TEMP/body.md")}, False),
+        ("одна версия языка на два прогона", audit_runners,
+         {"a.yml": PY_FLOW.format(v="3.12"), "b.yml": PY_FLOW.format(v="3.12")}, False),
+        ("две разные версии языка", audit_runners,
+         {"a.yml": PY_FLOW.format(v="3.12"), "b.yml": PY_FLOW.format(v="3.11")}, True),
+
+        ("гейт зовёт помощника и проверен набором", audit_voice, {"a.py": VOICE_OK}, False),
+        ("причина печатается в поток", audit_voice,
+         {"a.py": VOICE_OK.replace("checks.annotate(LEVEL, FOUND)", "FOUND")}, True),
+        ("отрицательного набора нет", audit_voice,
+         {"a.py": VOICE_OK.replace("def selftest():", "def proverka():")}, True),
+        ("набор пересказывает условие вместо вызова", audit_voice,
+         {"a.py": VOICE_OK.replace("return audit()", "return 1 if 2 > 1 else 0")}, True),
+        ("модуль без входа набора не требует", audit_voice,
+         {"checks.py": "def f():\n    return 1\n"}, False),
+    ]
+    harness = [
+        ("набор бежит в прогоне проверок", {"a.py": "def selftest():\n    pass\n"},
+         {"pr-check.yml": "run: python scripts/a.py --selftest\n"}, False),
+        ("набор есть, а прогон его не зовёт", {"a.py": "def selftest():\n    pass\n"},
+         {"pr-check.yml": "run: python scripts/a.py\n"}, True),
+        ("набора нет — звать нечего", {"a.py": "def f():\n    pass\n"},
+         {"pr-check.yml": "run: python scripts/a.py\n"}, False),
+        ("прогона проверок нет вовсе", {"a.py": "def selftest():\n    pass\n"}, {}, True),
     ]
     broken: list[str] = []
+    for name, srcs, flws, must_reject in harness:
+        found = audit_harness(srcs, flws)
+        if bool(found) is not must_reject:
+            broken.append(f"{name}: ожидалось {'отказ' if must_reject else 'пропуск'}, вышло {found}")
+        print(f"  {'отвергнут' if found else 'пропущен '} — {name}")
     for name, fn, data, must_reject in cases:
         found = fn(data)
         if bool(found) is not must_reject:
@@ -251,10 +470,11 @@ def main() -> int:
         print(f"проверка не отработала: {e}", file=sys.stderr)
         return 2
 
-    found = (audit_scripts(sources) + audit_calls(sources)
-             + audit_gaps(rules) + audit_workflows(flows))
+    found = (audit_scripts(sources) + audit_calls(sources) + audit_voice(sources)
+             + audit_gaps(rules) + audit_workflows(flows) + audit_runners(flows)
+             + audit_harness(sources, flows))
     if found:
-        print("механизмы держат не то, что объявили:", file=sys.stderr)
+        print(checks.annotate("error", f"механизмы держат не то, что объявили: {len(found)}"), file=sys.stderr)
         for line in found:
             print(f"  • {line}", file=sys.stderr)
         print("\n  Объявленное сверяется с сделанным. Если объявление устарело —"
