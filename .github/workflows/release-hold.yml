@@ -66,7 +66,14 @@ jobs:
 
       - name: Снять стоп-кран, если держать больше нечем
         env:
+          # ДВА ТОКЕНА, И ЭТО НЕ ИЗБЫТОЧНОСТЬ. Снять метку штатный токен может;
+          # вооружить автомерж — нет: замер 28 августа на #89 дал дословно
+          # «GraphQL: Resource not accessible by integration (mergePullRequest)».
+          # Личность здесь та же, что открывает изменения (open-pr.yml), и
+          # второе следствие важнее первого: события от `GITHUB_TOKEN` площадка
+          # прогонами не считает, а от токена владельца — считает.
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OWNER_TOKEN: ${{ secrets.MERGE_QUEUE_TOKEN }}
           BRANCH: ${{ github.event.workflow_run.head_branch }}
           RESULT: ${{ github.event.workflow_run.conclusion }}
           PR_INPUT: ${{ inputs.pr }}
@@ -115,8 +122,15 @@ jobs:
               # Метод squash задан явно: при merge автором коммита в main
               # становится тот, кто нажал, и трейлеры не доезжают до
               # первопредков (.rules/README.md § Атрибуция коммитов).
-              out=$(gh pr merge "$number" --repo "$GITHUB_REPOSITORY" \
-                      --auto --squash 2>&1) && rc=0 || rc=$?
+              # Секрета нет — предупреждение и выход, а не отказ: ненастроенная
+              # возможность не есть поломка (051). Метка уже снята, и изменение
+              # поедет со следующим событием.
+              if [ -z "${OWNER_TOKEN:-}" ]; then
+                echo "::warning::MERGE_QUEUE_TOKEN не задан — автомерж на #$number не вооружён. Стоп-кран снят, изменение поедет со следующим событием."
+                exit 0
+              fi
+              out=$(GH_TOKEN="$OWNER_TOKEN" gh pr merge "$number" \
+                      --repo "$GITHUB_REPOSITORY" --auto --squash 2>&1) && rc=0 || rc=$?
               if [ "$rc" -ne 0 ]; then
                 v=$(printf '%s\n' "$out" | python3 scripts/gh_outcome.py --code "$rc") \
                   || v="broken: разбор исходов не отработал — scripts/gh_outcome.py"
