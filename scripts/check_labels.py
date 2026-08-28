@@ -32,6 +32,7 @@
 Запуск::
 
     python scripts/check_labels.py 20
+Исходы: 0 — чисто; 1 — есть находки; 2 — проверка не отработала.
 """
 
 from __future__ import annotations
@@ -41,6 +42,9 @@ import os
 import re
 import subprocess
 import sys
+
+import checks
+import urllib.error
 import urllib.request
 
 REPO = os.environ.get("SHOWCASE_REPO", "ArtVsMark/ArtVsMark")
@@ -208,9 +212,9 @@ def outcome(number: int, complaints: list[str], content: set[str],
         + f"\nМетки конвейера ({', '.join(sorted(PIPELINE))}) классификацией не считаются."
     )
     if author.lower() != OWNER.lower():
-        return 0, (f"::warning::{complaint}\n"
+        return 0, (checks.annotate("warning", complaint) + "\n"
                    "Автор — не владелец репозитория: правило мягкое, метку проставит принимающий.")
-    return 1, f"::error::{complaint}"
+    return 1, checks.annotate("error", complaint)
 
 
 def selftest() -> int:
@@ -288,6 +292,29 @@ def selftest() -> int:
             broken.append(f"заголовок {subject!r}: ожидалась метка {expected!r}, вышла {got!r}")
         print(f"  {got or '— не разобрано':<14} — {subject.strip()[:52] or '(пустой заголовок)'}")
 
+    # Зоны, выводимые для `open-pr.yml`, — это тот же derive_zones, которым
+    # гейт потом ПРОВЕРЯЕТ полноту. Один список на обе стороны (правило 090):
+    # разойдись они, прогон ставил бы метки, которых гейт не ждёт, — или, как
+    # было до 28 августа, не ставил бы ни одной, и четыре изменения подряд
+    # краснели на github_actions, которую вывести можно было механически.
+    for files, expected in (
+        ([".github/workflows/pr-check.yml"], {"github_actions"}),
+        ([".github/dependabot.yml"], {"dependencies"}),
+        (["HISTORY.md", ".rules/roles.md"], {"documentation"}),
+        (["scripts/checks.py"], set()),
+        ([], set()),
+    ):
+        got = derive_zones(files)
+        if got != expected:
+            broken.append(f"зоны для {files}: ожидалось {sorted(expected)}, вышло {sorted(got)}")
+        # Проставленное прогоном обязано закрывать претензию гейта — иначе
+        # автоматика ставит метки, а изменение всё равно красное. Пустой дифф
+        # из этого утверждения исключён намеренно: там гейт жалуется не на
+        # метки, а на то, что дифф не прочитан, и меткой это не закрывается
+        # (правило 010). Первый черновик набора считал иначе и упал здесь.
+        if files and verdict(got | {"enhancement"}, files)[0]:
+            broken.append(f"зоны для {files} не закрывают претензию гейта")
+
     # Вывод обязан оставаться внутри списка меток содержания: разойдись он с
     # ним — прогон ставил бы метку, которую этот же гейт отвергает.
     stray = {label for _, label in SUBJECT_LABEL} - CONTENT
@@ -297,19 +324,35 @@ def selftest() -> int:
     # Исходы самого гейта — по каждому, а не только по успешному (145). Ветка
     # «внешнему участнику мягко» — это ещё и проверка УТВЕРЖДЕНИЯ, записанного
     # вердиктом 051: до сих пор оно держалось чтением кода, а не выполнением.
+    #
+    # Ожидание задано УРОВНЕМ, а не готовой строкой «::error::»: разметку
+    # печатает scripts/checks.py::annotate, и она появляется только внутри
+    # прогона. Набор, сверявший буквы, отвалился ровно в тот день, когда
+    # разметка стала общей, — то есть пересказывал условие вместо того, чтобы
+    # спросить механизм (правило 150). Теперь он зовёт того же помощника.
     outcomes = [
-        ("классификация полна", [], "ArtVsMark", 0, "классификация есть"),
-        ("находки у владельца — отказ", ["метка вне списка: question"], "ArtVsMark", 1, "::error::"),
+        ("классификация полна", [], "ArtVsMark", 0, None, "классификация есть"),
+        ("находки у владельца — отказ",
+         ["метка вне списка: question"], "ArtVsMark", 1, "error", ""),
         ("находки у внешнего — предупреждение",
-         ["метка вне списка: question"], "postoronniy", 0, "::warning::"),
+         ["метка вне списка: question"], "postoronniy", 0, "warning", ""),
         ("регистр логина роли не меняет",
-         ["метка вне списка: question"], "artvsmark", 1, "::error::"),
+         ["метка вне списка: question"], "artvsmark", 1, "error", ""),
     ]
-    for name, complaints, author, want_code, want_mark in outcomes:
-        code, text = outcome(7, complaints, {"bug"}, set(), author)
-        if code != want_code or want_mark not in text:
-            broken.append(f"{name}: ожидалось {want_code}/{want_mark}, вышло {code}/{text[:40]}")
-        print(f"  код {code}, {want_mark:<11} — {name}")
+    saved = os.environ.get("GITHUB_ACTIONS")
+    os.environ["GITHUB_ACTIONS"] = "true"      # разметка живёт в прогоне
+    try:
+        for name, complaints, author, want_code, level, want_text in outcomes:
+            code, text = outcome(7, complaints, {"bug"}, set(), author)
+            want_mark = checks.annotate(level, "") if level else want_text
+            if code != want_code or want_mark not in text:
+                broken.append(f"{name}: ожидалось {want_code}/{want_mark!r}, "
+                              f"вышло {code}/{text[:40]!r}")
+            print(f"  код {code}, {(want_mark or want_text)[:11]:<11} — {name}")
+    finally:
+        os.environ.pop("GITHUB_ACTIONS", None)
+        if saved is not None:
+            os.environ["GITHUB_ACTIONS"] = saved
 
     # Вызов без изменения — тоже объявленный исход, и живёт он в main.
     probe = subprocess.run([sys.executable, __file__], capture_output=True, text=True)
@@ -329,6 +372,13 @@ def selftest() -> int:
 def main() -> int:
     if "--selftest" in sys.argv[1:]:
         return selftest()
+    if "--zones-for-diff" in sys.argv[1:]:
+        # Вход прогона `open-pr.yml`: пути изменённых файлов приходят потоком,
+        # обратно идут метки зон — по одной в строке. Через поток, а не
+        # аргументами: дифф бывает длиннее, чем командная строка.
+        for label in sorted(derive_zones([line.strip() for line in sys.stdin if line.strip()])):
+            print(label)
+        return 0
     if "--label-for-subject" in sys.argv[1:]:
         # Вход прогона `open-pr.yml`. Печатается только метка: пусто значит
         # «не разобрано», и решение, что с этим делать, принимает вызывающий.
@@ -340,9 +390,16 @@ def main() -> int:
         return 1
     number = int(sys.argv[1])
 
-    pull = _api(f"/repos/{REPO}/pulls/{number}")
-    labels = {label["name"] for label in pull["labels"]}
-    complaints, content, zones = verdict(labels, changed_files(number))
+    try:
+        pull = _api(f"/repos/{REPO}/pulls/{number}")
+        labels = {label["name"] for label in pull["labels"]}
+        complaints, content, zones = verdict(labels, changed_files(number))
+    except (urllib.error.URLError, OSError, ValueError, KeyError) as e:
+        # Отказ площадки — не «метки не проставлены». Склеить их значило бы
+        # требовать от автора починить чужой сервер (правило 039).
+        print(f"проверка не отработала: площадка не ответила или ответ не разобран — {e}",
+              file=sys.stderr)
+        return 2
     code, text = outcome(number, complaints, content, zones, pull["user"]["login"])
     print(text)
     return code

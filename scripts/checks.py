@@ -26,11 +26,100 @@ GitHub отдаёт по одному имени столько записей, 
 Модуль при этом остался, хотя потребитель один: правило про уникальные имена
 стоило витрине неверной цифры на странице, и место, где оно названо по имени,
 дороже трёх строк экономии.
+
+Запуск::  python scripts/checks.py --selftest
+Исходы: 0 — чисто; 1 — самопроверка провалена; 2 — запустить не удалось
+(модуль не разобрался — это видно трассировкой импорта, а не кодом).
 """
 
 from __future__ import annotations
+
+import os
+import sys
 
 
 def unique_names(runs: list[dict]) -> set[str]:
     """Имена проверок без повторов — «сколько проверок на этом коммите»."""
     return {run["name"] for run in runs}
+
+
+#: Уровни площадки. Список закрытый: команда с чужим словом площадкой
+#: игнорируется молча, и находка не доехала бы никуда.
+LEVELS = ("error", "warning", "notice")
+
+
+def annotate(level: str, text: str) -> str:
+    """Строка находки — командой площадки в прогоне, обычной строкой вне его.
+
+    ЗАЧЕМ ЭТО ЗДЕСЬ, А НЕ В КАЖДОМ ГЕЙТЕ. Замер правила 151: окну витрины логи
+    прогонов закрыты — ``GET /actions/runs/<id>/logs`` уходит на хранилище,
+    куда прокси отвечает отказом. До окна доходят исход каждого шага и
+    аннотации check-run, а аннотация появляется только у того, что напечатано
+    командой площадки. Гейт, печатающий причину в обычный поток, на чужом
+    красном оставляет ровно «Process completed with exit code 1».
+
+    ПОЧЕМУ НЕ ВСЕГДА С ПРЕФИКСОМ. Вне прогона ``::error::`` — шум перед
+    сообщением, которое человек и так читает. Признак берётся у площадки
+    (``GITHUB_ACTIONS``), а не выводится из наличия токена: токен бывает и на
+    машине разработчика.
+
+    Помощник вынесен ВЫШЕ гейтов, а не скопирован в каждый (правило 090): у
+    восьми копий разъехался бы формат, и молча — площадка не жалуется на
+    команду, которой не знает, она её просто не показывает.
+    """
+    if level not in LEVELS:
+        raise ValueError(f"уровень {level!r} вне набора {LEVELS}")
+    prefix = f"::{level}::" if os.environ.get("GITHUB_ACTIONS") == "true" else ""
+    return f"{prefix}{text}"
+
+
+def selftest() -> int:
+    """Обе ветки ``annotate`` и отказ на чужом уровне (правила 140, 145).
+
+    Набор ЗОВЁТ механизм и смотрит на его ответ, а не повторяет условие
+    «если GITHUB_ACTIONS, то префикс» (правило 150): при смене признака
+    случаи продолжат спрашивать функцию.
+    """
+    broken = []
+    saved = os.environ.get("GITHUB_ACTIONS")
+    try:
+        os.environ.pop("GITHUB_ACTIONS", None)
+        if annotate("error", "находка") != "находка":
+            broken.append("вне прогона строка обросла префиксом — шум человеку")
+        os.environ["GITHUB_ACTIONS"] = "true"
+        for level in LEVELS:
+            got = annotate(level, "находка")
+            if got != f"::{level}::находка":
+                broken.append(f"в прогоне уровень {level} даёт {got!r}")
+        # Признак берётся у площадки дословно: «1» это не «true», и принять
+        # его значило бы печатать команду там, где её никто не прочитает.
+        os.environ["GITHUB_ACTIONS"] = "1"
+        if annotate("error", "находка") != "находка":
+            broken.append("чужое значение признака принято за прогон")
+    finally:
+        os.environ.pop("GITHUB_ACTIONS", None)
+        if saved is not None:
+            os.environ["GITHUB_ACTIONS"] = saved
+
+    try:
+        annotate("fatal", "находка")
+    except ValueError:
+        pass
+    else:
+        broken.append("чужой уровень принят — площадка проглотит команду молча")
+
+    for line in broken:
+        print(f"  {line}")
+    print("  свёртка имён и разметка находок проверены" if not broken else "")
+    return 1 if broken else 0
+
+
+def main() -> int:
+    if "--selftest" in sys.argv[1:]:
+        return selftest()
+    print(__doc__)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

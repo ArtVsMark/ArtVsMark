@@ -17,6 +17,7 @@
 
 Список файлов берётся у git, а не обходом каталога: иначе в него попадут
 ``.git``, кэш Python и всё, что лежит рядом, но репозиторием не является.
+Исходы: 0 — чисто; 1 — есть находки; 2 — проверка не отработала.
 """
 
 from __future__ import annotations
@@ -26,6 +27,8 @@ import pathlib
 import re
 import subprocess
 import sys
+
+import checks
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 ROLES = ROOT / ".rules/roles.md"
@@ -95,12 +98,17 @@ def main() -> int:
     if "--selftest" in sys.argv[1:]:
         return selftest()
 
-    globs = patterns(ROLES.read_text(encoding="utf-8"))
-    files = tracked()
-    orphans, barren = audit(globs, files)
+    try:
+        globs = patterns(ROLES.read_text(encoding="utf-8"))
+        files = tracked()
+        orphans, barren = audit(globs, files)
+    except (OSError, ValueError) as e:
+        print(f"проверка не отработала: роли или список файлов не прочитаны — {e}",
+              file=sys.stderr)
+        return 2
 
     if orphans:
-        print("файлы без ведущего:", file=sys.stderr)
+        print(checks.annotate("error", f"файлы без ведущего: {len(orphans)}"), file=sys.stderr)
         for path in orphans:
             print(f"  {path}", file=sys.stderr)
         print(
@@ -110,7 +118,7 @@ def main() -> int:
             file=sys.stderr,
         )
     if barren:
-        print("строки без артефактов:", file=sys.stderr)
+        print(checks.annotate("error", f"строки без артефактов: {len(barren)}"), file=sys.stderr)
         for glob in barren:
             print(f"  {glob}", file=sys.stderr)
         print(

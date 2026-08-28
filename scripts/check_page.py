@@ -45,6 +45,8 @@ import pathlib
 import re
 import sys
 
+import checks
+
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 #: Витрина. Единственный файл, который читает посторонний.
@@ -198,7 +200,7 @@ def main() -> int:
         return 2
 
     if found:
-        print("запреты витрины нарушены:", file=sys.stderr)
+        print(checks.annotate("error", f"запреты витрины нарушены: {len(found)}"), file=sys.stderr)
         for line in found:
             print(f"  • {line}", file=sys.stderr)
         print("\n  Эти запреты держались чтением свода и теперь держатся здесь."
