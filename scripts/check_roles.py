@@ -17,6 +17,7 @@
 
 Список файлов берётся у git, а не обходом каталога: иначе в него попадут
 ``.git``, кэш Python и всё, что лежит рядом, но репозиторием не является.
+Исходы: 0 — чисто; 1 — есть находки; 2 — проверка не отработала.
 """
 
 from __future__ import annotations
@@ -95,9 +96,14 @@ def main() -> int:
     if "--selftest" in sys.argv[1:]:
         return selftest()
 
-    globs = patterns(ROLES.read_text(encoding="utf-8"))
-    files = tracked()
-    orphans, barren = audit(globs, files)
+    try:
+        globs = patterns(ROLES.read_text(encoding="utf-8"))
+        files = tracked()
+        orphans, barren = audit(globs, files)
+    except (OSError, ValueError) as e:
+        print(f"проверка не отработала: роли или список файлов не прочитаны — {e}",
+              file=sys.stderr)
+        return 2
 
     if orphans:
         print("файлы без ведущего:", file=sys.stderr)

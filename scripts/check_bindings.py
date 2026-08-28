@@ -23,6 +23,7 @@
   одинаково годятся — ``check_labels.py::CONTENT`` это список, а не функция;
 * ссылки на разделы (``§``) не проверяются: заголовок — не имя в коде, и
   сверять его пришлось бы по написанию.
+Исходы: 0 — чисто; 1 — есть находки; 2 — проверка не отработала.
 """
 
 from __future__ import annotations
@@ -148,8 +149,14 @@ def main() -> int:
     if "--selftest" in sys.argv[1:]:
         return selftest()
 
-    bindings = json.loads(BINDINGS.read_text(encoding="utf-8"))
-    dead, checked = audit(bindings["rules"])
+    try:
+        bindings = json.loads(BINDINGS.read_text(encoding="utf-8"))
+        dead, checked = audit(bindings["rules"])
+    except (OSError, ValueError, SyntaxError) as e:
+        # Третий исход, а не разновидность второго: находку чинит автор, а
+        # неотработавшую проверку — тот, кто её запускает (правило 039).
+        print(f"проверка не отработала: ответ каталогу не разобран — {e}", file=sys.stderr)
+        return 2
 
     if dead:
         print("вердикты показывают в пустоту:", file=sys.stderr)

@@ -32,6 +32,7 @@
 Запуск::
 
     python scripts/check_labels.py 20
+Исходы: 0 — чисто; 1 — есть находки; 2 — проверка не отработала.
 """
 
 from __future__ import annotations
@@ -41,6 +42,7 @@ import os
 import re
 import subprocess
 import sys
+import urllib.error
 import urllib.request
 
 REPO = os.environ.get("SHOWCASE_REPO", "ArtVsMark/ArtVsMark")
@@ -340,9 +342,16 @@ def main() -> int:
         return 1
     number = int(sys.argv[1])
 
-    pull = _api(f"/repos/{REPO}/pulls/{number}")
-    labels = {label["name"] for label in pull["labels"]}
-    complaints, content, zones = verdict(labels, changed_files(number))
+    try:
+        pull = _api(f"/repos/{REPO}/pulls/{number}")
+        labels = {label["name"] for label in pull["labels"]}
+        complaints, content, zones = verdict(labels, changed_files(number))
+    except (urllib.error.URLError, OSError, ValueError, KeyError) as e:
+        # Отказ площадки — не «метки не проставлены». Склеить их значило бы
+        # требовать от автора починить чужой сервер (правило 039).
+        print(f"проверка не отработала: площадка не ответила или ответ не разобран — {e}",
+              file=sys.stderr)
+        return 2
     code, text = outcome(number, complaints, content, zones, pull["user"]["login"])
     print(text)
     return code
