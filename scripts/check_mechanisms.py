@@ -173,6 +173,33 @@ def _section(text: str, name: str) -> str:
     return rest[: following.start()] if following else rest
 
 
+#: Свод окна и то, без чего он не свод. Правило 134: окно стартует, прочитав
+#: местные правила; до PR #22 свода не было, и витрину вело вслепую.
+CHARTER = "CLAUDE.md"
+CHARTER_PARTS = ("claude-code-playbook", ".rules/")
+
+
+def audit_charter(root) -> list[str]:
+    """Свод на месте и ведёт к каталогу.
+
+    ЧТО ЭТО ЛОВИТ. Не «прочитало ли окно» — этого машине не видно, — а
+    исчезновение предмета чтения: файл удалён, переименован или потерял ссылку
+    на каталог, из которого правила приходят. Ровно это и было инцидентом
+    правила: свода не существовало, и стартовать было не с чего.
+
+    ГРАНИЦА НАЗВАНА: зелёное здесь значит «свод существует и ведёт к каталогу»,
+    и не значит «свод верен». Второе проверяется чтением (правило 146).
+    """
+    charter = root / CHARTER
+    if not charter.is_file():
+        return [f"{CHARTER}: свода нет — окно стартует вслепую, и это дословно "
+                f"инцидент правила (134)"]
+    text = charter.read_text(encoding="utf-8")
+    missing = [part for part in CHARTER_PARTS if part not in text]
+    return [f"{CHARTER}: свод не ведёт к {', '.join(missing)} — правила приходят "
+            f"оттуда, и свод без этой ссылки обрывает дорогу (134)"] if missing else []
+
+
 def audit_runners(flows: dict[str, str]) -> list[str]:
     """Утверждения о прогонах, которые до 28 августа держались одной прозой.
 
@@ -450,6 +477,10 @@ def selftest() -> int:
         ("модуль без входа набора не требует", audit_voice,
          {"checks.py": "def f():\n    return 1\n"}, False),
     ]
+    charter = [
+        ("свод на месте и ведёт к каталогу", ROOT, False),
+        ("свода нет вовсе", ROOT / "нет-такого-каталога", True),
+    ]
     harness = [
         ("набор бежит в прогоне проверок", {"a.py": "def selftest():\n    pass\n"},
          {"pr-check.yml": "run: python scripts/a.py --selftest\n"}, False),
@@ -460,6 +491,11 @@ def selftest() -> int:
         ("прогона проверок нет вовсе", {"a.py": "def selftest():\n    pass\n"}, {}, True),
     ]
     broken: list[str] = []
+    for name, root, must_reject in charter:
+        found = audit_charter(root)
+        if bool(found) is not must_reject:
+            broken.append(f"{name}: ожидалось {'отказ' if must_reject else 'пропуск'}, вышло {found}")
+        print(f"  {'отвергнут' if found else 'пропущен '} — {name}")
     for name, srcs, flws, must_reject in harness:
         found = audit_harness(srcs, flws)
         if bool(found) is not must_reject:
@@ -497,7 +533,7 @@ def main() -> int:
 
     found = (audit_scripts(sources) + audit_calls(sources) + audit_voice(sources)
              + audit_gaps(rules) + audit_workflows(flows) + audit_runners(flows)
-             + audit_harness(sources, flows))
+             + audit_harness(sources, flows) + audit_charter(ROOT))
     if found:
         print(checks.annotate("error", f"механизмы держат не то, что объявили: {len(found)}"), file=sys.stderr)
         for line in found:
