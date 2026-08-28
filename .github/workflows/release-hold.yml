@@ -57,6 +57,7 @@ jobs:
           sparse-checkout: |
             scripts/hold.py
             scripts/checks.py
+            scripts/gh_outcome.py
           sparse-checkout-cone-mode: false
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -102,7 +103,33 @@ jobs:
           case "$verdict" in
             release:*)
               gh pr edit "$number" --repo "$GITHUB_REPOSITORY" --remove-label hold
-              echo "::notice::Стоп-кран с #$number снят: ${verdict#release: }" ;;
+              echo "::notice::Стоп-кран с #$number снят: ${verdict#release: }"
+              # ДОВЕСТИ ДО КОНЦА, А НЕ ОСТАВИТЬ НА ЧЕЛОВЕКА. Снятая метка сама
+              # по себе ничего не двигает: площадка НЕ будит прогоны событиями,
+              # порождёнными `GITHUB_TOKEN`, — значит `automerge` на это снятие
+              # не проснётся. Замер 28 августа на #87: release-hold отработал
+              # дважды с исходом success, метка исчезла, а последний прогон
+              # automerge остался тем, что бежал ДО снятия. Механизм сработал
+              # наполовину и отчитался успехом — ровно то, против чего 146.
+              #
+              # Метод squash задан явно: при merge автором коммита в main
+              # становится тот, кто нажал, и трейлеры не доезжают до
+              # первопредков (.rules/README.md § Атрибуция коммитов).
+              out=$(gh pr merge "$number" --repo "$GITHUB_REPOSITORY" \
+                      --auto --squash 2>&1) && rc=0 || rc=$?
+              if [ "$rc" -ne 0 ]; then
+                v=$(printf '%s\n' "$out" | python3 scripts/gh_outcome.py --code "$rc") \
+                  || v="broken: разбор исходов не отработал — scripts/gh_outcome.py"
+                case "$v" in
+                  state:*)
+                    echo "::warning::Автомерж на #$number не включён: ${v#state: }. Метка снята, изменение поедет со следующим событием." ;;
+                  *)
+                    echo "::error::Автомерж на #$number не включён: $out"
+                    exit 1 ;;
+                esac
+              else
+                echo "::notice::Автомерж на #$number вооружён (squash)"
+              fi ;;
             keep:*)
               echo "#$number: стоп-кран остаётся — ${verdict#keep: }" ;;
             *)

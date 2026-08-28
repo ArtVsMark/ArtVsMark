@@ -75,6 +75,13 @@ SUBJECT_LABEL: tuple[tuple[str, str], ...] = (
     ("ci", "github_actions"),
     ("build", "github_actions"),
     ("deps", "dependencies"),
+    # `chore` — обслуживание, и метка у него выведена ЗАМЕРОМ, а не рассуждением:
+    # все три chore-изменения витрины (#79, #42, #39) — пересборка метрик, и все
+    # три помечены `documentation` рукой. Четвёртое (#87) открылось без метки
+    # вовсе, потому что таблица этот тип не знала. Вывод опровержим: появится
+    # chore, не трогающий документацию, — метка будет неверной, и поймает это
+    # полнота по зонам, которая потребует своей.
+    ("chore", "documentation"),
 )
 
 
@@ -278,6 +285,7 @@ def selftest() -> int:
         ("ci: закрепить действия по SHA", "github_actions"),
         ("build(deps): поднять actions/checkout", "github_actions"),
         ("deps: поднять setup-python", "dependencies"),
+        ("chore(profile): пересобранные метрики витрины", "documentation"),
         ("feat!: ломающее изменение", "enhancement"),
         ("fix(profile)!: и область, и восклицательный знак", "bug"),
         ("  FEAT(profile): регистр и отступы  ", "enhancement"),
