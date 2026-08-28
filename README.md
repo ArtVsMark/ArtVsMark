@@ -17,9 +17,9 @@
 <br>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./assets/metrics-dark.svg?v=6283b006">
-  <source media="(prefers-color-scheme: light)" srcset="./assets/metrics-light.svg?v=1a102447">
-  <img src="./assets/metrics-dark.svg?v=6283b006" alt="Stepik-Python-Grader: 4000+ tests, 240 test modules, 18 checks per PR" width="92%">
+  <source media="(prefers-color-scheme: dark)" srcset="./assets/metrics-dark.svg?v=06ee291d">
+  <source media="(prefers-color-scheme: light)" srcset="./assets/metrics-light.svg?v=c0d2b869">
+  <img src="./assets/metrics-dark.svg?v=06ee291d" alt="Stepik-Python-Grader: 4000+ tests, 241 test modules, 18 checks per PR" width="92%">
 </picture>
 
 <br><br>
@@ -37,9 +37,9 @@
 <div align="center">
 <a href="https://github.com/ArtVsMark?tab=repositories">
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./assets/featured-dark.svg?v=0714d704">
-  <source media="(prefers-color-scheme: light)" srcset="./assets/featured-light.svg?v=9e2047ab">
-  <img src="./assets/featured-dark.svg?v=0714d704" alt="Stepik-Python-Grader — Offline Python autograder: unlimited local checks, honest side-by-side comparison of solutions. release/pypi 1.11, CI success, coverage 91.6%, version 1.11.64. 3 stars, 1686 commits, 39 issues, 12 releases, 676 prs. CLI · web UI · GUI · pytest plugin · OS sandbox · claude-code-playbook — Rules for agent sessions and a GitHub pipeline — each one carrying the incident it grew from. release/pypi 1.1, CI success, coverage 51%, version 1.1.6. 1 stars, 235 commits, 6 issues, 3 releases, 121 prs. docs · RU/EN · claude-code-usage — Turns a three-step limit indicator into a number. Early: the spec is written, the tool is not. release/pypi 2.0.0, CI unknown, coverage none, version none. 0 stars, 9 commits, 16 issues, 0 releases, 5 prs. Python · JSONL over git · Glossary-Python — The RU/EN glossary the grader links into when a run fails. release/pypi none, CI none, coverage none, version none. 2 stars, 3 commits, 3 issues, 0 releases, 0 prs. content · tooling" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="./assets/featured-dark.svg?v=ef41fc64">
+  <source media="(prefers-color-scheme: light)" srcset="./assets/featured-light.svg?v=9a48cd16">
+  <img src="./assets/featured-dark.svg?v=ef41fc64" alt="Stepik-Python-Grader — Offline Python autograder: unlimited local checks, honest side-by-side comparison of solutions. release/pypi 1.11, CI success, coverage 91.6%, version 1.11.66. 3 stars, 1687 commits, 39 issues, 12 releases, 677 prs. CLI · web UI · GUI · pytest plugin · OS sandbox · claude-code-playbook — Rules for agent sessions and a GitHub pipeline — each one carrying the incident it grew from. release/pypi 1.1, CI success, coverage 50%, version 1.1.14. 1 stars, 243 commits, 3 issues, 3 releases, 129 prs. docs · RU/EN · claude-code-usage — Turns a three-step limit indicator into a number. Early: the spec is written, the tool is not. release/pypi 2.0.0, CI unknown, coverage none, version none. 0 stars, 9 commits, 16 issues, 0 releases, 5 prs. Python · JSONL over git · Glossary-Python — The RU/EN glossary the grader links into when a run fails. release/pypi none, CI none, coverage none, version none. 2 stars, 3 commits, 3 issues, 0 releases, 0 prs. content · tooling" width="100%">
 </picture>
 </a>
 </div>
@@ -48,8 +48,8 @@
 <div align="center">
 
 <a href="https://github.com/ArtVsMark/Stepik-Python-Grader"><picture><source media="(prefers-color-scheme: dark)" srcset="./assets/tile-stepik-python-grader-dark.svg?v=c11f5616"><source media="(prefers-color-scheme: light)" srcset="./assets/tile-stepik-python-grader-light.svg?v=28539d07"><img src="./assets/tile-stepik-python-grader-dark.svg?v=c11f5616" alt="Open Stepik-Python-Grader on GitHub" width="23%"></picture></a>
-<a href="https://github.com/ArtVsMark/claude-code-usage"><picture><source media="(prefers-color-scheme: dark)" srcset="./assets/tile-claude-code-usage-dark.svg?v=58ff0736"><source media="(prefers-color-scheme: light)" srcset="./assets/tile-claude-code-usage-light.svg?v=933998b2"><img src="./assets/tile-claude-code-usage-dark.svg?v=58ff0736" alt="Open claude-code-usage on GitHub" width="23%"></picture></a>
 <a href="https://github.com/ArtVsMark/claude-code-playbook"><picture><source media="(prefers-color-scheme: dark)" srcset="./assets/tile-claude-code-playbook-dark.svg?v=9f8a32b5"><source media="(prefers-color-scheme: light)" srcset="./assets/tile-claude-code-playbook-light.svg?v=edf662b3"><img src="./assets/tile-claude-code-playbook-dark.svg?v=9f8a32b5" alt="Open claude-code-playbook on GitHub" width="23%"></picture></a>
+<a href="https://github.com/ArtVsMark/claude-code-usage"><picture><source media="(prefers-color-scheme: dark)" srcset="./assets/tile-claude-code-usage-dark.svg?v=58ff0736"><source media="(prefers-color-scheme: light)" srcset="./assets/tile-claude-code-usage-light.svg?v=933998b2"><img src="./assets/tile-claude-code-usage-dark.svg?v=58ff0736" alt="Open claude-code-usage on GitHub" width="23%"></picture></a>
 <a href="https://github.com/ArtVsMark/Glossary-Python"><picture><source media="(prefers-color-scheme: dark)" srcset="./assets/tile-glossary-python-dark.svg?v=c3e901f8"><source media="(prefers-color-scheme: light)" srcset="./assets/tile-glossary-python-light.svg?v=7db11f01"><img src="./assets/tile-glossary-python-dark.svg?v=c3e901f8" alt="Open Glossary-Python on GitHub" width="23%"></picture></a>
 
 <sub>data as of 2026-08-28</sub>
