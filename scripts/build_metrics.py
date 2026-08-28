@@ -454,8 +454,21 @@ def verify_absence(repo: str, kind: str, why: str) -> None:
         else:
             return
     elif kind == "ci":
-        if _api(f"/repos/{repo}/actions/workflows").get("total_count", 0):
-            found = "прогоны в репозитории есть"
+        # НАЗВАННОЕ ИСКЛЮЧЕНИЕ, А НЕ ЛЮБОЕ. «Прогонов нет вовсе» перестало быть
+        # верным у claude-code-usage 28 августа: сосед подключился к каталогу
+        # правил, и у него завёлся rules-inbox — синхронизация, а не проверка
+        # кода. Утверждение «CI нет» при этом осталось верным по сути и стало
+        # ложным по букве.
+        #
+        # Гейт не судит, ЧТО делает чужой прогон: это чтение смысла. Он требует
+        # назвать исключения ПОИМЁННО в самой причине и сверяет, что других нет.
+        # Появится у соседа настоящий CI — имени его в причине не окажется, и
+        # ответ покраснеет, как и должен (правило 083: отказ называет предмет).
+        names = {w["path"].rsplit("/", 1)[-1]
+                 for w in _api(f"/repos/{repo}/actions/workflows").get("workflows", [])}
+        unnamed = {name for name in names if name not in why}
+        if unnamed:
+            found = f"прогоны в репозитории есть и в причине не названы: {', '.join(sorted(unnamed))}"
         else:
             return
     elif kind == "coverage":
