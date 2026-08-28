@@ -152,36 +152,61 @@ def audit_workflows(sources: dict[str, str]) -> list[str]:
 SHARED_TMP = re.compile(r"(?<![\w$/])/tmp/")
 
 
+#: Ключ верхнего уровня и ключ работы. Разбор по отступам, а не библиотекой:
+#: у витрины нет ни одной сторонней зависимости, и заводить первую ради четырёх
+#: проверок дороже, чем прочитать два уровня отступов. Цена решения названа:
+#: разбор держится на форматировании в два пробела, и прогон, отступивший от
+#: него, станет НАХОДКОЙ, а не тихим пропуском.
+TOP_KEY = re.compile(r"^(\w[\w-]*):", re.M)
+JOB_KEY = re.compile(r"^  (\w[\w-]*):\s*$", re.M)
+JOB_TIMEOUT = re.compile(r"^    timeout-minutes:", re.M)
+PY_VERSION = re.compile(r"^\s*python-version:\s*[\"']?([\d.]+)", re.M)
+
+
+def _section(text: str, name: str) -> str:
+    """Тело ключа верхнего уровня — до следующего такого ключа."""
+    match = re.search(rf"^{name}:.*$", text, re.M)
+    if not match:
+        return ""
+    rest = text[match.end():]
+    following = TOP_KEY.search(rest)
+    return rest[: following.start()] if following else rest
+
+
 def audit_runners(flows: dict[str, str]) -> list[str]:
     """Утверждения о прогонах, которые до 28 августа держались одной прозой.
 
     Четыре вердикта говорили «у ВСЕХ прогонов так», и проверялось это чтением
-    восьми файлов глазами. Утверждение вида «у всех» проверяется перебором —
-    ровно то, что машина делает даром и без пропусков.
+    восьми файлов глазами — то есть до первого нового файла. Перебор машина
+    делает даром и без пропусков.
 
-    Разбирается YAML, а не текст: ``timeout-minutes`` встречается и у шага, и у
-    работы, и грепом одно от другого не отличить — файл с одним таймаутом у
-    единственного шага прошёл бы как «у работы есть».
+    ПОЧЕМУ ОТСТУПЫ, А НЕ ГРЕП. ``timeout-minutes`` стоит и у работы, и у шага, и
+    грепом одно от другого не отличить: файл с таймаутом у единственного шага
+    прошёл бы как «у работы есть». Уровень отступа эту разницу видит.
     """
-    import yaml  # локально: гейт не должен падать импортом на машине без него
-
     found = []
     versions: dict[str, set[str]] = {}
     for name, text in sorted(flows.items()):
-        doc = yaml.safe_load(text) or {}
-        # `on` YAML читает как True: ключ надо искать обоими написаниями.
-        triggers = doc.get("on", doc.get(True, {})) or {}
-        if isinstance(triggers, dict) and "workflow_dispatch" not in triggers:
+        triggers = _section(text, "on")
+        # `on` в YAML — ещё и слово «истина», но здесь читается текст, и этой
+        # двусмысленности у разбора по отступам просто нет.
+        if "workflow_dispatch:" not in triggers:
             found.append(f"{name}: нет ручной кнопки — у событийной автоматики "
                          f"она обязательна, иначе прогон нельзя позвать (104)")
-        for job, body in (doc.get("jobs") or {}).items():
-            if isinstance(body, dict) and "timeout-minutes" not in body:
+        jobs = _section(text, "jobs")
+        if not jobs.strip():
+            found.append(f"{name}: работ не разобрано ни одной. Разбор держится "
+                         f"на отступах в два пробела — либо файл отступает от "
+                         f"них, либо прогон пуст; молча пропускать нельзя (010)")
+        bounds = [m.start() for m in JOB_KEY.finditer(jobs)] + [len(jobs)]
+        for i, (job, begin) in enumerate((m.group(1), m.start())
+                                         for m in JOB_KEY.finditer(jobs)):
+            body = jobs[begin:bounds[i + 1]]
+            if not JOB_TIMEOUT.search(body):
                 found.append(f"{name}: у работы {job} нет timeout-minutes — "
                              f"умолчание площадки шесть часов (100)")
-            for step in (body or {}).get("steps", []) if isinstance(body, dict) else []:
-                version = (step or {}).get("with", {}).get("python-version")
-                if version is not None:
-                    versions.setdefault(str(version), set()).add(name)
+        for version in PY_VERSION.findall(text):
+            versions.setdefault(version, set()).add(name)
         if SHARED_TMP.search(text):
             found.append(f"{name}: пишет в общий /tmp — площадка выдаёт "
                          f"$RUNNER_TEMP каждому прогону свой (149)")
