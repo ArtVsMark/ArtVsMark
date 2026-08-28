@@ -50,7 +50,13 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
-          sparse-checkout: scripts/hold.py
+          # Не один файл: hold.py зовёт общего помощника разметки, и точечная
+          # выборка оборвала бы зависимость — ровно это и случилось 28 августа,
+          # когда помощник появился. Список зависимостей теперь проверяет
+          # scripts/check_mechanisms.py::audit_sparse.
+          sparse-checkout: |
+            scripts/hold.py
+            scripts/checks.py
           sparse-checkout-cone-mode: false
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0

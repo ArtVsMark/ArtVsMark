@@ -173,6 +173,76 @@ def _section(text: str, name: str) -> str:
     return rest[: following.start()] if following else rest
 
 
+#: Свод окна и то, без чего он не свод. Правило 134: окно стартует, прочитав
+#: местные правила; до PR #22 свода не было, и витрину вело вслепую.
+CHARTER = "CLAUDE.md"
+CHARTER_PARTS = ("claude-code-playbook", ".rules/")
+
+
+#: Точечная выборка файлов в шаге забора. Разбирается список: прогон, берущий
+#: один скрипт, обязан взять и то, что этот скрипт зовёт.
+SPARSE = re.compile(r"sparse-checkout:\s*(?:\|\s*\n((?:\s+\S+\n)+)|(\S+))")
+
+
+def _imports(source: str) -> set[str]:
+    """Имена соседних модулей, которые скрипт импортирует."""
+    return {node.names[0].name for node in ast.walk(ast.parse(source))
+            if isinstance(node, ast.Import) and node.names[0].name.isidentifier()}
+
+
+def audit_sparse(sources: dict[str, str], flows: dict[str, str]) -> list[str]:
+    """Прогон, берущий скрипт точечно, берёт и то, что тот зовёт.
+
+    ИНЦИДЕНТ, ИЗ-ЗА КОТОРОГО ГЕЙТ ЕСТЬ. 28 августа общий помощник разметки был
+    вынесен выше гейтов — правильный ход по правилу 090, — и `hold.py` начал
+    его звать. Прогон `release-hold` забирал ровно один файл, и механизм снятия
+    стоп-крана упал с `ModuleNotFoundError` на первом же изменении. Правка
+    вызываемого, сделанная без взгляда на вызывающего: то же рассуждение, что в
+    правиле 152, только в другую сторону.
+
+    ПОЧЕМУ ЭТО ЛОВИТСЯ, А НЕ ОБСУЖДАЕТСЯ. Список файлов в шаге и список
+    импортов в скрипте — оба машинные, и расхождение между ними видно точно.
+    Судить о смысле не требуется.
+    """
+    found = []
+    for name, text in sorted(flows.items()):
+        match = SPARSE.search(text)
+        if not match:
+            continue
+        listed = {line.strip() for line in (match.group(1) or match.group(2) or "").split()
+                  if line.strip()}
+        for path in sorted(listed):
+            script = sources.get(pathlib.PurePath(path).name)
+            if script is None:
+                continue
+            for module in sorted(_imports(script)):
+                if f"{module}.py" in sources and f"scripts/{module}.py" not in listed:
+                    found.append(f"{name}: берёт {path} точечно, а тот зовёт "
+                                 f"{module} — выборка оборвёт зависимость (090, 152)")
+    return found
+
+
+def audit_charter(root) -> list[str]:
+    """Свод на месте и ведёт к каталогу.
+
+    ЧТО ЭТО ЛОВИТ. Не «прочитало ли окно» — этого машине не видно, — а
+    исчезновение предмета чтения: файл удалён, переименован или потерял ссылку
+    на каталог, из которого правила приходят. Ровно это и было инцидентом
+    правила: свода не существовало, и стартовать было не с чего.
+
+    ГРАНИЦА НАЗВАНА: зелёное здесь значит «свод существует и ведёт к каталогу»,
+    и не значит «свод верен». Второе проверяется чтением (правило 146).
+    """
+    charter = root / CHARTER
+    if not charter.is_file():
+        return [f"{CHARTER}: свода нет — окно стартует вслепую, и это дословно "
+                f"инцидент правила (134)"]
+    text = charter.read_text(encoding="utf-8")
+    missing = [part for part in CHARTER_PARTS if part not in text]
+    return [f"{CHARTER}: свод не ведёт к {', '.join(missing)} — правила приходят "
+            f"оттуда, и свод без этой ссылки обрывает дорогу (134)"] if missing else []
+
+
 def audit_runners(flows: dict[str, str]) -> list[str]:
     """Утверждения о прогонах, которые до 28 августа держались одной прозой.
 
@@ -450,6 +520,23 @@ def selftest() -> int:
         ("модуль без входа набора не требует", audit_voice,
          {"checks.py": "def f():\n    return 1\n"}, False),
     ]
+    HOLD = "import checks\n\ndef main():\n    return 1\n"
+    sparse = [
+        ("выборка несёт зависимость", {"hold.py": HOLD, "checks.py": ""},
+         {"a.yml": "sparse-checkout: |\n  scripts/hold.py\n  scripts/checks.py\n"}, False),
+        ("выборка обрывает зависимость", {"hold.py": HOLD, "checks.py": ""},
+         {"a.yml": "sparse-checkout: |\n  scripts/hold.py\n"}, True),
+        ("выборка одной строкой обрывает зависимость", {"hold.py": HOLD, "checks.py": ""},
+         {"a.yml": "sparse-checkout: scripts/hold.py\n"}, True),
+        ("скрипт без соседних импортов", {"a.py": "import json\n", "checks.py": ""},
+         {"a.yml": "sparse-checkout: scripts/a.py\n"}, False),
+        ("выборки нет — берётся всё", {"hold.py": HOLD, "checks.py": ""},
+         {"a.yml": "uses: actions/checkout@v7\n"}, False),
+    ]
+    charter = [
+        ("свод на месте и ведёт к каталогу", ROOT, False),
+        ("свода нет вовсе", ROOT / "нет-такого-каталога", True),
+    ]
     harness = [
         ("набор бежит в прогоне проверок", {"a.py": "def selftest():\n    pass\n"},
          {"pr-check.yml": "run: python scripts/a.py --selftest\n"}, False),
@@ -460,6 +547,16 @@ def selftest() -> int:
         ("прогона проверок нет вовсе", {"a.py": "def selftest():\n    pass\n"}, {}, True),
     ]
     broken: list[str] = []
+    for name, srcs, flws, must_reject in sparse:
+        found = audit_sparse(srcs, flws)
+        if bool(found) is not must_reject:
+            broken.append(f"{name}: ожидалось {'отказ' if must_reject else 'пропуск'}, вышло {found}")
+        print(f"  {'отвергнут' if found else 'пропущен '} — {name}")
+    for name, root, must_reject in charter:
+        found = audit_charter(root)
+        if bool(found) is not must_reject:
+            broken.append(f"{name}: ожидалось {'отказ' if must_reject else 'пропуск'}, вышло {found}")
+        print(f"  {'отвергнут' if found else 'пропущен '} — {name}")
     for name, srcs, flws, must_reject in harness:
         found = audit_harness(srcs, flws)
         if bool(found) is not must_reject:
@@ -497,7 +594,8 @@ def main() -> int:
 
     found = (audit_scripts(sources) + audit_calls(sources) + audit_voice(sources)
              + audit_gaps(rules) + audit_workflows(flows) + audit_runners(flows)
-             + audit_harness(sources, flows))
+             + audit_harness(sources, flows) + audit_charter(ROOT)
+             + audit_sparse(sources, flows))
     if found:
         print(checks.annotate("error", f"механизмы держат не то, что объявили: {len(found)}"), file=sys.stderr)
         for line in found:
