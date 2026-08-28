@@ -125,15 +125,15 @@ jobs:
             || { echo "::error::Вывод метки не отработал — scripts/check_labels.py"; exit 1; }
           [ -n "$label" ] || echo "::warning::Тип в заголовке «$title» не разобран — метка содержания не поставлена. Поставьте её: без неё классификация красная."
 
-          printf '%s\n' "$body" > /tmp/pr-body.md
+          printf '%s\n' "$body" > "$RUNNER_TEMP/pr-body.md"
           {
             printf '\n---\n\n'
             printf 'Изменение открыто прогоном `open-pr` от имени владельца: автором squash-коммита в `main` площадка ставит автора ИЗМЕНЕНИЯ, и открывать его должен тот, чью личность этот коммит обязан нести.\n\n'
             printf 'Метка `hold` стоит намеренно — автомерж здесь по умолчанию. Снимите её, когда тело заполнено и проверки названы.\n'
-          } >> /tmp/pr-body.md
+          } >> "$RUNNER_TEMP/pr-body.md"
 
           out=$(gh pr create --repo "$GITHUB_REPOSITORY" --base main --head "$BRANCH" \
-            --title "$title" --body-file /tmp/pr-body.md \
+            --title "$title" --body-file "$RUNNER_TEMP/pr-body.md" \
             ${label:+--label "$label"} --label hold 2>&1) && rc=0 || rc=$?
           if [ "$rc" -ne 0 ]; then
             verdict=$(printf '%s\n' "$out" | python3 scripts/gh_outcome.py --code "$rc") \

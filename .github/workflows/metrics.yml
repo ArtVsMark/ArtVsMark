@@ -123,9 +123,9 @@ jobs:
             "" \
             "Открыто прогоном \`Profile metrics\`. Сливается тем же автомержем, что и" \
             "остальные: отдельного пути в \`main\` у сборки больше нет." \
-            > /tmp/metrics-pr-body.md
+            > "$RUNNER_TEMP/metrics-pr-body.md"
 
           gh pr create --base main --head "$BRANCH" \
             --title "chore(profile): пересобранные метрики витрины" \
             --label documentation \
-            --body-file /tmp/metrics-pr-body.md
+            --body-file "$RUNNER_TEMP/metrics-pr-body.md"
