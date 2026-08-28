@@ -91,8 +91,20 @@ jobs:
           GH_TOKEN: ${{ env.MERGE_QUEUE_TOKEN }}
         run: |
           set -euo pipefail
-          if git diff --quiet -- README.md assets .rules; then
+          # ДАТА САМА ПО СЕБЕ ИЗМЕНЕНИЕМ НЕ СЧИТАЕТСЯ. Подпись «data as of»
+          # пишется каждой сборкой, и без этой оговорки прогон открывал бы
+          # изменение ЕЖЕДНЕВНО — даже когда ни одно число не сдвинулось. Тогда
+          # «числа изменились» перестало бы что-либо значить, а очередь
+          # изменений превратилась бы в фон.
+          #
+          # Отсюда и смысл подписи: это день, когда числа последний раз
+          # ИЗМЕНИЛИСЬ, а не когда сборка бежала. Второе спрашивает
+          # .github/workflows/staleness.yml.
+          changed=$(git diff -U0 -- README.md assets .rules \
+            | grep -E '^[+-]' | grep -Ev '^(\+\+\+|---)' | grep -v 'data as of' || true)
+          if [ -z "$changed" ]; then
             echo "Числа не изменились — изменение не нужно."
+            git checkout -- README.md assets .rules
             exit 0
           fi
 
