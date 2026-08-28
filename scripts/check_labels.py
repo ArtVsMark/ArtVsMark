@@ -290,6 +290,29 @@ def selftest() -> int:
             broken.append(f"заголовок {subject!r}: ожидалась метка {expected!r}, вышла {got!r}")
         print(f"  {got or '— не разобрано':<14} — {subject.strip()[:52] or '(пустой заголовок)'}")
 
+    # Зоны, выводимые для `open-pr.yml`, — это тот же derive_zones, которым
+    # гейт потом ПРОВЕРЯЕТ полноту. Один список на обе стороны (правило 090):
+    # разойдись они, прогон ставил бы метки, которых гейт не ждёт, — или, как
+    # было до 28 августа, не ставил бы ни одной, и четыре изменения подряд
+    # краснели на github_actions, которую вывести можно было механически.
+    for files, expected in (
+        ([".github/workflows/pr-check.yml"], {"github_actions"}),
+        ([".github/dependabot.yml"], {"dependencies"}),
+        (["HISTORY.md", ".rules/roles.md"], {"documentation"}),
+        (["scripts/checks.py"], set()),
+        ([], set()),
+    ):
+        got = derive_zones(files)
+        if got != expected:
+            broken.append(f"зоны для {files}: ожидалось {sorted(expected)}, вышло {sorted(got)}")
+        # Проставленное прогоном обязано закрывать претензию гейта — иначе
+        # автоматика ставит метки, а изменение всё равно красное. Пустой дифф
+        # из этого утверждения исключён намеренно: там гейт жалуется не на
+        # метки, а на то, что дифф не прочитан, и меткой это не закрывается
+        # (правило 010). Первый черновик набора считал иначе и упал здесь.
+        if files and verdict(got | {"enhancement"}, files)[0]:
+            broken.append(f"зоны для {files} не закрывают претензию гейта")
+
     # Вывод обязан оставаться внутри списка меток содержания: разойдись он с
     # ним — прогон ставил бы метку, которую этот же гейт отвергает.
     stray = {label for _, label in SUBJECT_LABEL} - CONTENT
@@ -331,6 +354,13 @@ def selftest() -> int:
 def main() -> int:
     if "--selftest" in sys.argv[1:]:
         return selftest()
+    if "--zones-for-diff" in sys.argv[1:]:
+        # Вход прогона `open-pr.yml`: пути изменённых файлов приходят потоком,
+        # обратно идут метки зон — по одной в строке. Через поток, а не
+        # аргументами: дифф бывает длиннее, чем командная строка.
+        for label in sorted(derive_zones([line.strip() for line in sys.stdin if line.strip()])):
+            print(label)
+        return 0
     if "--label-for-subject" in sys.argv[1:]:
         # Вход прогона `open-pr.yml`. Печатается только метка: пусто значит
         # «не разобрано», и решение, что с этим делать, принимает вызывающий.
