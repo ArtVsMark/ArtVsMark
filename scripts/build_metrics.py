@@ -403,13 +403,14 @@ def render_featured(accents: list[dict], dark: bool) -> str:
 #: проекта — бейдж или названную причину. Список — константа, по которой
 #: проверяют, а не проза в докстроке: список, написанный и не ставший кодом,
 #: витрина уже проходила на гейте меток (правило 068).
-BADGE_KINDS = ("version", "ci", "coverage", "package")
+BADGE_KINDS = ("release", "ci", "coverage", "version")
 
 #: Как показатель подписан на витрине. Имя ключа и имя на плашке — разные вещи:
 #: ключ служебный, подпись читает посетитель. Держатся вместе, иначе показатель
 #: без предмета подписывается ключом, а с предметом — как придётся: у витрины
 #: так и вышло в первой редакции — «release» рядом с «version none».
-BADGE_LABELS = {"version": "release", "ci": "CI", "coverage": "coverage", "package": "pypi"}
+BADGE_LABELS = {"release": "release/pypi", "ci": "CI",
+                "coverage": "coverage", "version": "version"}
 
 
 def _badge_files(repo: str) -> list[str]:
@@ -443,7 +444,7 @@ def verify_absence(repo: str, kind: str, why: str) -> None:
     похожим названием — ложный отказ дороже пропуска (правило 051). Пробел
     назван здесь, а не выровнен.
     """
-    if kind == "version":
+    if kind == "release":
         if _api(f"/repos/{repo}/releases?per_page=1"):
             found = "выпуски есть, хотя бы один — возможно, предварительный"
         else:
@@ -466,8 +467,21 @@ def verify_absence(repo: str, kind: str, why: str) -> None:
             found = "в ветке по умолчанию лежит значок покрытия"
         else:
             return
+    elif kind == "version":
+        # Проверяется тем же способом, что и покрытие: версию публикуют значком,
+        # и значок либо есть, либо нет. До 27 августа непроверяемым здесь был
+        # «пакет» — у него при отказе не объявлено имя, и спросить PyPI не о чем.
+        # Пакет теперь входит в «release», и его отсутствие проверяется выпусками
+        # площадки.
+        branches = _api(f"/repos/{repo}/branches?per_page=100")
+        if any(branch["name"] == "badges" for branch in branches):
+            found = "ветка badges существует, значит показатель публикуется"
+        elif _badge_files(repo):
+            found = "в ветке по умолчанию лежит значок версии"
+        else:
+            return
     else:
-        return  # пакет не проверяется: см. докстроку
+        return
 
     raise SystemExit(
         f"{repo}: ответ по показателю «{kind}» неверен.\n"
@@ -476,6 +490,69 @@ def verify_absence(repo: str, kind: str, why: str) -> None:
         "  Отказ — утверждение о чужом репозитории, и устаревает он молча.\n"
         "  Замените «none» на источник значения либо исправьте причину."
     )
+
+
+def latest_tag(repo: str) -> str | None:
+    """Тег последнего выпуска, либо ``None``.
+
+    ``releases/latest`` не видит черновиков и предварительных выпусков: у
+    каталога правил единственный релиз был помечен предварительным, и эндпойнт
+    отдавал 404 при существующем выпуске. Отсюда запасной путь по полному
+    списку — иначе плашка говорила бы «нет выпусков» рядом с числом «1 releases»
+    в той же картинке.
+    """
+    try:
+        tag = _api(f"/repos/{repo}/releases/latest").get("tag_name")
+    except urllib.error.HTTPError as absent:
+        # 404 — не сбой, а «нет выпуска, который площадка считает последним».
+        # Отличать от настоящей ошибки обязательно: молчаливый except спрятал бы
+        # сеть и права (правило 039).
+        if absent.code != 404:
+            raise
+        tag = None
+    if tag:
+        return tag
+    releases = _api(f"/repos/{repo}/releases?per_page=1")
+    return releases[0]["tag_name"] if releases else None
+
+
+def pypi_version(package: str) -> str:
+    """Версия пакета в PyPI. Источник чужой и объявлен ответом проекта."""
+    with urllib.request.urlopen(
+        urllib.request.Request(f"https://pypi.org/pypi/{package}/json",
+                               headers={"User-Agent": "artvsmark-profile"}),
+        timeout=30,
+    ) as response:
+        return json.loads(response.read())["info"]["version"]
+
+
+def badge_value(repo: str, answer: dict) -> str:
+    """Значение значка проекта. Две формы ответа, и обе законны:
+
+    ``{"endpoint": "имя"}`` — значок на отдельной ветке ``badges``. Так делают
+    и грейдер, и каталог правил: их CI считает число и коммитит результат мимо
+    общей ветки. ``{"badge": "имя"}`` — значок в ветке по умолчанию, рядом с
+    кодом.
+
+    ФОРМУ ``badge`` СЕЙЧАС НЕ ИСПОЛЬЗУЕТ НИКТО, и это названо, а не оставлено
+    умолчанием. Она заведена под каталог правил, который держал покрытие в
+    общей ветке; 27 августа он унёс значки на ``badges`` окончательно
+    (playbook#144), и витрина узнала об этом отказом 404 в суточной сборке.
+    Форма оставлена: она законна, покрыта самопроверкой и понадобится первому
+    же проекту, который положит значок рядом с кодом.
+
+    Одну форму на обе площадки не свести: у них разный ``ref``, и угадывать его
+    перебором значило бы прятать ошибку в данных за второй попыткой.
+
+    Читается через contents-API, а НЕ через ``raw.githubusercontent.com``: raw
+    отвечает 404 на запрос с заголовком ``Authorization``.
+    """
+    if "badge" in answer:
+        path = f".github/badges/{answer['badge']}.json"
+    else:
+        path = f".github/badges/{answer['endpoint']}.json?ref=badges"
+    payload = _api(f"/repos/{repo}/contents/{path}")
+    return json.loads(base64.b64decode(payload["content"]))["message"]
 
 
 def project_badges(repo: str, answers: dict) -> list[tuple[str, str, str]]:
@@ -510,26 +587,31 @@ def project_badges(repo: str, answers: dict) -> list[tuple[str, str, str]]:
             # читает англоязычный посетитель.
             badges.append((BADGE_LABELS[kind], "none", "muted"))
             continue
-        if kind == "version":
-            # `releases/latest` не видит черновиков и предварительных выпусков:
-            # у каталога правил единственный релиз помечен предварительным, и
-            # эндпойнт отдавал 404 при существующем выпуске. Отсюда запасной
-            # путь по полному списку — иначе плашка говорила бы «нет релизов»
-            # рядом с числом «1 releases» в той же картинке.
-            try:
-                tag = _api(f"/repos/{repo}/releases/latest").get("tag_name")
-            except urllib.error.HTTPError as absent:
-                # 404 здесь — не сбой, а «нет выпуска, который площадка считает
-                # последним»: черновики и предварительные в этот эндпойнт не
-                # попадают. Отличать от настоящей ошибки обязательно, иначе
-                # молчаливый except спрячет сеть и права.
-                if absent.code != 404:
-                    raise
-                tag = None
-            if not tag:
-                releases = _api(f"/repos/{repo}/releases?per_page=1")
-                tag = releases[0]["tag_name"] if releases else None
-            badges.append((BADGE_LABELS["version"], tag or "—", "info" if tag else "muted"))
+        if kind == "release":
+            # ВЫПУСК И ПАКЕТ — ОДНА ПЛАШКА, И ЭТО НЕ ЭКОНОМИЯ МЕСТА. Раньше их
+            # было две: «release v1.11.0» из выпусков площадки и «pypi 1.11.0»
+            # из PyPI. Одно и то же число дважды, и витрина при этом УТВЕРЖДАЛА
+            # их равенство самим соседством плашек — утверждение, которого она
+            # проверить не может: разойдись они, читатель увидел бы противоречие
+            # и не понял, какому верить.
+            #
+            # Теперь равенство утверждает проект, а не витрина: грейдер и каталог
+            # публикуют собственный значок `release`, где их CI сводит выпуск и
+            # пакет в одно значение. Витрина только показывает, что ей сказали
+            # (правило 146: не утверждать того, чего не проверяешь).
+            #
+            # Три источника, потому что проекты в разной зрелости, и требовать
+            # от всех значок значило бы требовать невозможного (051):
+            #   {"endpoint"|"badge": имя} — собственный значок проекта;
+            #   {"release": true}         — выпуски площадки, пока значка нет;
+            #   {"pypi": имя}             — версия пакета, пока нет выпусков.
+            if "endpoint" in answer or "badge" in answer:
+                badges.append((BADGE_LABELS["release"], badge_value(repo, answer), "info"))
+            elif "pypi" in answer:
+                badges.append((BADGE_LABELS["release"], pypi_version(answer["pypi"]), "info"))
+            else:
+                badges.append((BADGE_LABELS["release"], latest_tag(repo) or "—",
+                               "info" if latest_tag(repo) else "muted"))
         elif kind == "ci":
             runs = _api(
                 f"/repos/{repo}/actions/workflows/{answer['workflow']}"
@@ -538,46 +620,13 @@ def project_badges(repo: str, answers: dict) -> list[tuple[str, str, str]]:
             state = runs[0]["conclusion"] if runs else "unknown"
             badges.append((BADGE_LABELS["ci"], state, "ok" if state == "success" else "warn"))
         elif kind == "coverage":
-            # Две формы ответа, потому что покрытие публикуют двумя способами,
-            # и обе законны:
-            #
-            #   {"endpoint": "имя"} — значок на отдельной ветке `badges`. Так
-            #     делает грейдер: его CI считает покрытие по всем ОС и
-            #     коммитит результат ботом, мимо общей ветки;
-            #   {"badge": "имя"} — значок в ветке по умолчанию, рядом с кодом.
-            #
-            # ФОРМУ `badge` СЕЙЧАС НЕ ИСПОЛЬЗУЕТ НИКТО, и это следует назвать, а
-            # не оставить умолчанием. Она заведена под каталог правил: он держал
-            # покрытие в общей ветке, потому что покрытие — свойство ДЕРЕВА, а
-            # не истории. 27 августа каталог унёс значки на ветку `badges`
-            # окончательно (playbook#144), и обоснование, записанное здесь днём
-            # раньше, перестало описывать действительность — витрина узнала об
-            # этом отказом 404 в суточной сборке.
-            #
-            # Форма оставлена: она законна, покрыта самопроверкой и понадобится
-            # первому же проекту, который положит значок рядом с кодом. Убирать
-            # ли код без живого потребителя — отдельное решение, а не побочный
-            # результат чужого переезда.
-            #
-            # Одну форму на обе площадки не свести: у них разный ref, и
-            # угадывать его перебором значило бы прятать ошибку в данных за
-            # второй попыткой.
-            if "badge" in answer:
-                path = f".github/badges/{answer['badge']}.json"
-            else:
-                path = f".github/badges/{answer['endpoint']}.json?ref=badges"
-            payload = _api(f"/repos/{repo}/contents/{path}")
-            value = json.loads(base64.b64decode(payload["content"]))["message"]
-            badges.append((BADGE_LABELS["coverage"], value, "ok"))
+            badges.append((BADGE_LABELS["coverage"], badge_value(repo, answer), "ok"))
         else:
-            package = answer["pypi"]
-            with urllib.request.urlopen(
-                urllib.request.Request(f"https://pypi.org/pypi/{package}/json",
-                                       headers={"User-Agent": "artvsmark-profile"}),
-                timeout=30,
-            ) as response:
-                version = json.loads(response.read())["info"]["version"]
-            badges.append((BADGE_LABELS["package"], version, "info"))
+            # Версия — не то же, что выпуск: у грейдера выпуск «1.11», а версия
+            # «1.11.60». Первое — серия, которую видит пользователь пакета,
+            # второе — конкретная сборка. Показывать одно вместо другого значило
+            # бы терять то, что проект о себе говорит.
+            badges.append((BADGE_LABELS["version"], badge_value(repo, answer), "info"))
     return badges
 
 
@@ -1233,8 +1282,8 @@ def selftest() -> int:
         print(f"  {'да ' if ok else 'НЕТ'} — баннер: {name}")
 
     # ── обязательные показатели проекта ────────────────────────────────────
-    full = {"version": {"release": True}, "ci": {"workflow": "ci.yml"},
-            "coverage": {"endpoint": "cov"}, "package": {"pypi": "p"}}
+    full = {"release": {"endpoint": "release"}, "ci": {"workflow": "ci.yml"},
+            "coverage": {"endpoint": "cov"}, "version": {"endpoint": "version"}}
 
     def config_of(badges: dict) -> dict:
         return {"required_badges": list(BADGE_KINDS),
@@ -1242,7 +1291,7 @@ def selftest() -> int:
 
     badge_cases = [
         ("ответ есть по всем четырём", config_of(full), False),
-        ("показатель пропущен целиком", config_of({k: v for k, v in full.items() if k != "package"}), True),
+        ("показатель пропущен целиком", config_of({k: v for k, v in full.items() if k != "version"}), True),
         ("ответ пустым словарём", config_of({**full, "coverage": {}}), True),
         ("отказ без причины", config_of({**full, "coverage": {"none": ""}}), True),
         ("отказ с причиной — законный ответ",
@@ -1253,6 +1302,15 @@ def selftest() -> int:
         # позже первой: договор, знающий одну форму, отверг бы каталог правил.
         ("покрытие значком в ветке по умолчанию",
          config_of({**full, "coverage": {"badge": "coverage"}}), False),
+        # У «release» три законных источника, потому что проекты в разной
+        # зрелости: собственный значок, выпуски площадки, версия пакета.
+        # Договор, знающий один, отверг бы проект, у которого другой.
+        ("выпуск от площадки — законный ответ",
+         config_of({**full, "release": {"release": True}}), False),
+        ("выпуск версией пакета — законный ответ",
+         config_of({**full, "release": {"pypi": "имя-пакета"}}), False),
+        ("версия отказом с причиной — законный ответ",
+         config_of({**full, "version": {"none": "версия не публикуется значком"}}), False),
     ]
     for name, cfg, must_reject in badge_cases:
         try:

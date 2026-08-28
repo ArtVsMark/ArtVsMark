@@ -23,10 +23,10 @@
   ],
   "featured_limit": 5,
   "required_badges": [
-    "version",
+    "release",
     "ci",
     "coverage",
-    "package"
+    "version"
   ],
   "projects": [
     {
@@ -36,8 +36,8 @@
       "tagline": "Offline Python autograder: unlimited local checks, honest side-by-side comparison of solutions.",
       "stack": "CLI · web UI · GUI · pytest plugin · OS sandbox",
       "badges": {
-        "version": {
-          "release": true
+        "release": {
+          "endpoint": "release"
         },
         "ci": {
           "workflow": "ci.yml"
@@ -45,8 +45,8 @@
         "coverage": {
           "endpoint": "coverage-combined"
         },
-        "package": {
-          "pypi": "stepik-python-grader"
+        "version": {
+          "endpoint": "version"
         }
       }
     },
@@ -56,8 +56,8 @@
       "tagline": "Rules for agent sessions and a GitHub pipeline — each one carrying the incident it grew from.",
       "stack": "docs · RU/EN",
       "badges": {
-        "version": {
-          "release": true
+        "release": {
+          "endpoint": "release"
         },
         "ci": {
           "workflow": "ci.yml"
@@ -65,8 +65,8 @@
         "coverage": {
           "endpoint": "coverage"
         },
-        "package": {
-          "none": "не публикуется пакетом: подключается действием и сырой ссылкой"
+        "version": {
+          "endpoint": "version"
         }
       }
     },
@@ -76,8 +76,8 @@
       "tagline": "Turns a three-step limit indicator into a number. Early: the spec is written, the tool is not.",
       "stack": "Python · JSONL over git",
       "badges": {
-        "version": {
-          "none": "релизов нет: до первого выпуска не дошло"
+        "release": {
+          "pypi": "claude-code-usage"
         },
         "ci": {
           "none": "прогонов нет: кода, который стоило бы проверять, ещё не написано"
@@ -85,8 +85,8 @@
         "coverage": {
           "none": "тестов нет по той же причине"
         },
-        "package": {
-          "pypi": "claude-code-usage"
+        "version": {
+          "none": "версия не публикуется значком: у проекта нет прогонов, которые его собирали бы"
         }
       }
     },
@@ -96,8 +96,8 @@
       "tagline": "The RU/EN glossary the grader links into when a run fails.",
       "stack": "content · tooling",
       "badges": {
-        "version": {
-          "none": "релизов нет: содержимое читают по ссылке, а не выпусками"
+        "release": {
+          "none": "выпусков и пакета нет: содержимое подключается ссылками из грейдера, а не версией"
         },
         "ci": {
           "none": "прогонов нет: правки содержательные, проверять нечем"
@@ -105,8 +105,8 @@
         "coverage": {
           "none": "тестов нет: репозиторий содержательный"
         },
-        "package": {
-          "none": "не публикуется пакетом: подключается ссылками из грейдера"
+        "version": {
+          "none": "версии нет: содержимое не версионируется, глоссарий читают по ссылке на актуальный текст"
         }
       }
     }
