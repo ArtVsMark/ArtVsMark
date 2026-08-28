@@ -36,6 +36,8 @@ import argparse
 import re
 import sys
 
+import checks
+
 #: Маркер удержания. Всё, что после двоеточия, — причина, и она читается.
 HOLD_MARKER = re.compile(r"<!--\s*hold:\s*(.*?)\s*-->", re.S)
 
@@ -124,12 +126,14 @@ def main() -> int:
     if args.selftest:
         return selftest()
     if not args.body_file:
-        print("не отработал: не задан --body-file", file=sys.stderr)
+        print(checks.annotate("error", "не отработал: не задан --body-file"),
+              file=sys.stderr)
         return 2
     try:
         body = open(args.body_file, encoding="utf-8").read()
     except OSError as e:
-        print(f"не отработал: тело не прочитано — {e}", file=sys.stderr)
+        print(checks.annotate("error", f"не отработал: тело не прочитано — {e}"),
+              file=sys.stderr)
         return 2
 
     labels = {name.strip() for name in args.labels.split(",") if name.strip()}
