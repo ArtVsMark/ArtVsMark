@@ -33,6 +33,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sys
 
@@ -83,6 +84,50 @@ def marker_needed(commit_body: str) -> bool:
     # бы пустить в общую ветку изменение без тела, а это ошибка в опасную
     # сторону, в отличие от лишнего маркера.
     return not (pipeline and len(pipeline) == len(named))
+
+
+#: Исходы прогона, которые НЕ считаются провалом. Отменённое не есть ошибка
+#: (правило 078), пропущенное — тем более: у витрины прогон от метки конвейера
+#: пропускается намеренно. Но и успехом они не являются, поэтому одного
+#: отсутствия провалов для «зелено» мало — нужен хотя бы один настоящий успех.
+NOT_A_FAILURE = frozenset({"SUCCESS", "SKIPPED", "CANCELLED", "NEUTRAL", ""})
+
+
+def checks_state(rollup: list[dict]) -> str:
+    """Состояние проверок изменения: ``success`` · ``pending`` · ``failure``.
+
+    Спрашивается там, где событие говорит про ТЕЛО, а не про прогон: у
+    `pull_request_target: edited` исхода проверок в событии нет вовсе, и взять
+    его можно только у площадки.
+
+    ТРИ ИСХОДА, А НЕ ДВА (правило 039). «Не провалено» и «зелено» — разные
+    вещи: на первом head #103 все прогоны оказались отменены, провалов не было
+    ни одного, и решение «зелено» слило бы изменение, проверка которого не
+    отработала вовсе. Поэтому успех требует хотя бы одного настоящего
+    ``SUCCESS``.
+
+    Незавершённое перевешивает всё: пока хоть один прогон бежит, ответ
+    ``pending`` — механизм ошибается в безопасную сторону, оставляя стоп-кран.
+    """
+    if not rollup:
+        # Пустой список — не «зелено», а «спросить не у кого». Автомерж читает
+        # такое как «не стартовало», и мы читаем так же.
+        return "pending"
+    passed = False
+    for run in rollup:
+        status = (run.get("status") or "").upper()
+        conclusion = (run.get("conclusion") or "").upper()
+        state = (run.get("state") or "").upper()
+        if status and status != "COMPLETED":
+            return "pending"
+        if state and state in {"PENDING", "EXPECTED"}:
+            return "pending"
+        verdict = conclusion or state
+        if verdict not in NOT_A_FAILURE:
+            return "failure"
+        if verdict == "SUCCESS":
+            passed = True
+    return "success" if passed else "pending"
 
 
 def decide(body: str, labels: set[str], checks_ok: bool) -> tuple[str, str]:
@@ -145,6 +190,42 @@ def selftest() -> int:
     if "спорная политика" not in why:
         broken.append("удержание не называет причину, записанную в теле")
 
+    # ── состояние проверок, когда событие про тело, а не про прогон ────────
+    # Три исхода, и каждый прогоняется (правило 145). Обе ошибки названы:
+    # ложное «зелено» сливает изменение, чья проверка не отработала; ложное
+    # «ждём» оставляет стоп-кран, и это дешевле.
+    OK = {"status": "COMPLETED", "conclusion": "SUCCESS"}
+    state_cases = [
+        ("успех один", [OK], "success"),
+        ("успех рядом с отменённым", [OK, {"status": "COMPLETED", "conclusion": "CANCELLED"}], "success"),
+        ("успех рядом с пропущенным", [OK, {"status": "COMPLETED", "conclusion": "SKIPPED"}], "success"),
+        ("одни отменённые — проверка не отработала",
+         [{"status": "COMPLETED", "conclusion": "CANCELLED"},
+          {"status": "COMPLETED", "conclusion": "SKIPPED"}], "pending"),
+        ("прогон ещё бежит", [OK, {"status": "IN_PROGRESS", "conclusion": None}], "pending"),
+        ("прогон в очереди", [{"status": "QUEUED", "conclusion": None}], "pending"),
+        ("провал рядом с успехом", [OK, {"status": "COMPLETED", "conclusion": "FAILURE"}], "failure"),
+        ("провал по времени", [{"status": "COMPLETED", "conclusion": "TIMED_OUT"}], "failure"),
+        ("проверок нет вовсе — спросить не у кого", [], "pending"),
+        ("старая форма: контекст со state", [{"state": "SUCCESS"}], "success"),
+        ("старая форма: контекст ждёт", [{"state": "PENDING"}], "pending"),
+        ("старая форма: контекст провален", [{"state": "FAILURE"}], "failure"),
+    ]
+    for name, rollup, expected in state_cases:
+        got = checks_state(rollup)
+        if got != expected:
+            broken.append(f"состояние проверок, {name}: ожидалось {expected}, вышло {got}")
+        print(f"  {got:<8} — состояние проверок: {name}")
+
+    # Решение о стоп-кране обязано принимать этот ответ буквально: «pending» и
+    # «failure» держат, и только «success» отпускает.
+    BODY = "тело заполнено"
+    for state, want in (("success", "release"), ("pending", "keep"), ("failure", "keep")):
+        verdict, _ = decide(BODY, {"hold"}, state == "success")
+        if verdict != want:
+            broken.append(f"стоп-кран при проверках «{state}»: ожидалось {want}, вышло {verdict}")
+        print(f"  {verdict:<8} — стоп-кран при проверках «{state}»")
+
     # ── кому нужен маркер «тело не заполнено» ──────────────────────────────
     # Обе стороны, и обе ошибки названы: лишний маркер останавливает
     # пересборку навсегда, недостающий пускает изменение без тела.
@@ -181,6 +262,10 @@ def main() -> int:
     parser.add_argument("--body-file", help="файл с телом изменения")
     parser.add_argument("--labels", default="", help="метки через запятую")
     parser.add_argument("--checks", default="", help="исход обязательных проверок")
+    parser.add_argument("--checks-state", action="store_true",
+                        help="состояние проверок изменения: ответ площадки "
+                             "(statusCheckRollup) читается из stdin, вердикт "
+                             "печатается словом")
     parser.add_argument("--marker-needed", action="store_true",
                         help="нужен ли маркер «тело не заполнено»: тело коммита "
                              "читается из stdin, ответ печатается словом")
@@ -189,6 +274,19 @@ def main() -> int:
 
     if args.selftest:
         return selftest()
+    if args.checks_state:
+        try:
+            rollup = json.loads(sys.stdin.read() or "[]")
+        except ValueError as e:
+            print(checks.annotate("error", f"не отработал: ответ площадки не разобран — {e}"),
+                  file=sys.stderr)
+            return 2
+        if not isinstance(rollup, list):
+            print(checks.annotate("error", "не отработал: ожидался список проверок"),
+                  file=sys.stderr)
+            return 2
+        print(checks_state(rollup))
+        return 0
     if args.marker_needed:
         # Ответ печатается словом, а не кодом возврата: коды здесь заняты
         # смыслом (0 — сделано, 1 — не применено, 2 — не отработал), и
