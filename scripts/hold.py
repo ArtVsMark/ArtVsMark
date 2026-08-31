@@ -46,6 +46,45 @@ HOLD_MARKER = re.compile(r"<!--\s*hold:\s*(.*?)\s*-->", re.S)
 HOLD_LABEL = "hold"
 
 
+#: Исполнитель, у которого нет окна. Имя то же, что в .github/authors.txt, и
+#: смысл тот же: коммит составил прогон площадки, а не человек и не окно.
+PIPELINE_AUTHOR = "github-actions[bot]"
+
+#: Трейлер соавторства. Тот же образец, что у гейта атрибуции: расхождение
+#: написаний ловится там, здесь спрашивается, кто составил коммит.
+COAUTHOR = re.compile(r"^Co-Authored-By:\s*(.+?)\s*$", re.M | re.I)
+
+
+def marker_needed(commit_body: str) -> bool:
+    """Нужен ли маркер «тело не заполнено» изменению с таким телом коммита.
+
+    Маркер — обещание, что тело допишут. У ветки, которую ведёт прогон, тела
+    дописывать некому: суточную пересборку никто не читает и не редактирует,
+    и маркер там означал бы стоп-кран навсегда.
+
+    Признак — не имя ветки, а ФАКТ о коммите: его составил прогон площадки,
+    и он сам назвал себя трейлером. Имя ветки сюда не годится: переключатель
+    по имени отменяет операцию молча, стоит префиксу разойтись (правило 147),
+    а здесь цена молчания — либо вставшая пересборка, либо изменение, уехавшее
+    без тела.
+
+    ЗАЧЕМ ЭТО ПОНАДОБИЛОСЬ. До 31 августа изменение для ветки пересборки
+    открывали ДВА механизма: `metrics.yml` — сам, `open-pr.yml` — по пушу той
+    же ветки. Работало это на удаче: `metrics` успевал первым. Когда 29 августа
+    не успел, `open-pr` попытался открыть изменение для уже слитой ветки и
+    покраснел («No commits between main and chore/metrics», #98). Обратный
+    порядок был не лучше, а хуже и тише: открой `open-pr` первым — пересборка
+    встала бы с `hold`, которого некому снять.
+    """
+    named = COAUTHOR.findall(commit_body or "")
+    pipeline = [name for name in named if PIPELINE_AUTHOR in name]
+    # Маркер не нужен, только когда прогон — ЕДИНСТВЕННЫЙ исполнитель. Стоит
+    # рядом оказаться окну, и тело допишет оно: пропустить маркер здесь значило
+    # бы пустить в общую ветку изменение без тела, а это ошибка в опасную
+    # сторону, в отличие от лишнего маркера.
+    return not (pipeline and len(pipeline) == len(named))
+
+
 def decide(body: str, labels: set[str], checks_ok: bool) -> tuple[str, str]:
     """Что сделать со стоп-краном: ``release`` · ``keep`` · ``nothing``.
 
@@ -106,6 +145,28 @@ def selftest() -> int:
     if "спорная политика" not in why:
         broken.append("удержание не называет причину, записанную в теле")
 
+    # ── кому нужен маркер «тело не заполнено» ──────────────────────────────
+    # Обе стороны, и обе ошибки названы: лишний маркер останавливает
+    # пересборку навсегда, недостающий пускает изменение без тела.
+    BOT = "Co-authored-by: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>"
+    WINDOW = "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+    marker_cases = [
+        ("коммит окна — тело допишут", f"Разбор правки.\n\n{WINDOW}", True),
+        ("коммит прогона — дописывать некому", f"Пересобранные числа.\n\n{BOT}", False),
+        ("тело без трейлеров вовсе", "Просто сообщение.", True),
+        ("тело пустое", "", True),
+        ("оба трейлера — окно тоже участвовало, тело допишут",
+         f"Правка.\n\n{WINDOW}\n{BOT}", True),
+        ("имя прогона в прозе, а не трейлером",
+         "объясняем, почему github-actions[bot] дописывается площадкой", True),
+    ]
+    for name, body, expected in marker_cases:
+        got = marker_needed(body)
+        if got is not expected:
+            broken.append(f"маркер, {name}: ожидалось "
+                          f"{'нужен' if expected else 'не нужен'}, вышло наоборот")
+        print(f"  {'нужен    ' if got else 'не нужен '} — маркер: {name}")
+
     if broken:
         print("\nсамопроверка провалена:", file=sys.stderr)
         for line in broken:
@@ -120,11 +181,20 @@ def main() -> int:
     parser.add_argument("--body-file", help="файл с телом изменения")
     parser.add_argument("--labels", default="", help="метки через запятую")
     parser.add_argument("--checks", default="", help="исход обязательных проверок")
+    parser.add_argument("--marker-needed", action="store_true",
+                        help="нужен ли маркер «тело не заполнено»: тело коммита "
+                             "читается из stdin, ответ печатается словом")
     parser.add_argument("--selftest", action="store_true")
     args = parser.parse_args()
 
     if args.selftest:
         return selftest()
+    if args.marker_needed:
+        # Ответ печатается словом, а не кодом возврата: коды здесь заняты
+        # смыслом (0 — сделано, 1 — не применено, 2 — не отработал), и
+        # «маркер не нужен» это не отказ (правило 039).
+        print("yes" if marker_needed(sys.stdin.read()) else "no")
+        return 0
     if not args.body_file:
         print(checks.annotate("error", "не отработал: не задан --body-file"),
               file=sys.stderr)
