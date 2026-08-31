@@ -266,6 +266,25 @@ def selftest() -> int:
             broken.append(f"{name}: ожидалось {'отказ' if must_reject else 'пропуск'}, вышло наоборот")
         print(f"  {'отвергнут' if complaints else 'пропущен '} — {name}")
 
+    # УТВЕРЖДЕНИЕ, НА КОТОРОМ СТОИТ ФИЛЬТР ПРОГОНА. `pr-check.yml` не будится на
+    # постановку и снятие метки конвейера — потому что классификацию она не
+    # меняет. Пока это проверяется здесь, фильтр верен; перестань метка быть
+    # безразличной, и набор скажет об этом раньше, чем прогон замолчит на
+    # изменении, которое обязан был пересчитать.
+    for name, labels, files in (
+        ("полный набор меток", {"bug", "github_actions"}, [".github/workflows/a.yml"]),
+        ("метка содержания без зоны", {"bug"}, [".github/workflows/a.yml"]),
+        ("меток нет вовсе", set(), plain),
+    ):
+        for pipeline_label in sorted(PIPELINE):
+            without = verdict(labels, files)
+            with_it = verdict(labels | {pipeline_label}, files)
+            if without != with_it:
+                broken.append(f"метка конвейера «{pipeline_label}» меняет вердикт "
+                              f"({name}): фильтр в pr-check.yml на этом и стоит")
+            print(f"  {'РАЗОШЛОСЬ' if without != with_it else 'без разницы'} — "
+                  f"метка конвейера «{pipeline_label}»: {name}")
+
     # Отказ обязан НАЗЫВАТЬ предмет: «метка вне списка» без её имени и «не та
     # зона» без имени зоны — это отказ, по которому нечего чинить (правило 083).
     named, _, _ = verdict({"question"}, plain)
