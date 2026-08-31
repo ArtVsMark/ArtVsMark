@@ -55,9 +55,11 @@
 from __future__ import annotations
 
 import base64
+import contextlib
 import datetime as dt
 import hashlib
 import functools
+import io
 import json
 import os
 import pathlib
@@ -91,6 +93,47 @@ FOCUS_LIMIT = 5
 FONT = "Inter,Segoe UI,Helvetica,Arial,sans-serif"
 
 
+#: Куда прикрепляется адрес отказавшего источника. Отдельное имя, а не текст
+#: сообщения: у ``HTTPError`` текст собирается из кода и причины, и дописывать
+#: туда адрес значило бы подменять чужой разбор своим.
+SOURCE_URL = "source_url"
+
+
+@contextlib.contextmanager
+def naming(url: str):
+    """Обращение к чужому источнику, отказ которого называет адрес.
+
+    Третий исход печатал причину без предмета: «источник не ответил — HTTP
+    Error 403: Forbidden», и какой именно из двадцати с лишним источников
+    отказал, в сообщении не было. Окно, стартовавшее 31 августа, дважды прогнало
+    гейт и дважды не смогло понять, где чинить; адрес пришлось восстанавливать
+    подменой ``urlopen``. Причина без предмета отправляет чинить не туда —
+    вопрос «чужой отказ или наш» без адреса не решается вовсе (правила 039 и
+    151).
+
+    КЛАСС ОТКАЗА НЕ ПОДМЕНЯЕТСЯ, и это не осторожность, а цена ошибки. Первая
+    редакция поднимала свой ``SourceRefused``, и штатное отсутствие значка —
+    ``404``, который ловят ``except HTTPError`` в двух местах, — перестало
+    ловиться: сборка упала на проекте, у которого значков нет по замыслу.
+    Поэтому адрес прикрепляется атрибутом к самому отказу, а сам отказ летит
+    дальше как есть.
+
+    Разбор ответа обёрнут вместе с обращением намеренно: ``ValueError`` от
+    битого JSON — тоже третий исход по объявлению, и адрес ему нужен ровно
+    так же. Внутренний адрес не перебивается внешним: ближний к отказу
+    точнее.
+    """
+    try:
+        yield
+    except (urllib.error.URLError, OSError, ValueError, KeyError) as refusal:
+        if getattr(refusal, SOURCE_URL, None) is None:
+            try:
+                setattr(refusal, SOURCE_URL, url)
+            except AttributeError:  # экзотика вроде исключений со __slots__
+                pass
+        raise
+
+
 def _get(url: str, authenticated: bool = True) -> bytes:
     """Загрузка. ``authenticated=False`` — для не-API источников.
 
@@ -110,12 +153,13 @@ def _get(url: str, authenticated: bool = True) -> bytes:
             ),
         },
     )
-    with urllib.request.urlopen(request, timeout=30) as response:
+    with naming(url), urllib.request.urlopen(request, timeout=30) as response:
         return response.read()
 
 
 def _api(path: str) -> object:
-    return json.loads(_get(f"{API}{path}"))
+    with naming(f"{API}{path}"):
+        return json.loads(_get(f"{API}{path}"))
 
 
 @functools.lru_cache(maxsize=None)
@@ -220,7 +264,7 @@ def _count(path: str) -> int:
             **({"Authorization": f"Bearer {t}"} if (t := os.environ.get("GH_TOKEN")) else {}),
         },
     )
-    with urllib.request.urlopen(request, timeout=30) as response:
+    with naming(f"{API}{path}"), urllib.request.urlopen(request, timeout=30) as response:
         link = response.headers.get("Link", "")
         body = json.loads(response.read())
     last = re.search(r'[?&]page=(\d+)>;\s*rel="last"', link)
@@ -536,9 +580,9 @@ def latest_tag(repo: str) -> str | None:
 
 def pypi_version(package: str) -> str:
     """Версия пакета в PyPI. Источник чужой и объявлен ответом проекта."""
-    with urllib.request.urlopen(
-        urllib.request.Request(f"https://pypi.org/pypi/{package}/json",
-                               headers={"User-Agent": "artvsmark-profile"}),
+    url = f"https://pypi.org/pypi/{package}/json"
+    with naming(url), urllib.request.urlopen(
+        urllib.request.Request(url, headers={"User-Agent": "artvsmark-profile"}),
         timeout=30,
     ) as response:
         return json.loads(response.read())["info"]["version"]
@@ -1222,6 +1266,12 @@ def selftest() -> int:
     Обе стороны, а не одна. Набор из одних «обязан отвергнуть» не видит ложного
     отказа, а он здесь дороже: сборка, падающая на честном маленьком числе,
     останавливает витрину без причины.
+
+    ВЕРДИКТ ОДИН И СТОИТ В КОНЦЕ, и наверх его поднимать нельзя. Он там уже
+    стоял — сразу после баннера, — и три последние группы случаев дописывали в
+    ``broken`` уже ЗА ``return``: вызов без клона грейдера, сверка ответа с
+    каталогом и отказ с адресом печатались, но не судили. Проверено подставным
+    провалом в последней группе: самопроверка отвечала «пройдена» и кодом 0.
     """
     live = {
         "projects": "|таблица|", "modules": 218, "required": 11, "os": 3, "py": 2,
@@ -1368,11 +1418,6 @@ def selftest() -> int:
     except SystemExit:
         print("  отвергнут — баннер: описание длиннее потолка")
 
-    if broken:
-        print("\nсамопроверка провалена:", file=sys.stderr)
-        for line in broken:
-            print(f"  {line}", file=sys.stderr)
-        return 1
     # Исход «вызвано без клона грейдера» объявлен в main и до сих пор не
     # прогонялся: он живёт за проверкой каталога, а не в разбираемой функции
     # (правило 145). Сети не требует — отказ наступает раньше первого запроса.
@@ -1400,6 +1445,102 @@ def selftest() -> int:
             broken.append(f"{name}: ожидалось {expected}, вышло {got}")
         print(f"  {str(got) if got else 'сходится':<12} — {name}")
 
+    # ── третий исход называет предмет, а не только причину ─────────────────
+    # Сети набор не требует: отказ подставной, а спрашивается механизм —
+    # доедет ли адрес до печати (правило 150).
+    probe_url = f"{API}/repos/o/r"
+    refusal_cases = [
+        ("площадка отказала в правах",
+         urllib.error.HTTPError(probe_url, 403, "Forbidden", {}, None)),
+        ("источник не ответил вовсе", urllib.error.URLError("timed out")),
+        ("ответ не разобран", ValueError("Expecting value: line 1 column 1")),
+        ("в ответе нет ожидаемого ключа", KeyError("tag_name")),
+    ]
+    for name, refusal in refusal_cases:
+        try:
+            with naming(probe_url):
+                raise refusal
+        except (urllib.error.URLError, OSError, ValueError, KeyError) as refused:
+            named = getattr(refused, SOURCE_URL, None) == probe_url
+            same = type(refused) is type(refusal)
+        if not (named and same):
+            broken.append(f"третий исход, {name}: "
+                          + ("адрес не прикреплён" if not named else "класс отказа подменён"))
+        print(f"  {'адрес назван' if named else 'БЕЗ АДРЕСА  '} — третий исход: {name}")
+
+    # Штатное отсутствие значка ловится по классу — `except HTTPError`. Обёртка,
+    # подменившая класс, роняет сборку на проекте, у которого значков нет по
+    # замыслу: ровно это и случилось с первой редакцией.
+    try:
+        with naming(probe_url):
+            raise urllib.error.HTTPError(probe_url, 404, "Not Found", {}, None)
+    except urllib.error.HTTPError as absent:
+        caught = absent.code == 404
+    except OSError:
+        caught = False
+    if not caught:
+        broken.append("третий исход: обёртка подменила класс — штатное «значка нет» "
+                      "перестало ловиться по HTTPError")
+    print(f"  {'ловится' if caught else 'ПОТЕРЯН'} — третий исход: 404 остаётся HTTPError")
+
+    # Внутренний адрес точнее внешнего: обращение лежит внутри обёртки разбора,
+    # и вложенность здесь обычное дело.
+    try:
+        with naming(f"{API}/внешний"):
+            with naming(probe_url):
+                raise urllib.error.HTTPError(probe_url, 404, "Not Found", {}, None)
+    except OSError as refused:
+        inner = getattr(refused, SOURCE_URL, None) == probe_url
+    if not inner:
+        broken.append("третий исход: вложенная обёртка подменила адрес внешним")
+    print(f"  {'адрес внутренний' if inner else 'ПОДМЕНЁН'} — третий исход: вложенная обёртка")
+
+    # Сквозная проверка: адрес доходит до ПЕЧАТИ, а не только до обработчика.
+    # Проверяется guarded целиком — вместе с кодом возврата.
+    printed = io.StringIO()
+    real_main = globals()["main"]
+
+    def refusing_main() -> int:
+        refusal = urllib.error.HTTPError(probe_url, 403, "Forbidden", {}, None)
+        with naming(probe_url):
+            raise refusal
+
+    globals()["main"] = refusing_main
+    try:
+        with contextlib.redirect_stderr(printed):
+            code = guarded()
+    finally:
+        globals()["main"] = real_main
+    said = printed.getvalue()
+    for name, ok in (("код третьего исхода", code == 2),
+                     ("адрес в напечатанном", probe_url in said),
+                     ("причина в напечатанном", "403" in said)):
+        if not ok:
+            broken.append(f"третий исход печатью, {name}: нет")
+        print(f"  {'да ' if ok else 'НЕТ'} — третий исход печатью: {name}")
+
+    # Отказ без обёртки печатается как раньше: адреса нет, но исход тот же —
+    # молчания на месте причины быть не должно.
+    printed = io.StringIO()
+    globals()["main"] = lambda: (_ for _ in ()).throw(ValueError("ответ не разобран"))
+    try:
+        with contextlib.redirect_stderr(printed):
+            bare = guarded()
+    finally:
+        globals()["main"] = real_main
+    bare_said = printed.getvalue()
+    for name, ok in (("код третьего исхода", bare == 2),
+                     ("причина названа", "ответ не разобран" in bare_said),
+                     ("пустого адреса не печатается", " —  — " not in bare_said)):
+        if not ok:
+            broken.append(f"третий исход без адреса, {name}: нет")
+        print(f"  {'да ' if ok else 'НЕТ'} — третий исход без адреса: {name}")
+
+    if broken:
+        print("\nсамопроверка провалена:", file=sys.stderr)
+        for line in broken:
+            print(f"  {line}", file=sys.stderr)
+        return 1
     print("самопроверка пройдена: сторож, ранжирование и баннер держат объявленное")
     return 0
 
@@ -1550,12 +1691,18 @@ def guarded() -> int:
     сборка сообщает о СВОЕЙ находке. Ровно это и случилось, когда каталог унёс
     значки на отдельную ветку: `HTTP 404` прочиталось как «метрика не
     собралась», хотя не собрался ответ соседа.
+
+    Предмет отказа печатается вместе с причиной: «двадцать с лишним раз»
+    означает, что без адреса третий исход называет сторону, но не место, — и
+    первое, что делает читающий, это заново ищет, кто именно отказал
+    (``naming``).
     """
     try:
         return main()
     except (urllib.error.URLError, OSError, ValueError, KeyError) as e:
-        print(f"сборка не отработала: источник не ответил или ответ не разобран — {e}",
-              file=sys.stderr)
+        where = getattr(e, SOURCE_URL, None)
+        print("сборка не отработала: источник не ответил или ответ не разобран — "
+              f"{f'{where} — ' if where else ''}{e}", file=sys.stderr)
         print("  Это третий исход, а не разновидность второго: чужой отказ чинится\n"
               "  на той стороне, а наша находка — здесь (правило 039).", file=sys.stderr)
         return 2

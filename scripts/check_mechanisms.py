@@ -41,6 +41,12 @@
   красном остаётся ровно «Process completed with exit code 1». До 28 августа так
   печатал ОДИН гейт из восьми;
 
+* **140 и 145 — вердикт набора выносится после последнего случая.** Набор,
+  решивший «провален или нет» раньше конца перебора, оставляет за вердиктом
+  случаи, которые печатают, но не судят: находка дописывается в список,
+  который уже прочитан. Замер: в сборке витрины так стояли три группы, и
+  подставной провал в последней давал код 0;
+
 * **014 и 150 — набор есть, бежит и зовёт механизм.** У каждого способного
   отвергнуть скрипта есть самопроверка (014, первая половина); `pr-check.yml`
   её зовёт (014, вторая половина — иначе набор держит до первой правки); и
@@ -353,6 +359,73 @@ def audit_harness(sources: dict[str, str], flows: dict[str, str]) -> list[str]:
             if "def selftest" in source and f"scripts/{name} --selftest" not in check]
 
 
+def _own(fn: ast.FunctionDef) -> list[ast.AST]:
+    """Узлы самой функции, без тел вложенных ``def``.
+
+    Различие не косметическое: первый черновик этого разбора считал вердиктом
+    ``return`` вложенного помощника — ``config_of`` внутри набора сборки — и
+    объявил находку там, где её нет. Ложный отказ у гейта о наборах дороже
+    обычного: чинить пошли бы исправный набор.
+    """
+    stack, own = list(fn.body), []
+    while stack:
+        node = stack.pop()
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+            continue
+        own.append(node)
+        stack.extend(ast.iter_child_nodes(node))
+    return own
+
+
+def audit_verdicts(sources: dict[str, str]) -> list[str]:
+    """Случаи, приписанные ЗА вердиктом набора: они печатают, но не судят.
+
+    Правила 140 и 145; формулировка взята у 136 — «вердикт после перечисления
+    всех предметов», — но предмет здесь другой: там ответ по чужому правилу,
+    здесь прогон набора. Набор копит находки в список и в конце решает по нему,
+    провален ли прогон. Вердикт, вынесенный раньше последнего случая,
+    превращает всё, что идёт следом, в печать: случаи бегут, находки
+    дописываются в список, который уже никто не прочтёт, — и прогон отвечает
+    «пройдена».
+
+    Замер, из-за которого проверка завелась: в ``build_metrics.py::selftest``
+    за вердиктом стояли три группы — вызов без клона грейдера, сверка ответа
+    с каталогом и отказ источника. Подставной провал в последней группе дал
+    код 0 и строку «самопроверка пройдена».
+
+    Накопитель узнаётся по употреблению, а не по имени: это список, по
+    которому набор выносит вердикт (``if broken:`` с ``return`` внутри) и в
+    который делает ``append``. Граница названа: вердикт в тернарной форме
+    (``return 1 if broken else 0``) разбор не ловит — у витрины такой формы
+    нет, и заводить её ради разбора не нужно.
+    """
+    found: list[str] = []
+    for name, source in sorted(sources.items()):
+        for fn in [n for n in ast.walk(ast.parse(source))
+                   if isinstance(n, ast.FunctionDef)]:
+            own = _own(fn)
+            # Вердикт: `if <имя>:` с выходом внутри.
+            verdicts = {
+                node.test.id: node.lineno
+                for node in own
+                if isinstance(node, ast.If) and isinstance(node.test, ast.Name)
+                and any(isinstance(inner, ast.Return) for inner in ast.walk(node))
+            }
+            for holder, at in verdicts.items():
+                late = sorted(
+                    node.lineno for node in own
+                    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "append" and isinstance(node.func.value, ast.Name)
+                    and node.func.value.id == holder and node.lineno > at
+                )
+                if late:
+                    found.append(
+                        f"{name}::{fn.name}: вердикт по «{holder}» вынесен строкой {at}, "
+                        f"а находки дописываются позже — строки {late}. Эти случаи "
+                        f"печатают, но не судят (140, 145)")
+    return found
+
+
 #: Хост площадки. Разбирается ВЫЗОВ, а не текст: первый черновик искал строкой и
 #: поймал сам себя — образец с адресом внутри регулярного выражения неотличим от
 #: обращения, если смотреть на буквы. Разбор дерева эту разницу видит.
@@ -568,6 +641,55 @@ def selftest() -> int:
             broken.append(f"{name}: ожидалось {'отказ' if must_reject else 'пропуск'}, вышло {found}")
         print(f"  {'отвергнут' if found else 'пропущен '} — {name}")
 
+    # Вердикт набора: обе стороны. Ложный отказ здесь дороже пропуска — он
+    # отправляет чинить исправный набор, и первый черновик разбора его давал.
+    LATE = ("def selftest():\n"
+            "    broken = []\n"
+            "    if broken:\n"
+            "        return 1\n"
+            "    broken.append('поздняя находка')\n"
+            "    return 0\n")
+    ORDERED = ("def selftest():\n"
+               "    broken = []\n"
+               "    broken.append('находка')\n"
+               "    if broken:\n"
+               "        return 1\n"
+               "    return 0\n")
+    NESTED = ("def selftest():\n"
+              "    broken = []\n"
+              "    def helper():\n"
+              "        return {}\n"
+              "    broken.append(helper())\n"
+              "    if broken:\n"
+              "        return 1\n"
+              "    return 0\n")
+    OTHER = ("def selftest():\n"
+             "    broken, seen = [], []\n"
+             "    if broken:\n"
+             "        return 1\n"
+             "    seen.append('чужой список')\n"
+             "    return 0\n")
+    verdicts = [
+        ("находка дописана за вердиктом", {"a.py": LATE}, True),
+        ("вердикт после последнего случая", {"a.py": ORDERED}, False),
+        ("return вложенного помощника — не вердикт", {"a.py": NESTED}, False),
+        ("список, по которому не судят", {"a.py": OTHER}, False),
+        ("набора нет вовсе", {"a.py": "def f():\n    return 1\n"}, False),
+    ]
+    for name, srcs, must_reject in verdicts:
+        found = audit_verdicts(srcs)
+        if bool(found) is not must_reject:
+            broken.append(f"вердикт набора, {name}: ожидалось "
+                          f"{'отказ' if must_reject else 'пропуск'}, вышло {found}")
+        print(f"  {'отвергнут' if found else 'пропущен '} — вердикт набора: {name}")
+
+    # Отказ обязан назвать и место вердикта, и строки, приписанные за ним:
+    # без них чинящий ищет их сам, а гейт для того и заведён (151).
+    late_found = audit_verdicts({"a.py": LATE})
+    if not (late_found and "a.py::selftest" in late_found[0]
+            and "строки" in late_found[0]):
+        broken.append("отказ по вердикту набора не называет предмет и строки")
+
     named = audit_gaps({"077": {"status": "active", "mechanism": "none", "where": "соблюдается устройством"}})
     if not any("077" in line for line in named):
         broken.append("отказ на неназванном пробеле не называет номер правила")
@@ -595,7 +717,7 @@ def main() -> int:
     found = (audit_scripts(sources) + audit_calls(sources) + audit_voice(sources)
              + audit_gaps(rules) + audit_workflows(flows) + audit_runners(flows)
              + audit_harness(sources, flows) + audit_charter(ROOT)
-             + audit_sparse(sources, flows))
+             + audit_sparse(sources, flows) + audit_verdicts(sources))
     if found:
         print(checks.annotate("error", f"механизмы держат не то, что объявили: {len(found)}"), file=sys.stderr)
         for line in found:
