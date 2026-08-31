@@ -41,6 +41,12 @@
   красном остаётся ровно «Process completed with exit code 1». До 28 августа так
   печатал ОДИН гейт из восьми;
 
+* **090 — копия списка под сверкой.** `pr-check.yml` не будится на метку
+  конвейера: она классификацию не меняет. Условие работы не умеет звать питон,
+  поэтому имена меток в YAML повторены — и расхождение с `PIPELINE` в
+  `check_labels.py` отвергается (`audit_pipeline_labels`). Копия допустима
+  ровно до тех пор, пока разойтись молча она не может;
+
 * **140 и 145 — вердикт набора выносится после последнего случая.** Набор,
   решивший «провален или нет» раньше конца перебора, оставляет за вердиктом
   случаи, которые печатают, но не судят: находка дописывается в список,
@@ -426,6 +432,61 @@ def audit_verdicts(sources: dict[str, str]) -> list[str]:
     return found
 
 
+#: Откуда берётся список конвейерных меток и где лежит его копия.
+PIPELINE_SOURCE = "check_labels.py"
+PIPELINE_FLOW = "pr-check.yml"
+#: Копия в условии работы: `fromJSON('["hold"]')`. Разбирается литерал списка,
+#: а не вся строка условия — условие живёт своей жизнью и переписывается.
+PIPELINE_IN_FLOW = re.compile(r"fromJSON\(\s*'(\[[^']*\])'\s*\)")
+
+
+def audit_pipeline_labels(sources: dict[str, str], flows: dict[str, str]) -> list[str]:
+    """Копия списка конвейерных меток в условии прогона, разошедшаяся с кодом.
+
+    Правило 090 в его неудобной части. `pr-check.yml` не будится на постановку
+    метки конвейера: она классификацию не меняет, и прогон на неё — чистая
+    трата (замер: на #100 шесть отменённых прогонов из восьми). Но условие
+    работы не умеет звать питон, поэтому имена приходится повторить в YAML.
+
+    Копия допустима ровно до тех пор, пока она под механической сверкой:
+    добавь завтра вторую конвейерную метку в PIPELINE — и прогон начнёт
+    просыпаться на неё молча, вернув то, что этот фильтр убрал. Гейт делает
+    расхождение находкой.
+
+    Отсутствие копии — тоже находка: значит фильтр убрали, а список остался, и
+    комментарий рядом с ним врёт.
+    """
+    source = sources.get(PIPELINE_SOURCE, "")
+    flow = flows.get(PIPELINE_FLOW, "")
+    if not source or not flow:
+        return [f"{PIPELINE_SOURCE} или {PIPELINE_FLOW} не прочитан — "
+                f"сверять список конвейерных меток не с чем (090)"]
+
+    declared: set[str] | None = None
+    for node in ast.walk(ast.parse(source)):
+        if (isinstance(node, ast.Assign)
+                and any(getattr(t, "id", "") == "PIPELINE" for t in node.targets)):
+            declared = {c.value for c in ast.walk(node) if isinstance(c, ast.Constant)
+                        and isinstance(c.value, str)}
+    if declared is None:
+        return [f"{PIPELINE_SOURCE}: PIPELINE не найден — фильтр в {PIPELINE_FLOW} "
+                f"опирается на список, которого нет (090)"]
+
+    found = PIPELINE_IN_FLOW.search(flow)
+    if not found:
+        return [f"{PIPELINE_FLOW}: копии списка конвейерных меток нет, а в "
+                f"{PIPELINE_SOURCE} он объявлен — либо фильтр убран и комментарий "
+                f"рядом с ним врёт, либо копия переписана в форму, которой гейт "
+                f"не видит (090)"]
+    copied = set(json.loads(found.group(1)))
+    if copied != declared:
+        return [f"{PIPELINE_FLOW}: список конвейерных меток разошёлся с "
+                f"{PIPELINE_SOURCE} — в коде {sorted(declared)}, в условии "
+                f"{sorted(copied)}. Прогон будет просыпаться на метку, которая "
+                f"классификацию не меняет, или молчать на той, что меняет (090)"]
+    return []
+
+
 #: Хост площадки. Разбирается ВЫЗОВ, а не текст: первый черновик искал строкой и
 #: поймал сам себя — образец с адресом внутри регулярного выражения неотличим от
 #: обращения, если смотреть на буквы. Разбор дерева эту разницу видит.
@@ -690,6 +751,34 @@ def selftest() -> int:
             and "строки" in late_found[0]):
         broken.append("отказ по вердикту набора не называет предмет и строки")
 
+    # ── копия списка конвейерных меток ─────────────────────────────────────
+    LABELS_SRC = 'PIPELINE = frozenset({"hold"})\n'
+    LABELS_TWO = 'PIPELINE = frozenset({"hold", "wip"})\n'
+    FLOW_ONE = "jobs:\n  a:\n    if: >-\n      !contains(fromJSON('[\"hold\"]'), x)\n"
+    FLOW_TWO = "jobs:\n  a:\n    if: >-\n      !contains(fromJSON('[\"hold\",\"wip\"]'), x)\n"
+    FLOW_NONE = "jobs:\n  a:\n    runs-on: ubuntu-latest\n"
+    pipeline_cases = [
+        ("список и копия сходятся", LABELS_SRC, FLOW_ONE, False),
+        ("в коде добавилась метка, в копии нет", LABELS_TWO, FLOW_ONE, True),
+        ("в копии метка, которой нет в коде", LABELS_SRC, FLOW_TWO, True),
+        ("порядок в копии другой — не расхождение", LABELS_TWO,
+         "jobs:\n  a:\n    if: >-\n      !contains(fromJSON('[\"wip\",\"hold\"]'), x)\n", False),
+        ("копии нет вовсе, а список объявлен", LABELS_SRC, FLOW_NONE, True),
+        ("списка нет в коде", "CONTENT = frozenset({\"bug\"})\n", FLOW_ONE, True),
+    ]
+    for name, src, flow, must_reject in pipeline_cases:
+        found = audit_pipeline_labels({"check_labels.py": src}, {"pr-check.yml": flow})
+        if bool(found) is not must_reject:
+            broken.append(f"конвейерные метки, {name}: ожидалось "
+                          f"{'отказ' if must_reject else 'пропуск'}, вышло {found}")
+        print(f"  {'отвергнут' if found else 'пропущен '} — конвейерные метки: {name}")
+
+    # Отказ обязан показать обе стороны: чинить придётся ту, что устарела, и
+    # без обоих списков читающий пойдёт смотреть их сам.
+    diverged = audit_pipeline_labels({"check_labels.py": LABELS_TWO}, {"pr-check.yml": FLOW_ONE})
+    if not (diverged and "wip" in diverged[0] and "check_labels.py" in diverged[0]):
+        broken.append("конвейерные метки: отказ не называет обе стороны расхождения")
+
     named = audit_gaps({"077": {"status": "active", "mechanism": "none", "where": "соблюдается устройством"}})
     if not any("077" in line for line in named):
         broken.append("отказ на неназванном пробеле не называет номер правила")
@@ -717,7 +806,8 @@ def main() -> int:
     found = (audit_scripts(sources) + audit_calls(sources) + audit_voice(sources)
              + audit_gaps(rules) + audit_workflows(flows) + audit_runners(flows)
              + audit_harness(sources, flows) + audit_charter(ROOT)
-             + audit_sparse(sources, flows) + audit_verdicts(sources))
+             + audit_sparse(sources, flows) + audit_verdicts(sources)
+             + audit_pipeline_labels(sources, flows))
     if found:
         print(checks.annotate("error", f"механизмы держат не то, что объявили: {len(found)}"), file=sys.stderr)
         for line in found:
