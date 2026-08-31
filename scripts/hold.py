@@ -93,7 +93,7 @@ def marker_needed(commit_body: str) -> bool:
 NOT_A_FAILURE = frozenset({"SUCCESS", "SKIPPED", "CANCELLED", "NEUTRAL", ""})
 
 
-def checks_state(rollup: list[dict]) -> str:
+def checks_state(rollup: list[dict], ignore: frozenset[str] = frozenset()) -> str:
     """Состояние проверок изменения: ``success`` · ``pending`` · ``failure``.
 
     Спрашивается там, где событие говорит про ТЕЛО, а не про прогон: у
@@ -108,6 +108,14 @@ def checks_state(rollup: list[dict]) -> str:
 
     Незавершённое перевешивает всё: пока хоть один прогон бежит, ответ
     ``pending`` — механизм ошибается в безопасную сторону, оставляя стоп-кран.
+
+    СЕБЯ СПРАШИВАЮЩИЙ НЕ СЧИТАЕТ, И БЕЗ ЭТОГО МЕХАНИЗМ НЕ РАБОТАЛ ВОВСЕ.
+    Ответ площадки перечисляет ВСЕ проверки изменения, включая прогон, который
+    этот вопрос и задаёт: спрашивая о себе, он всегда видит себя
+    незавершённым — ``pending``, стоп-кран остаётся, и так каждый раз. Замер на
+    #106: прогон от редактирования тела отработал «успешно» и не снял ничего.
+    Имена, которые надо пропустить, передаёт вызывающий: скрипт не знает, из
+    какого прогона его позвали.
     """
     if not rollup:
         # Пустой список — не «зелено», а «спросить не у кого». Автомерж читает
@@ -115,6 +123,9 @@ def checks_state(rollup: list[dict]) -> str:
         return "pending"
     passed = False
     for run in rollup:
+        name = (run.get("name") or run.get("context") or "").strip()
+        if name in ignore:
+            continue
         status = (run.get("status") or "").upper()
         conclusion = (run.get("conclusion") or "").upper()
         state = (run.get("state") or "").upper()
@@ -217,6 +228,32 @@ def selftest() -> int:
             broken.append(f"состояние проверок, {name}: ожидалось {expected}, вышло {got}")
         print(f"  {got:<8} — состояние проверок: {name}")
 
+    # Спрашивающий не считает себя. Без этого механизм не работал вовсе:
+    # прогон видел себя незавершённым и держал стоп-кран каждый раз.
+    SELF = {"name": "release-hold", "status": "IN_PROGRESS", "conclusion": None}
+    self_cases = [
+        ("свой прогон отсеян — остальное зелено", [SELF, dict(OK, name="PR check")],
+         frozenset({"release-hold"}), "success"),
+        ("свой прогон НЕ отсеян — вечное ожидание", [SELF, dict(OK, name="PR check")],
+         frozenset(), "pending"),
+        ("отсев не прячет чужой провал",
+         [SELF, {"name": "PR check", "status": "COMPLETED", "conclusion": "FAILURE"}],
+         frozenset({"release-hold"}), "failure"),
+        ("отсев не прячет чужое ожидание",
+         [SELF, {"name": "PR check", "status": "QUEUED", "conclusion": None}],
+         frozenset({"release-hold"}), "pending"),
+        ("после отсева не осталось ничего — спросить не у кого",
+         [SELF], frozenset({"release-hold"}), "pending"),
+        ("старая форма: имя лежит в context",
+         [{"context": "release-hold", "state": "PENDING"}, {"context": "ci", "state": "SUCCESS"}],
+         frozenset({"release-hold"}), "success"),
+    ]
+    for name, rollup, ignore, expected in self_cases:
+        got = checks_state(rollup, ignore)
+        if got != expected:
+            broken.append(f"отсев спрашивающего, {name}: ожидалось {expected}, вышло {got}")
+        print(f"  {got:<8} — отсев спрашивающего: {name}")
+
     # Решение о стоп-кране обязано принимать этот ответ буквально: «pending» и
     # «failure» держат, и только «success» отпускает.
     BODY = "тело заполнено"
@@ -262,6 +299,9 @@ def main() -> int:
     parser.add_argument("--body-file", help="файл с телом изменения")
     parser.add_argument("--labels", default="", help="метки через запятую")
     parser.add_argument("--checks", default="", help="исход обязательных проверок")
+    parser.add_argument("--ignore-check", action="append", default=[],
+                        help="имя проверки, которую не спрашивать: прогон, "
+                             "задающий вопрос, всегда видит себя незавершённым")
     parser.add_argument("--checks-state", action="store_true",
                         help="состояние проверок изменения: ответ площадки "
                              "(statusCheckRollup) читается из stdin, вердикт "
@@ -285,7 +325,7 @@ def main() -> int:
             print(checks.annotate("error", "не отработал: ожидался список проверок"),
                   file=sys.stderr)
             return 2
-        print(checks_state(rollup))
+        print(checks_state(rollup, frozenset(args.ignore_check)))
         return 0
     if args.marker_needed:
         # Ответ печатается словом, а не кодом возврата: коды здесь заняты
