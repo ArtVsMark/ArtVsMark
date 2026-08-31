@@ -23,6 +23,23 @@ on:
   workflow_run:
     workflows: ["PR check"]
     types: [completed]
+  # ВТОРОЙ ПОВОД ПРОСНУТЬСЯ: ТЕЛО ОТРЕДАКТИРОВАЛИ.
+  #
+  # Решение принимается по телу, а будился прогон только по завершении
+  # проверки — и тело, заполненное ПОЗЖЕ, будить было нечему. Замер на #97:
+  # проверка досчиталась в 08:15:14, окно дописало тело минутой позже, и
+  # изменение простояло со стоп-краном при зелёных проверках, пока его не
+  # слили рукой. Тот же случай, ради которого прогон и заводился (#84), только
+  # зашедший с другой стороны: помнить теперь должен не человек, а событие,
+  # которого не было.
+  #
+  # ПОЧЕМУ `pull_request_target`, А НЕ `pull_request`. Прогону нужен секрет
+  # владельца, чтобы вооружить автомерж, а у `pull_request` из форка секретов
+  # нет вовсе. Заодно файл прогона и вызываемые им скрипты берутся с ОБЩЕЙ
+  # ветки, а не из изменения: шаг снимает стоп-кран, и брать его версию из
+  # того, что он же и выпускает, нельзя.
+  pull_request_target:
+    types: [edited]
   # У событийной автоматики всегда есть ручная кнопка (правило 104).
   workflow_dispatch:
     inputs:
@@ -37,7 +54,8 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: release-hold-${{ github.event.workflow_run.head_branch || inputs.pr }}
+  group: release-hold-${{ github.event.workflow_run.head_branch
+    || github.event.pull_request.number || inputs.pr }}
   cancel-in-progress: false
 
 jobs:
@@ -77,6 +95,7 @@ jobs:
           BRANCH: ${{ github.event.workflow_run.head_branch }}
           RESULT: ${{ github.event.workflow_run.conclusion }}
           PR_INPUT: ${{ inputs.pr }}
+          PR_EDITED: ${{ github.event.pull_request.number }}
         run: |
           set +e
           # Номер берётся по ветке, а не из `pull_requests` события: у
@@ -84,6 +103,24 @@ jobs:
           # «изменения нет».
           if [ -n "$PR_INPUT" ]; then
             number="$PR_INPUT"; result="success"
+          elif [ -n "$PR_EDITED" ]; then
+            # Событие про ТЕЛО, и исхода проверок в нём нет вовсе — его
+            # спрашивают у площадки. Разбор ответа живёт в scripts/hold.py
+            # рядом с решением о стоп-кране: у скрипта есть набор, у шага его
+            # не бывает (правило 090).
+            number="$PR_EDITED"
+            rollup=$(gh pr view "$number" --repo "$GITHUB_REPOSITORY" \
+                       --json statusCheckRollup --jq '.statusCheckRollup' 2>&1)
+            if [ $? -ne 0 ]; then
+              echo "::warning::Состояние проверок #$number не прочитано — стоп-кран оставлен: $rollup"
+              exit 0
+            fi
+            result=$(printf '%s' "$rollup" | python3 scripts/hold.py --checks-state)
+            if [ $? -ne 0 ]; then
+              echo "::error::Разбор состояния проверок не отработал — scripts/hold.py"
+              exit 1
+            fi
+            echo "Проверки #$number: $result"
           else
             number=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" \
                        --state open --json number --jq '.[0].number // empty')
