@@ -93,6 +93,44 @@ def marker_needed(commit_body: str) -> bool:
 NOT_A_FAILURE = frozenset({"SUCCESS", "SKIPPED", "CANCELLED", "NEUTRAL", ""})
 
 
+def _when(run: dict) -> str:
+    """Время прогона для сравнения свежести. Оба написания — своё и площадки."""
+    for key in ("completedAt", "completed_at", "startedAt", "started_at"):
+        value = run.get(key)
+        if value:
+            return str(value)
+    return ""
+
+
+def _latest_per_check(rollup: list[dict]) -> list[dict]:
+    """По одному прогону на имя проверки — самый свежий.
+
+    Ответ площадки перечисляет ВСЕ прогоны на коммите, включая те, что уже
+    переигранны. Устаревший провал в этом списке означал бы, что стоп-кран
+    держится вечно: на #106 первый `PR check` упал на неполной классификации,
+    метку зоны поставили, второй прогон стал зелёным — а провалившийся никуда
+    из списка не делся.
+
+    Площадка в защите ветки считает так же: у проверки с одним именем
+    учитывается последняя. Здесь это повторено, а не изобретено.
+
+    Порядок ввода не важен: сравнивается время, а при его отсутствии
+    побеждает более поздний в списке — тот же порядок, в каком его отдаёт
+    площадка.
+    """
+    latest: dict[object, dict] = {}
+    for position, run in enumerate(rollup):
+        name = (run.get("name") or run.get("context") or "").strip()
+        # Безымянная запись не схлопывается ни с чем: имя здесь ключ, и его
+        # отсутствие означает «неизвестно, та же это проверка или другая».
+        # Схлопнуть их вместе значило бы выбросить чужой исход.
+        key: object = name or (position, None)
+        known = latest.get(key)
+        if known is None or _when(run) >= _when(known):
+            latest[key] = run
+    return list(latest.values())
+
+
 def checks_state(rollup: list[dict], ignore: frozenset[str] = frozenset()) -> str:
     """Состояние проверок изменения: ``success`` · ``pending`` · ``failure``.
 
@@ -122,7 +160,7 @@ def checks_state(rollup: list[dict], ignore: frozenset[str] = frozenset()) -> st
         # такое как «не стартовало», и мы читаем так же.
         return "pending"
     passed = False
-    for run in rollup:
+    for run in _latest_per_check(rollup):
         name = (run.get("name") or run.get("context") or "").strip()
         if name in ignore:
             continue
@@ -227,6 +265,33 @@ def selftest() -> int:
         if got != expected:
             broken.append(f"состояние проверок, {name}: ожидалось {expected}, вышло {got}")
         print(f"  {got:<8} — состояние проверок: {name}")
+
+    # Свежесть: у проверки с одним именем считается последняя, как и в защите
+    # ветки. Устаревший провал иначе держал бы стоп-кран вечно.
+    def run(name, concl, when, status="COMPLETED"):
+        return {"name": name, "status": status, "conclusion": concl, "completedAt": when}
+
+    fresh_cases = [
+        ("переигранный провал перекрыт успехом",
+         [run("PR check", "FAILURE", "09:23"), run("PR check", "SUCCESS", "09:25")], "success"),
+        ("свежий провал после успеха",
+         [run("PR check", "SUCCESS", "09:20"), run("PR check", "FAILURE", "09:26")], "failure"),
+        ("порядок в списке не решает — решает время",
+         [run("PR check", "SUCCESS", "09:25"), run("PR check", "FAILURE", "09:23")], "success"),
+        ("времени нет — побеждает последний в списке",
+         [{"name": "PR check", "status": "COMPLETED", "conclusion": "FAILURE"},
+          {"name": "PR check", "status": "COMPLETED", "conclusion": "SUCCESS"}], "success"),
+        ("разные проверки не схлопываются",
+         [run("PR check", "SUCCESS", "09:25"), run("другая", "FAILURE", "09:20")], "failure"),
+        ("свежий перезапуск ещё бежит",
+         [run("PR check", "SUCCESS", "09:20"),
+          run("PR check", None, "09:26", status="IN_PROGRESS")], "pending"),
+    ]
+    for name, rollup, expected in fresh_cases:
+        got = checks_state(rollup)
+        if got != expected:
+            broken.append(f"свежесть проверок, {name}: ожидалось {expected}, вышло {got}")
+        print(f"  {got:<8} — свежесть проверок: {name}")
 
     # Спрашивающий не считает себя. Без этого механизм не работал вовсе:
     # прогон видел себя незавершённым и держал стоп-кран каждый раз.
