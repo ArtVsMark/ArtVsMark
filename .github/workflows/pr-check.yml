@@ -23,8 +23,21 @@ on:
 permissions:
   contents: read
 
+# ПРОГОНЫ ОТ МЕТКИ КОНВЕЙЕРА ЖИВУТ В ОТДЕЛЬНОЙ ГРУППЕ, И ЭТО НЕ ОФОРМЛЕНИЕ.
+# Пропуск по `if` не мешает прогону попасть в группу параллелизма: он всё равно
+# создаётся и отменяет предыдущий — ДО того, как условие вычислено. Замер на
+# #103: четыре прогона, из них один пропущенный и три отменённых, успешного —
+# ни одного. То есть обязательная проверка не завершалась вовсе, и изменение
+# не могло слиться: фильтр, задуманный как уборка шума, сломал конвейер.
+#
+# Отдельная группа разводит их: событие метки конвейера отменяет только такие
+# же, а настоящая проверка досчитывается.
 concurrency:
-  group: pr-check-${{ github.event.pull_request.number || github.ref }}
+  group: >-
+    pr-check-${{ github.event.pull_request.number || github.ref }}-${{
+      (github.event.action == 'labeled' || github.event.action == 'unlabeled')
+      && contains(fromJSON('["hold"]'), github.event.label.name)
+      && 'pipeline-label' || 'subject' }}
   cancel-in-progress: true
 
 jobs:

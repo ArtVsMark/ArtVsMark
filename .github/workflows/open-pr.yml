@@ -147,10 +147,10 @@ jobs:
           # закончившийся ложью, увёл бы шаг в отказ.
           args=()
           zones=""
-          if [ -n "$label" ]; then args+=(--label "$label"); fi
+          if [ -n "$label" ]; then args+=(--add-label "$label"); fi
           for zone in $derived; do
             if [ "$zone" != "$label" ]; then
-              args+=(--label "$zone")
+              args+=(--add-label "$zone")
               zones="${zones}${zones:+, }$zone"
             fi
           done
@@ -179,9 +179,14 @@ jobs:
             fi
           } >> "$RUNNER_TEMP/pr-body.md"
 
+          # МЕТКИ СТАВЯТСЯ ОТДЕЛЬНЫМ ОБРАЩЕНИЕМ, И ЭТО НЕ ЛИШНИЙ ЗАПРОС.
+          # `gh pr create --label` применяет метки ВТОРЫМ запросом поверх
+          # создания, и площадка записывает постановку каждой дважды: замер по
+          # #102 — шесть событий `labeled` с разными идентификаторами при одном
+          # прогоне open-pr. Каждое событие будит `pr-check.yml`, и семь
+          # прогонов на одном коммите берутся ровно отсюда (#99).
           out=$(gh pr create --repo "$GITHUB_REPOSITORY" --base main --head "$BRANCH" \
-            --title "$title" --body-file "$RUNNER_TEMP/pr-body.md" \
-            "${args[@]}" --label hold 2>&1) && rc=0 || rc=$?
+            --title "$title" --body-file "$RUNNER_TEMP/pr-body.md" 2>&1) && rc=0 || rc=$?
           if [ "$rc" -ne 0 ]; then
             verdict=$(printf '%s\n' "$out" | python3 scripts/gh_outcome.py --code "$rc") \
               || verdict="broken: разбор исходов не отработал — scripts/gh_outcome.py"
@@ -193,4 +198,19 @@ jobs:
             exit 1
           fi
           printf '%s\n' "$out"
-          echo "изменение открыто владельцем; метка содержания: ${label:-НЕ ПОСТАВЛЕНА}, зоны: ${zones:-нет}, стоп-кран hold стоит"
+
+          # Номер берётся из адреса созданного изменения: `gh pr create` печатает
+          # его последней строкой. Разбирается цифрами с конца, а не «всё после
+          # последней косой черты»: мусор в ответе сделал бы номером что угодно,
+          # и метки уехали бы в чужое изменение.
+          number=$(printf '%s\n' "$out" | grep -oE '/pull/[0-9]+' | tail -1 | grep -oE '[0-9]+$')
+          if [ -z "$number" ]; then
+            echo "::error::Изменение открыто, но номер не разобран — метки не проставлены. Ответ площадки: $out"
+            exit 1
+          fi
+
+          # Одно обращение на все метки: и содержание, и зоны, и стоп-кран.
+          gh pr edit "$number" --repo "$GITHUB_REPOSITORY" "${args[@]}" --add-label hold \
+            || { echo "::error::Метки не проставлены на #$number — классификация будет красной"; exit 1; }
+
+          echo "изменение #$number открыто владельцем; метка содержания: ${label:-НЕ ПОСТАВЛЕНА}, зоны: ${zones:-нет}, стоп-кран hold стоит"

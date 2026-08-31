@@ -456,6 +456,7 @@ def audit_pipeline_labels(sources: dict[str, str], flows: dict[str, str]) -> lis
     Отсутствие копии — тоже находка: значит фильтр убрали, а список остался, и
     комментарий рядом с ним врёт.
     """
+    found: list[str] = []
     source = sources.get(PIPELINE_SOURCE, "")
     flow = flows.get(PIPELINE_FLOW, "")
     if not source or not flow:
@@ -472,19 +473,25 @@ def audit_pipeline_labels(sources: dict[str, str], flows: dict[str, str]) -> lis
         return [f"{PIPELINE_SOURCE}: PIPELINE не найден — фильтр в {PIPELINE_FLOW} "
                 f"опирается на список, которого нет (090)"]
 
-    found = PIPELINE_IN_FLOW.search(flow)
-    if not found:
+    # Вхождений в прогоне НЕСКОЛЬКО — условие работы и группа параллелизма, — и
+    # сверяется каждое. Первая редакция смотрела только на первое: копии могли
+    # разойтись между собой внутри одного файла, и фильтр отвечал бы одно, а
+    # группа считала другое.
+    copies = PIPELINE_IN_FLOW.findall(flow)
+    if not copies:
         return [f"{PIPELINE_FLOW}: копии списка конвейерных меток нет, а в "
                 f"{PIPELINE_SOURCE} он объявлен — либо фильтр убран и комментарий "
                 f"рядом с ним врёт, либо копия переписана в форму, которой гейт "
                 f"не видит (090)"]
-    copied = set(json.loads(found.group(1)))
-    if copied != declared:
-        return [f"{PIPELINE_FLOW}: список конвейерных меток разошёлся с "
-                f"{PIPELINE_SOURCE} — в коде {sorted(declared)}, в условии "
+    for raw in copies:
+        copied = set(json.loads(raw))
+        if copied != declared:
+            found.append(
+                f"{PIPELINE_FLOW}: список конвейерных меток разошёлся с "
+                f"{PIPELINE_SOURCE} — в коде {sorted(declared)}, в прогоне "
                 f"{sorted(copied)}. Прогон будет просыпаться на метку, которая "
-                f"классификацию не меняет, или молчать на той, что меняет (090)"]
-    return []
+                f"классификацию не меняет, или молчать на той, что меняет (090)")
+    return found
 
 
 #: Хост площадки. Разбирается ВЫЗОВ, а не текст: первый черновик искал строкой и
@@ -764,6 +771,13 @@ def selftest() -> int:
         ("порядок в копии другой — не расхождение", LABELS_TWO,
          "jobs:\n  a:\n    if: >-\n      !contains(fromJSON('[\"wip\",\"hold\"]'), x)\n", False),
         ("копии нет вовсе, а список объявлен", LABELS_SRC, FLOW_NONE, True),
+        # Вхождений в прогоне два — условие работы и группа параллелизма.
+        # Первая редакция гейта смотрела только на первое, и расхождение между
+        # ними прошло бы мимо.
+        ("два вхождения, оба сходятся", LABELS_SRC,
+         FLOW_ONE + "concurrency:\n  group: >-\n    ${{ contains(fromJSON('[\"hold\"]'), y) }}\n", False),
+        ("два вхождения, второе разошлось", LABELS_SRC,
+         FLOW_ONE + "concurrency:\n  group: >-\n    ${{ contains(fromJSON('[\"hold\",\"wip\"]'), y) }}\n", True),
         ("списка нет в коде", "CONTENT = frozenset({\"bug\"})\n", FLOW_ONE, True),
     ]
     for name, src, flow, must_reject in pipeline_cases:
