@@ -96,6 +96,9 @@ jobs:
           RESULT: ${{ github.event.workflow_run.conclusion }}
           PR_INPUT: ${{ inputs.pr }}
           PR_EDITED: ${{ github.event.pull_request.number }}
+          # Имя СВОЕЙ работы: его же площадка кладёт в список проверок
+          # изменения, и по нему прогон себя оттуда и вычёркивает.
+          JOB_NAME: release-hold
         run: |
           set +e
           # Номер берётся по ветке, а не из `pull_requests` события: у
@@ -115,19 +118,30 @@ jobs:
               echo "::warning::Состояние проверок #$number не прочитано — стоп-кран оставлен: $rollup"
               exit 0
             fi
-            result=$(printf '%s' "$rollup" | python3 scripts/hold.py --checks-state)
+            # СЕБЯ СПРАШИВАЮЩИЙ НЕ СЧИТАЕТ. Ответ площадки перечисляет все
+            # проверки изменения, включая этот самый прогон: спрашивая о себе,
+            # он всегда видит себя незавершённым, отвечает «ждём» и оставляет
+            # стоп-кран — каждый раз. Замер на #106: прогон от редактирования
+            # тела отработал «успешно» и не снял ничего.
+            result=$(printf '%s' "$rollup" \
+                       | python3 scripts/hold.py --checks-state --ignore-check "$JOB_NAME")
             if [ $? -ne 0 ]; then
               echo "::error::Разбор состояния проверок не отработал — scripts/hold.py"
               exit 1
             fi
-            echo "Проверки #$number: $result"
+            echo "::notice::Проверки #$number: $result (спрашивающий «$JOB_NAME» не в счёт)"
           else
             number=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" \
                        --state open --json number --jq '.[0].number // empty')
             result="$RESULT"
           fi
           if [ -z "$number" ]; then
-            echo "открытого изменения на $BRANCH нет — снимать нечего"
+            # Печатается командой площадки, а не в обычный вывод: логи прогонов
+            # облачному окну закрыты (правило 151), и до него доходят только
+            # аннотации. Этот выход стоил расследования ровно потому, что был
+            # тихим: прогон отработал «успешно» и не сказал, почему ничего не
+            # сделал.
+            echo "::notice::Открытого изменения на ${BRANCH:-«ветка не задана»} нет — снимать нечего"
             exit 0
           fi
 
@@ -182,7 +196,9 @@ jobs:
                 echo "::notice::Автомерж на #$number вооружён (squash)"
               fi ;;
             keep:*)
-              echo "#$number: стоп-кран остаётся — ${verdict#keep: }" ;;
+              # Тоже аннотацией: «почему не сняли» — единственное, что доходит
+              # до окна, когда прогон отработал и ничего не изменил (151).
+              echo "::notice::#$number: стоп-кран остаётся — ${verdict#keep: }" ;;
             *)
-              echo "#$number: ${verdict#nothing: }" ;;
+              echo "::notice::#$number: ${verdict#nothing: }" ;;
           esac
