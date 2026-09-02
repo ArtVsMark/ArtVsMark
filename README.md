@@ -37,9 +37,9 @@
 <div align="center">
 <a href="https://github.com/ArtVsMark?tab=repositories">
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./assets/featured-dark.svg?v=d7fd1ed0">
-  <source media="(prefers-color-scheme: light)" srcset="./assets/featured-light.svg?v=c84dcc2d">
-  <img src="./assets/featured-dark.svg?v=d7fd1ed0" alt="Stepik-Python-Grader — Offline Python autograder: unlimited local checks, honest side-by-side comparison of solutions. release/pypi 1.11, CI success, coverage 91.5%, version 1.11.77. 3 stars, 1698 commits, 39 issues, 12 releases, 687 prs. CLI · web UI · GUI · pytest plugin · OS sandbox · Engineering-Incidents-Playbook — Rules for agent sessions and a GitHub pipeline — each one carrying the incident it grew from. release/pypi 1.1, CI success, coverage 63%, version 1.1.82. 1 stars, 311 commits, 3 issues, 3 releases, 200 prs. docs · RU/EN · Claude-Code_Usage-Token — Turns a three-step limit indicator into a number. Early: the spec is written, the tool is not. release/pypi 2.0.0, CI success, coverage none, version none. 0 stars, 35 commits, 9 issues, 1 releases, 32 prs. Python · JSONL over git · Glossary-Python — The RU/EN glossary the grader links into when a run fails. release/pypi none, CI none, coverage none, version none. 2 stars, 3 commits, 3 issues, 0 releases, 0 prs. content · tooling" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="./assets/featured-dark.svg?v=421c9d27">
+  <source media="(prefers-color-scheme: light)" srcset="./assets/featured-light.svg?v=0c605f14">
+  <img src="./assets/featured-dark.svg?v=421c9d27" alt="Stepik-Python-Grader — Offline Python autograder: unlimited local checks, honest side-by-side comparison of solutions. release/pypi 1.11, CI success, coverage 91.5%, version 1.11.77. 3 stars, 1698 commits, 39 issues, 12 releases, 688 prs. CLI · web UI · GUI · pytest plugin · OS sandbox · Engineering-Incidents-Playbook — Rules for agent sessions and a GitHub pipeline — each one carrying the incident it grew from. release/pypi 1.1, CI success, coverage 63%, version 1.1.83. 1 stars, 312 commits, 3 issues, 3 releases, 200 prs. docs · RU/EN · Claude-Code_Usage-Token — Turns a three-step limit indicator into a number. Early: the spec is written, the tool is not. release/pypi 2.0.0, CI success, coverage none, version none. 0 stars, 36 commits, 9 issues, 1 releases, 33 prs. Python · JSONL over git · Glossary-Python — The RU/EN glossary the grader links into when a run fails. release/pypi none, CI none, coverage none, version none. 2 stars, 3 commits, 3 issues, 0 releases, 0 prs. content · tooling" width="100%">
 </picture>
 </a>
 </div>
@@ -48,8 +48,8 @@
 <div align="center">
 
 <a href="https://github.com/ArtVsMark/Stepik-Python-Grader"><picture><source media="(prefers-color-scheme: dark)" srcset="./assets/tile-stepik-python-grader-dark.svg?v=c11f5616"><source media="(prefers-color-scheme: light)" srcset="./assets/tile-stepik-python-grader-light.svg?v=28539d07"><img src="./assets/tile-stepik-python-grader-dark.svg?v=c11f5616" alt="Open Stepik-Python-Grader on GitHub" width="23%"></picture></a>
-<a href="https://github.com/ArtVsMark/Claude-Code_Usage-Token"><picture><source media="(prefers-color-scheme: dark)" srcset="./assets/tile-claude-code-usage-token-dark.svg?v=834179d6"><source media="(prefers-color-scheme: light)" srcset="./assets/tile-claude-code-usage-token-light.svg?v=6143f0a0"><img src="./assets/tile-claude-code-usage-token-dark.svg?v=834179d6" alt="Open Claude-Code_Usage-Token on GitHub" width="23%"></picture></a>
 <a href="https://github.com/ArtVsMark/Engineering-Incidents-Playbook"><picture><source media="(prefers-color-scheme: dark)" srcset="./assets/tile-engineering-incidents-playbook-dark.svg?v=89d67de5"><source media="(prefers-color-scheme: light)" srcset="./assets/tile-engineering-incidents-playbook-light.svg?v=1df6c568"><img src="./assets/tile-engineering-incidents-playbook-dark.svg?v=89d67de5" alt="Open Engineering-Incidents-Playbook on GitHub" width="23%"></picture></a>
+<a href="https://github.com/ArtVsMark/Claude-Code_Usage-Token"><picture><source media="(prefers-color-scheme: dark)" srcset="./assets/tile-claude-code-usage-token-dark.svg?v=834179d6"><source media="(prefers-color-scheme: light)" srcset="./assets/tile-claude-code-usage-token-light.svg?v=6143f0a0"><img src="./assets/tile-claude-code-usage-token-dark.svg?v=834179d6" alt="Open Claude-Code_Usage-Token on GitHub" width="23%"></picture></a>
 <a href="https://github.com/ArtVsMark/Glossary-Python"><picture><source media="(prefers-color-scheme: dark)" srcset="./assets/tile-glossary-python-dark.svg?v=c3e901f8"><source media="(prefers-color-scheme: light)" srcset="./assets/tile-glossary-python-light.svg?v=7db11f01"><img src="./assets/tile-glossary-python-dark.svg?v=c3e901f8" alt="Open Glossary-Python on GitHub" width="23%"></picture></a>
 
 <sub>data as of 2026-09-02</sub>
@@ -153,7 +153,7 @@ The grader has a **"First contribution in 15 minutes"** onramp, and every `good 
 **Мейнтейнер open-source на Python.** Флагман — [Stepik-Python-Grader](https://github.com/ArtVsMark/Stepik-Python-Grader):
 локальный грейдер, который не просто прогоняет тесты, а **сравнивает решения честно** — сначала по
 корректности, потом по benchmark-метрикам. Рядом — [Engineering-Incidents-Playbook](https://github.com/ArtVsMark/Engineering-Incidents-Playbook),
-каталог из <!--m:rules-->162<!--/m:rules--> правил, каждое с историей поломки, из которой выросло, и [Claude-Code_Usage-Token](https://github.com/ArtVsMark/Claude-Code_Usage-Token) —
+каталог из <!--m:rules-->163<!--/m:rules--> правил, каждое с историей поломки, из которой выросло, и [Claude-Code_Usage-Token](https://github.com/ArtVsMark/Claude-Code_Usage-Token) —
 остаток лимитов Claude Code в цифрах вместо трёхступенчатого светофора; пока спецификация.
 
 Качество держится механикой, а не памятью: гейты перед коммитом и мержем, зелёный CI на актуальной
