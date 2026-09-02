@@ -35,6 +35,7 @@ GitHub отдаёт по одному имени столько записей, 
 from __future__ import annotations
 
 import os
+import re
 import sys
 
 
@@ -46,6 +47,44 @@ def unique_names(runs: list[dict]) -> set[str]:
 #: Уровни площадки. Список закрытый: команда с чужим словом площадкой
 #: игнорируется молча, и находка не доехала бы никуда.
 LEVELS = ("error", "warning", "notice")
+
+
+#: Строка хвостового блока: `Ключ: значение`. Ключ без пробелов — так его
+#: разбирает и сам git, и разбор каталога.
+TRAILER_LINE = re.compile(r"^([A-Za-z][A-Za-z0-9-]*):\s*(.+?)\s*$")
+
+
+def trailers(body: str) -> dict[str, list[str]]:
+    """Трейлеры сообщения — из ХВОСТОВОГО блока, а не из любой строки.
+
+    Правило каталога 156, и оно оплачено дважды. У каталога гейт атрибуции
+    отверг изменение витрины #95, найдя соавтора «github-actions[bot] в
+    уплотнённый коммит. #83 сделал автором»: слово `Co-authored-by` стояло в
+    ПРОЗЕ и после переноса строки оказалось первым в ней. Такого соавтора не
+    существует — это середина фразы.
+
+    Цена ошибки несимметрична: разбор по образцу «строка начинается с имени»
+    отвергает изменение тем охотнее, чем добросовестнее описан предмет.
+
+    Хвостовой блок — последний абзац, у которого **все** непустые строки имеют
+    форму `Ключ: значение`. Абзац, где хоть одна строка прозаическая, блоком не
+    считается целиком: иначе разбор снова начинает угадывать.
+
+    Помощник живёт здесь, а не в двух гейтах: тот же приём нужен и проверке
+    авторства коммитов, и решению о стоп-кране, и вторая копия разошлась бы с
+    первой молча (правило 090).
+    """
+    paragraphs = [block for block in re.split(r"\n\s*\n", body or "") if block.strip()]
+    if not paragraphs:
+        return {}
+    lines = [line for line in paragraphs[-1].split("\n") if line.strip()]
+    parsed = [TRAILER_LINE.match(line) for line in lines]
+    if not all(parsed):
+        return {}
+    found: dict[str, list[str]] = {}
+    for match in parsed:
+        found.setdefault(match.group(1).lower(), []).append(match.group(2))
+    return found
 
 
 def annotate(level: str, text: str) -> str:
@@ -81,6 +120,37 @@ def selftest() -> int:
     случаи продолжат спрашивать функцию.
     """
     broken = []
+
+    # ── хвостовой блок, а не любая строка (правило 156) ────────────────────
+    # Обе ошибки названы: принять прозу за трейлер значит отвергнуть верное
+    # изменение тем охотнее, чем подробнее оно описано; не увидеть настоящий
+    # трейлер — пропустить коммит без атрибуции в общую ветку.
+    TAIL = "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+    trailer_cases = [
+        ("хвост из одного трейлера", f"Разбор.\n\n{TAIL}", ["co-authored-by"]),
+        ("хвост из двух", f"Тело.\n\n{TAIL}\nClaude-Session: https://x", ["claude-session", "co-authored-by"]),
+        ("слово в прозе — не трейлер",
+         "площадка дописывает\nCo-Authored-By: github-actions[bot] в уплотнённый коммит", []),
+        ("проза внутри хвостового абзаца отменяет весь блок",
+         f"Тело.\n\n{TAIL}\nи ещё пояснение", []),
+        ("трейлер в середине сообщения не считается",
+         f"Начало.\n\n{TAIL}\n\nПродолжение прозой.", []),
+        ("тела нет вовсе", "", []),
+        ("одни пустые строки", "\n\n   \n", []),
+        ("регистр ключа не важен", "Тело.\n\nco-authored-by: A <a@b>", ["co-authored-by"]),
+        ("двоеточия нет — не трейлер", "Тело.\n\nCo-Authored-By A <a@b>", []),
+    ]
+    for name, body, expected in trailer_cases:
+        got = sorted(trailers(body))
+        if got != sorted(expected):
+            broken.append(f"трейлеры, {name}: ожидалось {sorted(expected)}, вышло {got}")
+        print(f"  {str(got) if got else 'пусто':<34} — трейлеры: {name}")
+
+    # Значение доезжает целиком: по нему сверяют имя со списком согласованных.
+    value = trailers(f"Тело.\n\n{TAIL}").get("co-authored-by", [""])[0]
+    if value != "Claude Opus 5 <noreply@anthropic.com>":
+        broken.append(f"трейлеры: значение обрезано или искажено — {value!r}")
+
     saved = os.environ.get("GITHUB_ACTIONS")
     try:
         os.environ.pop("GITHUB_ACTIONS", None)

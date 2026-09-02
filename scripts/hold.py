@@ -51,9 +51,9 @@ HOLD_LABEL = "hold"
 #: смысл тот же: коммит составил прогон площадки, а не человек и не окно.
 PIPELINE_AUTHOR = "github-actions[bot]"
 
-#: Трейлер соавторства. Тот же образец, что у гейта атрибуции: расхождение
-#: написаний ловится там, здесь спрашивается, кто составил коммит.
-COAUTHOR = re.compile(r"^Co-Authored-By:\s*(.+?)\s*$", re.M | re.I)
+#: Имя трейлера соавторства. Разбор — общий, из scripts/checks.py: хвостовой
+#: блок, а не любая строка (правило 156).
+COAUTHOR = "co-authored-by"
 
 
 def marker_needed(commit_body: str) -> bool:
@@ -77,7 +77,7 @@ def marker_needed(commit_body: str) -> bool:
     порядок был не лучше, а хуже и тише: открой `open-pr` первым — пересборка
     встала бы с `hold`, которого некому снять.
     """
-    named = COAUTHOR.findall(commit_body or "")
+    named = checks.trailers(commit_body or "").get(COAUTHOR, [])
     pipeline = [name for name in named if PIPELINE_AUTHOR in name]
     # Маркер не нужен, только когда прогон — ЕДИНСТВЕННЫЙ исполнитель. Стоит
     # рядом оказаться окну, и тело допишет оно: пропустить маркер здесь значило
