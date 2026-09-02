@@ -1,5 +1,5 @@
 {
-  "schema": "1.0",
+  "schema": "1.2",
   "project": "ArtVsMark/ArtVsMark",
   "catalogue": "https://github.com/ArtVsMark/Engineering-Incidents-Playbook",
   "rules": {
@@ -332,7 +332,7 @@
     "074": {
       "status": "active",
       "mechanism": "gate",
-      "where": "защита main: обязательная проверка PR check плюс запрет force-push и удаления — слияние необратимо, историю main не переписываем"
+      "where": ".github/workflows/pr-check.yml — обязательная проверка, которую защита main требует зелёной; правила ветки читаются по адресу https://api.github.com/repos/ArtVsMark/ArtVsMark/rules/branches/main и там же видно, что force-push и удаление запрещены. защита main: обязательная проверка PR check плюс запрет force-push и удаления — слияние необратимо, историю main не переписываем"
     },
     "075": {
       "status": "active",
@@ -701,7 +701,9 @@
       "status": "unreviewed"
     },
     "157": {
-      "status": "unreviewed"
+      "status": "active",
+      "mechanism": "gate",
+      "where": "scripts/build_metrics.py::rules_export — версия контракта берётся У ИЗДАТЕЛЯ (поле schema в машинном экспорте каталога), а не из своей константы; мажор роняет сборку, а подъём МИНОРА сверяется с версией нашего ответа .rules/bindings.json и становится находкой на изменении. Заведено 2 сентября по живому предмету: контракт уехал на 1.2, ответ витрины стоял на 1.0 и был формально валиден. Перечитывание дало одну запись — 074, где where был прозой без разрешимого адреса, требование к нему появилось вместе с 1.1."
     },
     "158": {
       "status": "unreviewed"

@@ -999,6 +999,46 @@ def rules_export() -> dict:
     return export
 
 
+def contract_drift(published: str, answered: str) -> str:
+    """Насколько ответ витрины отстал от контракта каталога. Пусто — не отстал.
+
+    Правило 157. Мажор роняет сборку выше: читать «что получится» из формата,
+    сменившего смысл полей, хуже, чем не читать. МИНОР так не ломается — и
+    именно поэтому опасен: записи остаются формально валидными, означая уже
+    другое. У соседа на подъёме 1.0 → 1.1 слово ``process-step`` раскололось, и
+    52 ответа из 153 стали значить «мы не ответили», оставаясь зелёными.
+
+    Сравнение идёт с версией НАШЕГО ответа, а не с собственной константой: обе
+    стороны такой константы обновляются одной рукой, и подъём у издателя она не
+    заметит никогда. Здесь одна сторона — чужой контракт, вторая — наш файл.
+
+    Живой предмет, ради которого функция заведена: 2 сентября контракт стоял на
+    1.2, ответ витрины — на 1.0, и не падало ничего. Перечитывание нашло запись,
+    где ``where`` был прозой без разрешимого адреса, — требование появилось
+    вместе с 1.1.
+    """
+    def parts(version: str) -> tuple[int, int]:
+        major, _, minor = str(version).partition(".")
+        return (int(major or 0), int(minor.split(".")[0] or 0))
+
+    # Пустая версия — не «равные нули», а отсутствие ответа на вопрос. Молчать
+    # здесь значило бы читать её как совпадение: первая редакция так и делала,
+    # и набор поймал это случаем «версии нет вовсе».
+    if not str(published).strip() or not str(answered).strip():
+        return (f"версия контракта {published!r} или ответа {answered!r} не названа — "
+                f"сверять отставание не с чем")
+    try:
+        theirs, ours = parts(published), parts(answered)
+    except ValueError:
+        return (f"версия контракта {published!r} или ответа {answered!r} не разобрана — "
+                f"сверить отставание нечем")
+    if theirs <= ours:
+        return ""
+    return (f"контракт каталога {published}, ответ витрины {answered} — "
+            f"перечитать записи .rules/bindings.json и поднять schema: подъём минора "
+            f"меняет значение полей, а не только формат (правило 157)")
+
+
 def sync_bindings(export: dict, write: bool = True) -> str:
     """Дописывает в ответ потребителя правила, которых в нём ещё нет.
 
@@ -1452,6 +1492,31 @@ def selftest() -> int:
             broken.append(f"{name}: ожидалось {expected}, вышло {got}")
         print(f"  {str(got) if got else 'сходится':<12} — {name}")
 
+    # ── отставание ответа от контракта каталога ────────────────────────────
+    # Обе ошибки названы: пропустить подъём минора значит везти ответ, который
+    # значит уже другое; объявить отставание там, где его нет, — остановить
+    # изменение на ровном месте.
+    drift_cases = [
+        ("ответ на той же версии", "1.2", "1.2", False),
+        ("издатель поднял минор", "1.2", "1.0", True),
+        ("издатель поднял мажор", "2.0", "1.2", True),
+        ("ответ впереди — не отставание", "1.2", "1.3", False),
+        ("минор с хвостом версии", "1.2.1", "1.2", False),
+        ("версия не разобрана — сказать, а не молчать", "неизвестно", "1.0", True),
+        ("версии нет вовсе", "", "", True),
+    ]
+    for name, published, answered, expected in drift_cases:
+        got = bool(contract_drift(published, answered))
+        if got is not expected:
+            broken.append(f"отставание от контракта, {name}: ожидалось "
+                          f"{'находка' if expected else 'пропуск'}, вышло наоборот")
+        print(f"  {'найдено ' if got else 'пропущен'} — отставание: {name}")
+
+    # Отказ обязан назвать ОБЕ версии: без них чинящий идёт смотреть их сам.
+    said = contract_drift("1.2", "1.0")
+    if not ("1.2" in said and "1.0" in said and "bindings.json" in said):
+        broken.append("отставание от контракта: отказ не называет обе версии и файл")
+
     # ── третий исход называет предмет, а не только причину ─────────────────
     # Сети набор не требует: отказ подставной, а спрашивается механизм —
     # доедет ли адрес до печати (правило 150).
@@ -1574,7 +1639,7 @@ def main() -> int:
 
     tests = count_tests(grader)
     modules = count_test_modules(grader)
-    checks = checks_per_pr()
+    per_pr = checks_per_pr()  # НЕ `checks`: это имя занято модулем разметки
     required, systems, versions = protection_facts()
     experimental = experimental_versions(grader)
     releases = release_count()
@@ -1587,7 +1652,22 @@ def main() -> int:
     # изменении: там на неё смотрит человек, и починка стоит одну строку.
     # Суточная сборка при этом продолжает работать: витрина не должна перестать
     # обновляться из-за того, что в чужом каталоге что-то удалили.
-    left = orphaned(export, json.loads(BINDINGS.read_text(encoding="utf-8"))["rules"])
+    # Подъём минора у издателя: на изменении — находка, в суточной сборке —
+    # предупреждение. Числа не должны замирать из-за чужой правки контракта, но
+    # и уехать в общую ветку с ответом, который значит уже другое, нельзя.
+    answer = json.loads(BINDINGS.read_text(encoding="utf-8"))
+    drift = contract_drift(str(export.get("schema", "")), str(answer.get("schema", "")))
+    if drift and check:
+        print(checks.annotate("error", f"ответ витрины отстал от контракта: {drift}"),
+              file=sys.stderr)
+        print("  Перечитываются ЗАПИСИ, а не только их формат: вместе с минором меняется"
+              "\n  значение полей, и валидность это переживает. Поднимите schema после"
+              "\n  перечитывания, а не вместо него.", file=sys.stderr)
+        return 1
+    if drift:
+        print(checks.annotate("warning", f"ответ витрины отстал от контракта: {drift}"))
+
+    left = orphaned(export, answer["rules"])
     if check and left:
         print(bindings)
         print(checks.annotate("error", "ответ витрины отвечает по правилам, которых "
@@ -1620,7 +1700,7 @@ def main() -> int:
     # красоты. Пока «4000+» собиралось раньше проверки, ноль тестов давал
     # «0000+» — строку, в которой сторож ноля не находит: он сравнивал с "0".
     # Метрика, попадающая в сторож уже строкой для показа, не проверена.
-    empty = unanswered({**values, "tests": tests, "checks per PR": checks,
+    empty = unanswered({**values, "tests": tests, "checks per PR": per_pr,
                         "test modules": modules})
     if empty:
         print(checks.annotate("error", f"метрика не собралась ({', '.join(empty)}) "
@@ -1635,7 +1715,7 @@ def main() -> int:
     # в двух местах значило бы завести два места, где одно число расходится.
     # На его место встало число тест-модулей, которое взамен ушло из текста.
     plate = [(order_of(tests), "tests"), (str(modules), "test modules"),
-             (str(checks), "checks per PR")]
+             (str(per_pr), "checks per PR")]
     print(" · ".join(f"{name}: {value}" for value, name in plate))
 
     # Акценты баннера. Через сторож пустых метрик эти числа НЕ проходят, и это
