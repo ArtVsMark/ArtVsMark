@@ -1,7 +1,7 @@
 # Ответ каталогу правил
 
-Витрина — потребитель каталога [claude-code-playbook](https://github.com/ArtVsMark/claude-code-playbook)
-по его [контракту потребления](https://github.com/ArtVsMark/claude-code-playbook/blob/main/export/README.md).
+Витрина — потребитель каталога [Engineering-Incidents-Playbook](https://github.com/ArtVsMark/Engineering-Incidents-Playbook)
+по его [контракту потребления](https://github.com/ArtVsMark/Engineering-Incidents-Playbook/blob/main/export/README.md).
 
 [`bindings.json`](bindings.json) отвечает по каждому правилу каталога: принято и
 чем держится · отклонено и почему · нет предмета и почему · ещё не смотрели.
@@ -20,13 +20,13 @@
 
 Вторая половина здесь нужнее первой: статус читают, не заглядывая в реализацию,
 и достраивают недосказанное в сторону полноты
-([056](https://github.com/ArtVsMark/claude-code-playbook/blob/main/rules/ru/056-a-signal-says-what-it-does-not-mean.md)).
+([056](https://github.com/ArtVsMark/Engineering-Incidents-Playbook/blob/main/rules/ru/056-a-signal-says-what-it-does-not-mean.md)).
 
 | статус | означает | **не** означает |
 |---|---|---|
 | `active` | правило здесь действует, и в `where` названо, чем именно | **не** означает «есть гейт»: `mechanism` бывает `pipeline`, `document` и `none` — правило держится прогоном, который не остановит изменение; абзацем документа, который читают; или не держится ничем |
 | `rejected` | правило рассмотрено и отвергнуто, в `why` — причина | **не** означает «правило плохое»: отвергнуто оно для этого проекта, а не вообще |
-| `not-applicable` | предмета правила здесь нет, в `why` — что именно перебиралось | **не** означает «рассмотрели и не взяли» (это `rejected`) и **не** означает «правило не подошло»: это утверждение об отсутствии, и оно требует перечисления сильнее прочих ([136](https://github.com/ArtVsMark/claude-code-playbook/blob/main/rules/ru/136-a-verdict-comes-after-enumerating-every-subject.md)) |
+| `not-applicable` | предмета правила здесь нет, в `why` — что именно перебиралось | **не** означает «рассмотрели и не взяли» (это `rejected`) и **не** означает «правило не подошло»: это утверждение об отсутствии, и оно требует перечисления сильнее прочих ([136](https://github.com/ArtVsMark/Engineering-Incidents-Playbook/blob/main/rules/ru/136-a-verdict-comes-after-enumerating-every-subject.md)) |
 | `unreviewed` | запись дописана сборкой, человек её ещё не смотрел | **не** означает «неприменимо» и **не** означает «в работе»: это долг, а не тишина |
 
 ### Чем держится правило: четыре слова, а не два
@@ -62,7 +62,7 @@
 **Обязателен не бейдж, а ответ.** Требовать бейдж значило бы требовать
 невозможного: у текстового репозитория нет покрытия, у неопубликованного — версии
 на PyPI, и красное на этом было бы ложным отказом
-([051](https://github.com/ArtVsMark/claude-code-playbook/blob/main/rules/ru/051-warn-on-likely-block-on-certain.md)).
+([051](https://github.com/ArtVsMark/Engineering-Incidents-Playbook/blob/main/rules/ru/051-warn-on-likely-block-on-certain.md)).
 Но и молчать нельзя: «у нас этого нет по такой-то причине» и «мы не дошли»
 выглядят одинаково ровно до тех пор, пока их не развели — это та же четвёрка
 статусов, ради которой заведён ответ каталогу правил.
@@ -85,7 +85,7 @@
 
 ## Атрибуция коммитов
 
-Правило [123](https://github.com/ArtVsMark/claude-code-playbook/blob/main/rules/ru/123-attribution-is-verified-on-the-final-history.md)
+Правило [123](https://github.com/ArtVsMark/Engineering-Incidents-Playbook/blob/main/rules/ru/123-attribution-is-verified-on-the-final-history.md)
 требует проверять атрибуцию на конечной истории. Проверка на `main` показала,
 что она была перевёрнута на обоих концах: коммиты подписаны исполнителем
 (`Claude <noreply@anthropic.com>` — умолчание контейнера), а PR открыты токеном
@@ -159,7 +159,7 @@ pull request …», и трейлеры веток в первопредки `ma
 
 Витрина не копирует конвейер грейдера — она берёт из него решённые вопросы и
 делает своё, размером с задачу. Копия чужого механизма вбок — это ровно то, что
-запрещает [090](https://github.com/ArtVsMark/claude-code-playbook/blob/main/rules/ru/090-shared-helpers-move-up-not-sideways.md):
+запрещает [090](https://github.com/ArtVsMark/Engineering-Incidents-Playbook/blob/main/rules/ru/090-shared-helpers-move-up-not-sideways.md):
 разъедется с первой правки на той стороне. Если механизм окажется общим, ему
 место уровнем выше — в каталоге, как переиспользуемому workflow, — а не
 скопированным в каждый проект.
@@ -182,7 +182,7 @@ pull request …», и трейлеры веток в первопредки `ma
 - **сборка вхолостую на изменении** — зелёная на #41, #42, #45, #46;
 - **суточная сборка, везущая числа изменением, а не прямым пушем** — на #42;
 - **связь с каталогом** — **прогона ещё не было**: подключено, но не подтверждено. Это
-  третий исход, а не зелёный ([039](https://github.com/ArtVsMark/claude-code-playbook/blob/main/rules/ru/039-three-outcomes-not-two.md));
+  третий исход, а не зелёный ([039](https://github.com/ArtVsMark/Engineering-Incidents-Playbook/blob/main/rules/ru/039-three-outcomes-not-two.md));
 - **штатный автомерж со squash** — на #45 и #46. Первый из них и есть проба:
   коммит в `main` вышел с **одним** первопредком, автором изменения и
   трейлерами ветки в теле. До него слияние делал ещё старый механизм, и по
@@ -190,7 +190,7 @@ pull request …», и трейлеры веток в первопредки `ma
 - **адресат красноты общей ветки** — **живого прогона ещё не было**: шаг
   прогнан подставным `gh` по всем трём исходам на настоящем скрипте каталога,
   но по расписанию не отработал ни разу. Третий исход, а не зелёный
-  ([039](https://github.com/ArtVsMark/claude-code-playbook/blob/main/rules/ru/039-three-outcomes-not-two.md));
+  ([039](https://github.com/ArtVsMark/Engineering-Incidents-Playbook/blob/main/rules/ru/039-three-outcomes-not-two.md));
 - **открытие изменения владельцем** — на пуше ветки изменения #68: изменение
   открыто, и открыл его `ArtVsMark`, а не бот; метки `bug` (выведена из
   заголовка) и `hold` проставлены прогоном. Тот же прогон сразу показал пробел,
@@ -210,7 +210,7 @@ pull request …», и трейлеры веток в первопредки `ma
 не переоткрывалось.
 
 До живого предмета механизм не считается подтверждённым, как бы правильно он ни
-читался ([139](https://github.com/ArtVsMark/claude-code-playbook/blob/main/rules/ru/139-a-mechanism-is-confirmed-by-a-run.md)).
+читался ([139](https://github.com/ArtVsMark/Engineering-Incidents-Playbook/blob/main/rules/ru/139-a-mechanism-is-confirmed-by-a-run.md)).
 
 ### Что стоит в защите `main` — и чего в ней нет
 
@@ -224,7 +224,7 @@ pull request …», и трейлеры веток в первопредки `ma
 | `deletion` | ветку не удалить |
 
 **Чего в защите нет, и это названо, а не заминается**
-([046](https://github.com/ArtVsMark/claude-code-playbook/blob/main/rules/ru/046-name-the-gaps-do-not-level-them.md)):
+([046](https://github.com/ArtVsMark/Engineering-Incidents-Playbook/blob/main/rules/ru/046-name-the-gaps-do-not-level-them.md)):
 
 - **правила «изменение обязательно»** (`pull_request`) в наборе **нет**. Прямой
   push в `main` отбивается лишь тем, что у коммита не окажется проверки
@@ -293,7 +293,7 @@ PAT владельца. Слияние штатным `GITHUB_TOKEN` сдела�
 История `main` не переписывается: коммит с ботом-автором остаётся как есть.
 
 **Личность окна узнаётся записью, а не классом окружения**
-([135](https://github.com/ArtVsMark/claude-code-playbook/blob/main/rules/ru/135-session-identity-is-established-by-a-write.md)).
+([135](https://github.com/ArtVsMark/Engineering-Incidents-Playbook/blob/main/rules/ru/135-session-identity-is-established-by-a-write.md)).
 Замер выше — про **то** окно; вывод «облачное окно пишет ботом» на класс окон не
 переносится, ровно этим правило и оплачено. Каждое следующее окно проверяет своё
 заново, и проба должна совпадать по классу с предстоящей операцией: открытие

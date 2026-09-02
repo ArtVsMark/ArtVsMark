@@ -3,7 +3,7 @@
 Красное на изменении блокирует слияние и стоит на глазах у автора. Красное на
 общей ветке не блокирует ничего и живёт на вкладке прогонов — то есть ровно
 там, куда окно не ходит: окна ходят в трекер, в свод и в изменения
-([142](https://github.com/ArtVsMark/claude-code-playbook/blob/main/rules/ru/142-a-scheduled-red-needs-an-addressee.md)).
+([142](https://github.com/ArtVsMark/Engineering-Incidents-Playbook/blob/main/rules/ru/142-a-scheduled-red-needs-an-addressee.md)).
 
 Эта задача и есть адресат. Она заводится **один раз**: пока открыта, следующие
 прогоны обновляют её тело, а не плодят вторую. Закройте её вместе с починкой —

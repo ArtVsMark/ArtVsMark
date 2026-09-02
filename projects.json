@@ -51,8 +51,8 @@
       }
     },
     {
-      "repo": "ArtVsMark/claude-code-playbook",
-      "title": "claude-code-playbook",
+      "repo": "ArtVsMark/Engineering-Incidents-Playbook",
+      "title": "Engineering-Incidents-Playbook",
       "tagline": "Rules for agent sessions and a GitHub pipeline — each one carrying the incident it grew from.",
       "stack": "docs · RU/EN",
       "badges": {
@@ -71,8 +71,8 @@
       }
     },
     {
-      "repo": "ArtVsMark/claude-code-usage",
-      "title": "claude-code-usage",
+      "repo": "ArtVsMark/Claude-Code_Usage-Token",
+      "title": "Claude-Code_Usage-Token",
       "tagline": "Turns a three-step limit indicator into a number. Early: the spec is written, the tool is not.",
       "stack": "Python · JSONL over git",
       "badges": {

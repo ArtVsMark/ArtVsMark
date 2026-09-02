@@ -2,8 +2,8 @@
 
 > Этот файл читается при старте **каждого** окна и попадает в контекст целиком.
 > Поэтому здесь компактные триггеры и ссылки на канон, а не пересказ.
-> → [`029`](https://github.com/ArtVsMark/claude-code-playbook/blob/main/rules/ru/029-triggers-and-canon.md),
-> [`022`](https://github.com/ArtVsMark/claude-code-playbook/blob/main/rules/ru/022-one-canonical-document.md)
+> → [`029`](https://github.com/ArtVsMark/Engineering-Incidents-Playbook/blob/main/rules/ru/029-triggers-and-canon.md),
+> [`022`](https://github.com/ArtVsMark/Engineering-Incidents-Playbook/blob/main/rules/ru/022-one-canonical-document.md)
 >
 > Он появился, потому что окна открывались с контекстом проекта, но **без
 > правил**, и находили их по одному — обычно уже нарушив.
@@ -31,7 +31,7 @@
 чего читатель не может проверить». Они названы здесь именно поэтому, а не потому
 что «и так понятно»: судить о единстве темы и о проверяемости утверждения машине
 нечем.
-→ [`057`](https://github.com/ArtVsMark/claude-code-playbook/blob/main/rules/ru/057-unmechanizable-rules-are-named-explicitly.md)
+→ [`057`](https://github.com/ArtVsMark/Engineering-Incidents-Playbook/blob/main/rules/ru/057-unmechanizable-rules-are-named-explicitly.md)
 
 **Оговорка к «одной теме»: пересечение файлов сильнее темы.** Задачи, правящие
 один и тот же файл, едут **вместе** — дробление не возвращает обратимость, если
@@ -39,15 +39,15 @@
 общий файл почти у каждой правки: `HISTORY.md` и `.rules/bindings.json`. Отсюда
 и порядок работы: изменения идут по одному, и встречаться на общем файле им
 негде. Проверять в этом порядке — сначала зоны, потом пересечение файлов внутри
-зоны. → [`133`](https://github.com/ArtVsMark/claude-code-playbook/blob/main/rules/ru/133-file-overlap-sets-the-boundary.md)
+зоны. → [`133`](https://github.com/ArtVsMark/Engineering-Incidents-Playbook/blob/main/rules/ru/133-file-overlap-sets-the-boundary.md)
 
 ## 📕 Откуда правила
 
 **Свод правил проекта — не этот файл.** Он в общем каталоге
-[claude-code-playbook](https://github.com/ArtVsMark/claude-code-playbook): сто с
+[Engineering-Incidents-Playbook](https://github.com/ArtVsMark/Engineering-Incidents-Playbook): сто с
 лишним записей, у каждой инцидент, механизм и границы применимости. Витрина —
 его потребитель по
-[контракту](https://github.com/ArtVsMark/claude-code-playbook/blob/main/export/README.md),
+[контракту](https://github.com/ArtVsMark/Engineering-Incidents-Playbook/blob/main/export/README.md),
 а не отдельная вселенная со своими понятиями.
 
 **Читать в таком порядке:**
@@ -57,7 +57,7 @@
    здесь нет предмета. Это короче каталога и говорит, что уже решено;
 2. каталог по номеру — когда нужно понять, **почему** правило такое. Номер из
    ответа ведёт прямо в файл правила;
-3. [`export/rules.json`](https://raw.githubusercontent.com/ArtVsMark/claude-code-playbook/main/export/rules.json)
+3. [`export/rules.json`](https://raw.githubusercontent.com/ArtVsMark/Engineering-Incidents-Playbook/main/export/rules.json)
    — если нужен машинный список: заголовки, области, следы в задачи.
 
 **Статус `unreviewed` — это работа, а не тишина.** Правило, появившееся в
@@ -71,17 +71,17 @@
 ## 🪟 Окно
 
 **Срок жизни — три–пять дней**, дальше эстафета ссылками, а не пересказом.
-Заготовка стартового сообщения — [`session-opening.md`](https://github.com/ArtVsMark/claude-code-playbook/blob/main/templates/session-opening.md).
-→ [`006`](https://github.com/ArtVsMark/claude-code-playbook/blob/main/rules/ru/006-window-lifetime.md)
+Заготовка стартового сообщения — [`session-opening.md`](https://github.com/ArtVsMark/Engineering-Incidents-Playbook/blob/main/templates/session-opening.md).
+→ [`006`](https://github.com/ArtVsMark/Engineering-Incidents-Playbook/blob/main/rules/ru/006-window-lifetime.md)
 
 **Сменились правила работы — окна перезапускаются.** Этот файл читается один раз,
 при старте: правка не действует на уже запущенное окно.
-→ [`047`](https://github.com/ArtVsMark/claude-code-playbook/blob/main/rules/ru/047-rule-change-restarts-the-windows.md)
+→ [`047`](https://github.com/ArtVsMark/Engineering-Incidents-Playbook/blob/main/rules/ru/047-rule-change-restarts-the-windows.md)
 
 Витрину ведут только облачные окна: локального окружения у неё нет, потому что
 нет ничего, что нужно было бы запускать на живой машине. Имя окна начинается с
 окружения — `[WEB]`.
-→ [`038`](https://github.com/ArtVsMark/claude-code-playbook/blob/main/rules/ru/038-window-name-declares-its-environment.md)
+→ [`038`](https://github.com/ArtVsMark/Engineering-Incidents-Playbook/blob/main/rules/ru/038-window-name-declares-its-environment.md)
 
 ## 🛡 Гейты
 
@@ -100,7 +100,7 @@
 
 Исходов у проверки три, а не два: собралось · не собралось с названной
 причиной · **источник не ответил**. Третий не молчит.
-→ [`039`](https://github.com/ArtVsMark/claude-code-playbook/blob/main/rules/ru/039-three-outcomes-not-two.md)
+→ [`039`](https://github.com/ArtVsMark/Engineering-Incidents-Playbook/blob/main/rules/ru/039-three-outcomes-not-two.md)
 
 ## 🔀 Слияние
 
@@ -111,7 +111,7 @@
   включается флажком;
 - **сообщение пересобирается** из тел коммитов ветки вместе с трейлерами:
   кнопка «Merge pull request» теряет и то и другое
-  → [`123`](https://github.com/ArtVsMark/claude-code-playbook/blob/main/rules/ru/123-attribution-is-verified-on-the-final-history.md);
+  → [`123`](https://github.com/ArtVsMark/Engineering-Incidents-Playbook/blob/main/rules/ru/123-attribution-is-verified-on-the-final-history.md);
 - **автор коммита слияния — человек**: нужен секрет `MERGE_QUEUE_TOKEN`
   (имя общее с грейдером и каталогом), штатный
   токен сделал бы автором бота.
@@ -121,7 +121,7 @@
 Обязательны и делятся на два класса, которые нельзя смешивать: **содержание**
 ставит автор (`bug`, `enhancement`, `documentation`, `github_actions`,
 `dependencies`), **конвейер** — `hold`, и требовать её от автора нельзя.
-→ [`064`](https://github.com/ArtVsMark/claude-code-playbook/blob/main/rules/ru/064-labels-are-machine-input-not-decoration.md)
+→ [`064`](https://github.com/ArtVsMark/Engineering-Incidents-Playbook/blob/main/rules/ru/064-labels-are-machine-input-not-decoration.md)
 
 Связь с задачей обязательной не сделана: у витрины бэклог из одной-двух задач,
 и большая часть работы задачами не заводится. Это осознанный вырез, а не
@@ -148,7 +148,7 @@
 
 Фрагментов, как в грейдере, здесь нет намеренно: они окупаются там, где
 параллельные ветки правят общий файл, а тут один автор и одна ветка.
-→ [`030`](https://github.com/ArtVsMark/claude-code-playbook/blob/main/rules/ru/030-changelog-from-fragments.md)
+→ [`030`](https://github.com/ArtVsMark/Engineering-Incidents-Playbook/blob/main/rules/ru/030-changelog-from-fragments.md)
 
 ## 📚 Источники истины (не дублировать)
 
@@ -175,17 +175,17 @@
    [`.rules/roles.md`](.rules/roles.md) — то, что признано непокрытым.
 
 Пустой трекер — нормальное состояние, а не признак, что работа кончилась.
-→ [`091`](https://github.com/ArtVsMark/claude-code-playbook/blob/main/rules/ru/091-work-sources-are-ordered-first-non-empty-wins.md)
+→ [`091`](https://github.com/ArtVsMark/Engineering-Incidents-Playbook/blob/main/rules/ru/091-work-sources-are-ordered-first-non-empty-wins.md)
 
 ## 📓 Новое правило — в общий каталог
 
 Правило, выстраданное здесь, уезжает в
-[каталог](https://github.com/ArtVsMark/claude-code-playbook) **тем же заходом**,
+[каталог](https://github.com/ArtVsMark/Engineering-Incidents-Playbook) **тем же заходом**,
 а не «потом». Здесь остаются формулировка и вердикт в `bindings.json`; инцидент
 и границы живут там.
 
 Не идёт в каталог то, у чего не нашлось инцидента: это предпочтение, а не
-правило. → [`080`](https://github.com/ArtVsMark/claude-code-playbook/blob/main/rules/ru/080-every-new-rule-goes-into-the-catalogue.md)
+правило. → [`080`](https://github.com/ArtVsMark/Engineering-Incidents-Playbook/blob/main/rules/ru/080-every-new-rule-goes-into-the-catalogue.md)
 
 ## 🎭 Роли
 

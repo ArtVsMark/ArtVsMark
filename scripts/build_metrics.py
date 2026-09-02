@@ -81,7 +81,7 @@ REPO = "ArtVsMark/Stepik-Python-Grader"
 API = "https://api.github.com"
 # Экспорт каталога правил: обычный HTTP по «сырой» ссылке — ни API площадки, ни
 # клона, ни токена. Так его и задумал контракт: подключиться может кто угодно.
-RULES_EXPORT = "https://raw.githubusercontent.com/ArtVsMark/claude-code-playbook/main/export/rules.json"
+RULES_EXPORT = "https://raw.githubusercontent.com/ArtVsMark/Engineering-Incidents-Playbook/main/export/rules.json"
 RULES_SCHEMA = "1"  # мажор, который умеет читать эта сборка
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 PROJECTS = ROOT / "projects.json"
@@ -500,7 +500,7 @@ def verify_absence(repo: str, kind: str, why: str) -> None:
             return
     elif kind == "ci":
         # НАЗВАННОЕ ИСКЛЮЧЕНИЕ, А НЕ ЛЮБОЕ. «Прогонов нет вовсе» перестало быть
-        # верным у claude-code-usage 28 августа: сосед подключился к каталогу
+        # верным у Claude-Code_Usage-Token 28 августа: сосед подключился к каталогу
         # правил, и у него завёлся rules-inbox — синхронизация, а не проверка
         # кода. Утверждение «CI нет» при этом осталось верным по сути и стало
         # ложным по букве.
@@ -765,8 +765,15 @@ def check_badges(config: dict) -> None:
 
 def slug(repo: str) -> str:
     """Имя файла плитки. Только строчные и дефис — по этому виду их находят
-    и подпись, и отпечаток содержимого."""
-    return repo.split("/")[1].lower()
+    и подпись, и отпечаток содержимого.
+
+    Подчёркивание приводится к дефису, а не оставляется как есть: 2 сентября
+    сосед переименовался в `Claude-Code_Usage-Token`, и плитка получила бы имя
+    `tile-claude-code_usage-token-dark.svg` — вперемешку. Утверждение в этой
+    докстроке было бы неправдой, а неправда о своём же коде дороже лишней
+    строки.
+    """
+    return repo.split("/")[1].lower().replace("_", "-")
 
 
 def render_tile(project: dict, dark: bool) -> str:

@@ -188,7 +188,7 @@ def _section(text: str, name: str) -> str:
 #: Свод окна и то, без чего он не свод. Правило 134: окно стартует, прочитав
 #: местные правила; до PR #22 свода не было, и витрину вело вслепую.
 CHARTER = "CLAUDE.md"
-CHARTER_PARTS = ("claude-code-playbook", ".rules/")
+CHARTER_PARTS = ("Engineering-Incidents-Playbook", ".rules/")
 
 
 #: Точечная выборка файлов в шаге забора. Разбирается список: прогон, берущий

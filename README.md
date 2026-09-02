@@ -17,9 +17,9 @@
 <br>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./assets/metrics-dark.svg?v=9bc8120e">
-  <source media="(prefers-color-scheme: light)" srcset="./assets/metrics-light.svg?v=122f1e94">
-  <img src="./assets/metrics-dark.svg?v=9bc8120e" alt="Stepik-Python-Grader: 4000+ tests, 243 test modules, 19 checks per PR" width="92%">
+  <source media="(prefers-color-scheme: dark)" srcset="./assets/metrics-dark.svg?v=74c83f05">
+  <source media="(prefers-color-scheme: light)" srcset="./assets/metrics-light.svg?v=93c1b44e">
+  <img src="./assets/metrics-dark.svg?v=74c83f05" alt="Stepik-Python-Grader: 4000+ tests, 242 test modules, 19 checks per PR" width="92%">
 </picture>
 
 <br><br>
@@ -37,9 +37,9 @@
 <div align="center">
 <a href="https://github.com/ArtVsMark?tab=repositories">
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./assets/featured-dark.svg?v=81bbf5a4">
-  <source media="(prefers-color-scheme: light)" srcset="./assets/featured-light.svg?v=c3f4d3d8">
-  <img src="./assets/featured-dark.svg?v=81bbf5a4" alt="Stepik-Python-Grader — Offline Python autograder: unlimited local checks, honest side-by-side comparison of solutions. release/pypi 1.11, CI success, coverage 91.6%, version 1.11.72. 3 stars, 1694 commits, 38 issues, 12 releases, 683 prs. CLI · web UI · GUI · pytest plugin · OS sandbox · claude-code-playbook — Rules for agent sessions and a GitHub pipeline — each one carrying the incident it grew from. release/pypi 1.1, CI success, coverage 59%, version 1.1.51. 1 stars, 280 commits, 4 issues, 3 releases, 167 prs. docs · RU/EN · claude-code-usage — Turns a three-step limit indicator into a number. Early: the spec is written, the tool is not. release/pypi 2.0.0, CI success, coverage none, version none. 0 stars, 25 commits, 9 issues, 1 releases, 22 prs. Python · JSONL over git · Glossary-Python — The RU/EN glossary the grader links into when a run fails. release/pypi none, CI none, coverage none, version none. 2 stars, 3 commits, 3 issues, 0 releases, 0 prs. content · tooling" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="./assets/featured-dark.svg?v=08719bac">
+  <source media="(prefers-color-scheme: light)" srcset="./assets/featured-light.svg?v=098c32da">
+  <img src="./assets/featured-dark.svg?v=08719bac" alt="Stepik-Python-Grader — Offline Python autograder: unlimited local checks, honest side-by-side comparison of solutions. release/pypi 1.11, CI success, coverage 91.5%, version 1.11.76. 3 stars, 1697 commits, 39 issues, 12 releases, 686 prs. CLI · web UI · GUI · pytest plugin · OS sandbox · Engineering-Incidents-Playbook — Rules for agent sessions and a GitHub pipeline — each one carrying the incident it grew from. release/pypi 1.1, CI success, coverage 62%, version 1.1.70. 1 stars, 299 commits, 3 issues, 3 releases, 187 prs. docs · RU/EN · Claude-Code_Usage-Token — Turns a three-step limit indicator into a number. Early: the spec is written, the tool is not. release/pypi 2.0.0, CI success, coverage none, version none. 0 stars, 31 commits, 7 issues, 1 releases, 28 prs. Python · JSONL over git · Glossary-Python — The RU/EN glossary the grader links into when a run fails. release/pypi none, CI none, coverage none, version none. 2 stars, 3 commits, 3 issues, 0 releases, 0 prs. content · tooling" width="100%">
 </picture>
 </a>
 </div>
@@ -48,8 +48,8 @@
 <div align="center">
 
 <a href="https://github.com/ArtVsMark/Stepik-Python-Grader"><picture><source media="(prefers-color-scheme: dark)" srcset="./assets/tile-stepik-python-grader-dark.svg?v=c11f5616"><source media="(prefers-color-scheme: light)" srcset="./assets/tile-stepik-python-grader-light.svg?v=28539d07"><img src="./assets/tile-stepik-python-grader-dark.svg?v=c11f5616" alt="Open Stepik-Python-Grader on GitHub" width="23%"></picture></a>
-<a href="https://github.com/ArtVsMark/claude-code-playbook"><picture><source media="(prefers-color-scheme: dark)" srcset="./assets/tile-claude-code-playbook-dark.svg?v=9f8a32b5"><source media="(prefers-color-scheme: light)" srcset="./assets/tile-claude-code-playbook-light.svg?v=edf662b3"><img src="./assets/tile-claude-code-playbook-dark.svg?v=9f8a32b5" alt="Open claude-code-playbook on GitHub" width="23%"></picture></a>
-<a href="https://github.com/ArtVsMark/claude-code-usage"><picture><source media="(prefers-color-scheme: dark)" srcset="./assets/tile-claude-code-usage-dark.svg?v=58ff0736"><source media="(prefers-color-scheme: light)" srcset="./assets/tile-claude-code-usage-light.svg?v=933998b2"><img src="./assets/tile-claude-code-usage-dark.svg?v=58ff0736" alt="Open claude-code-usage on GitHub" width="23%"></picture></a>
+<a href="https://github.com/ArtVsMark/Engineering-Incidents-Playbook"><picture><source media="(prefers-color-scheme: dark)" srcset="./assets/tile-engineering-incidents-playbook-dark.svg?v=89d67de5"><source media="(prefers-color-scheme: light)" srcset="./assets/tile-engineering-incidents-playbook-light.svg?v=1df6c568"><img src="./assets/tile-engineering-incidents-playbook-dark.svg?v=89d67de5" alt="Open Engineering-Incidents-Playbook on GitHub" width="23%"></picture></a>
+<a href="https://github.com/ArtVsMark/Claude-Code_Usage-Token"><picture><source media="(prefers-color-scheme: dark)" srcset="./assets/tile-claude-code-usage-token-dark.svg?v=834179d6"><source media="(prefers-color-scheme: light)" srcset="./assets/tile-claude-code-usage-token-light.svg?v=6143f0a0"><img src="./assets/tile-claude-code-usage-token-dark.svg?v=834179d6" alt="Open Claude-Code_Usage-Token on GitHub" width="23%"></picture></a>
 <a href="https://github.com/ArtVsMark/Glossary-Python"><picture><source media="(prefers-color-scheme: dark)" srcset="./assets/tile-glossary-python-dark.svg?v=c3e901f8"><source media="(prefers-color-scheme: light)" srcset="./assets/tile-glossary-python-light.svg?v=7db11f01"><img src="./assets/tile-glossary-python-dark.svg?v=c3e901f8" alt="Open Glossary-Python on GitHub" width="23%"></picture></a>
 
 <sub>data as of 2026-09-02</sub>
@@ -79,7 +79,7 @@ pipx install stepik-python-grader && stepik-grader
 
 - **Gates instead of memory** — `preflight.py` before a commit, `check_pr_ready.py` before a merge. Things you cannot forget, because they are enforced rather than remembered.
 - **The gate is a ruleset, not an agreement** — what protects `main` is public, and you can read it without taking my word: every required check green, on a branch already up to date with `main`, force-push and deletion refused. [See for yourself](https://api.github.com/repos/ArtVsMark/Stepik-Python-Grader/rules/branches/main).
-- **Every rule cites its incident** — each convention carries the issue number it grew from, and the incidents themselves live in a [public catalogue](https://github.com/ArtVsMark/claude-code-playbook). This page answers for every rule in it — adopted and by what, rejected and why, no subject here — in [`.rules/bindings.json`](./.rules/bindings.json).
+- **Every rule cites its incident** — each convention carries the issue number it grew from, and the incidents themselves live in a [public catalogue](https://github.com/ArtVsMark/Engineering-Incidents-Playbook). This page answers for every rule in it — adopted and by what, rejected and why, no subject here — in [`.rules/bindings.json`](./.rules/bindings.json).
 - **A changelog assembled from fragments**, not written after the fact — entries land with the change that caused them.
 - **The numbers above are measured, not typed** — a [daily job](./.github/workflows/metrics.yml) reads them from the repositories that produce them and rewrites this page. A number nobody measures is a number that rots.
 
@@ -152,8 +152,8 @@ The grader has a **"First contribution in 15 minutes"** onramp, and every `good 
 
 **Мейнтейнер open-source на Python.** Флагман — [Stepik-Python-Grader](https://github.com/ArtVsMark/Stepik-Python-Grader):
 локальный грейдер, который не просто прогоняет тесты, а **сравнивает решения честно** — сначала по
-корректности, потом по benchmark-метрикам. Рядом — [claude-code-playbook](https://github.com/ArtVsMark/claude-code-playbook),
-каталог из <!--m:rules-->162<!--/m:rules--> правил, каждое с историей поломки, из которой выросло, и [claude-code-usage](https://github.com/ArtVsMark/claude-code-usage) —
+корректности, потом по benchmark-метрикам. Рядом — [Engineering-Incidents-Playbook](https://github.com/ArtVsMark/Engineering-Incidents-Playbook),
+каталог из <!--m:rules-->162<!--/m:rules--> правил, каждое с историей поломки, из которой выросло, и [Claude-Code_Usage-Token](https://github.com/ArtVsMark/Claude-Code_Usage-Token) —
 остаток лимитов Claude Code в цифрах вместо трёхступенчатого светофора; пока спецификация.
 
 Качество держится механикой, а не памятью: гейты перед коммитом и мержем, зелёный CI на актуальной

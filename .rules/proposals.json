@@ -1,7 +1,7 @@
 {
   "schema": "1.0",
   "project": "ArtVsMark/ArtVsMark",
-  "catalogue": "ArtVsMark/claude-code-playbook",
+  "catalogue": "ArtVsMark/Engineering-Incidents-Playbook",
   "proposals": [
     {
       "slug": "pinning-callee-without-caller",
