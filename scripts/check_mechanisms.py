@@ -72,9 +72,13 @@ import ast
 import json
 import pathlib
 import re
+import subprocess
 import sys
 
 import checks
+# Адрес ветки с производными картинками берётся у сборки, которая их туда и
+# кладёт: вторая копия адреса разъехалась бы молча (правило 090).
+from build_metrics import ASSETS_BRANCH
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SCRIPTS = ROOT / "scripts"
@@ -253,6 +257,58 @@ def audit_charter(root) -> list[str]:
     missing = [part for part in CHARTER_PARTS if part not in text]
     return [f"{CHARTER}: свод не ведёт к {', '.join(missing)} — правила приходят "
             f"оттуда, и свод без этой ссылки обрывает дорогу (134)"] if missing else []
+
+
+def tracked_assets(root) -> set[str]:
+    """Имена картинок, лежащих в дереве общей ветки.
+
+    Спрашивается ИНДЕКС, а не диск. На диске производные есть всегда: сборка
+    рисует их каждым прогоном, и проверка по файловой системе отвечала бы
+    «лежат» там, где верный ответ — «не хранятся».
+    """
+    out = subprocess.run(["git", "ls-files", "assets"], cwd=root, capture_output=True,
+                         text=True, check=True).stdout
+    return {pathlib.Path(line).stem for line in out.splitlines() if line.endswith(".svg")}
+
+
+def derived_findings(readme: str, tracked: set[str]) -> list[str]:
+    """Производное не вернулось в дерево, а рукодельное из него не пропало.
+
+    ПРЕДМЕТ — ПРАВИЛО 160 и названная у него граница. Производные картинки
+    витрины живут в ветке `assets` и адресуются по ней; рукодельные лежат в
+    дереве и адресуются относительно. Обе половины ломаются молча и по-разному:
+    вернувшееся в дерево производное снова начнёт конфликтовать при слиянии, а
+    рукодельное, которого в дереве не стало, превращает ссылку в битую картинку
+    — и то и другое видно только глазами и только на живой странице.
+
+    ИСТОЧНИК — САМА СТРАНИЦА, А НЕ СПИСОК ИМЁН. Что считать производным, гейт не
+    решает и не хранит: он смотрит, КАК на картинку ссылается витрина. Значит
+    новая плитка проверяется с первого дня, а переименованная — не выпадает из
+    проверки молча (правило 147). Адрес ветки берётся у сборки, второй копии
+    не заводится (090).
+
+    РЕШЕНИЕ ОТДЕЛЕНО ОТ ДОБЫВАНИЯ — ради самопроверки: страницу и дерево
+    приносит вызывающий (``tracked_assets``), и набор случаев проверяет ровно
+    решение. Гейт, который сам ничем не проверен, — тот самый механизм, что
+    дёшево выглядит рабочим.
+
+    ГРАНИЦА: зелёное здесь значит «ссылки и дерево согласованы», и не значит
+    «картинка отрисовалась». Второе — предмет живого просмотра страницы.
+    """
+    by_branch = set(re.findall(rf"{re.escape(ASSETS_BRANCH)}/([a-z0-9-]+)\.svg", readme))
+    relative = set(re.findall(r"\./assets/([a-z0-9-]+)\.svg", readme))
+
+    found = []
+    for name in sorted(by_branch & tracked):
+        found.append(f"assets/{name}.svg: производное вернулось в дерево — витрина "
+                     f"берёт его из ветки `assets`, а файл снова хранится здесь. "
+                     f"Суточная сборка станет править его ежедневно, и слияния "
+                     f"будут спотыкаться о конфликт (160)")
+    for name in sorted(relative - tracked):
+        found.append(f"assets/{name}.svg: витрина ссылается на него как на лежащий "
+                     f"в дереве, а его там нет — читатель увидит битую картинку. "
+                     f"Либо файл вернуть, либо ссылку перевести на ветку (160)")
+    return found
 
 
 def audit_runners(flows: dict[str, str]) -> list[str]:
@@ -797,6 +853,34 @@ def selftest() -> int:
     if not any("077" in line for line in named):
         broken.append("отказ на неназванном пробеле не называет номер правила")
 
+    # ── производное в дереве и рукодельное вне его ────────────────────────
+    # Обе стороны, и обе ошибки названы. Ложный отказ здесь дороже пропуска:
+    # он остановил бы суточную пересборку, которая ничего не нарушала.
+    branch_link = f'<img src="{ASSETS_BRANCH}/metrics-dark.svg?v=00000000" alt="">'
+    tree_link = '<img src="./assets/header-dark.svg?v=00000000" alt="">'
+    derived_cases = [
+        ("согласовано: производное в ветке, рукодельное в дереве",
+         branch_link + tree_link, {"header-dark"}, False),
+        ("производное вернулось в дерево",
+         branch_link + tree_link, {"header-dark", "metrics-dark"}, True),
+        ("рукодельного нет в дереве — ссылка ведёт в никуда",
+         branch_link + tree_link, set(), True),
+        ("пустая страница проверять нечего",
+         "", {"header-dark"}, False),
+    ]
+    for name, page, tracked, must_reject in derived_cases:
+        found = bool(derived_findings(page, tracked))
+        if found != must_reject:
+            broken.append(f"производное, {name}: ожидалось "
+                          f"{'отказ' if must_reject else 'пропуск'}, вышло {found}")
+        print(f"  {'отвергнут' if found else 'пропущен '} — производное: {name}")
+
+    # Отказ обязан назвать ФАЙЛ: «что-то не так с картинками» отправляет
+    # читающего искать предмет самому.
+    returned = derived_findings(branch_link, {"metrics-dark"})
+    if not (returned and "metrics-dark.svg" in returned[0]):
+        broken.append("производное: отказ не называет файл, вернувшийся в дерево")
+
     if broken:
         print("\nсамопроверка провалена:", file=sys.stderr)
         for line in broken:
@@ -813,7 +897,11 @@ def main() -> int:
         sources = {p.name: p.read_text(encoding="utf-8") for p in sorted(SCRIPTS.glob("*.py"))}
         flows = {p.name: p.read_text(encoding="utf-8") for p in sorted(WORKFLOWS.glob("*.yml"))}
         rules = json.loads(BINDINGS.read_text(encoding="utf-8"))["rules"]
-    except (OSError, ValueError, SyntaxError) as e:
+        # Дерево спрашивается здесь же, вместе с остальными источниками: отказ
+        # git — это «проверка не отработала», третий исход, а не находка о
+        # витрине (правило 039). Молчаливый пропуск выглядел бы как зелёное.
+        tracked = tracked_assets(ROOT)
+    except (OSError, ValueError, SyntaxError, subprocess.SubprocessError) as e:
         print(f"проверка не отработала: {e}", file=sys.stderr)
         return 2
 
@@ -821,7 +909,8 @@ def main() -> int:
              + audit_gaps(rules) + audit_workflows(flows) + audit_runners(flows)
              + audit_harness(sources, flows) + audit_charter(ROOT)
              + audit_sparse(sources, flows) + audit_verdicts(sources)
-             + audit_pipeline_labels(sources, flows))
+             + audit_pipeline_labels(sources, flows)
+             + derived_findings((ROOT / "README.md").read_text(encoding="utf-8"), tracked))
     if found:
         print(checks.annotate("error", f"механизмы держат не то, что объявили: {len(found)}"), file=sys.stderr)
         for line in found:
