@@ -208,7 +208,7 @@ jobs:
       # ссылкой на версию. Своей копии не заводим (правило 090); подключение
       # закреплено по SHA, и почему — сказано в rules-inbox.yml.
       - name: Сверить трейлеры со списком согласованных имён
-        uses: ArtVsMark/claude-code-playbook/.github/actions/attribution@96a90ffeb312fbcf40b7097ed7c9ce8ddfc1f2eb # main, 2026-08-22
+        uses: ArtVsMark/Engineering-Incidents-Playbook/.github/actions/attribution@96a90ffeb312fbcf40b7097ed7c9ce8ddfc1f2eb # main, 2026-08-22
         with:
           authors: .github/authors.txt
           # Пусто: подрезать нечего, диапазон и так только коммиты изменения.

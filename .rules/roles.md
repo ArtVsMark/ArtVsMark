@@ -21,7 +21,7 @@
 
 ## Почему ревизор — роль, а не «повнимательнее»
 
-Правило [062](https://github.com/ArtVsMark/claude-code-playbook/blob/main/rules/ru/062-a-role-must-be-able-to-object.md)
+Правило [062](https://github.com/ArtVsMark/Engineering-Incidents-Playbook/blob/main/rules/ru/062-a-role-must-be-able-to-object.md)
 заводит роль только при трёх условиях: свой вопрос, свой артефакт, своё
 возражение конкретной роли. Проверяю:
 
@@ -56,7 +56,7 @@
 ## Пласты и их владельцы
 
 Полнота проверяется **обходом артефактов**, а не чтением списка ролей
-([082](https://github.com/ArtVsMark/claude-code-playbook/blob/main/rules/ru/082-every-layer-has-an-owner.md)):
+([082](https://github.com/ArtVsMark/Engineering-Incidents-Playbook/blob/main/rules/ru/082-every-layer-has-an-owner.md)):
 артефакт без владельца называет недостающее направление сам. Раньше здесь
 стояли четыре пласта, названные по памяти; обход нашёл ещё пять.
 

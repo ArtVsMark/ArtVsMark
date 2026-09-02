@@ -60,7 +60,7 @@ jobs:
       - name: Забрать инструмент каталога на закреплённой версии
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: ArtVsMark/claude-code-playbook
+          repository: ArtVsMark/Engineering-Incidents-Playbook
           # Пин по SHA, как и у входящих: тег переставляют, а подключаться к
           # движущейся ветке значит получать чужую правку в свой прогон.
           #
