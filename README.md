@@ -17,9 +17,9 @@
 <br>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./assets/metrics-dark.svg?v=74c83f05">
-  <source media="(prefers-color-scheme: light)" srcset="./assets/metrics-light.svg?v=93c1b44e">
-  <img src="./assets/metrics-dark.svg?v=74c83f05" alt="Stepik-Python-Grader: 4000+ tests, 242 test modules, 19 checks per PR" width="92%">
+  <source media="(prefers-color-scheme: dark)" srcset="./assets/metrics-dark.svg?v=e2256092">
+  <source media="(prefers-color-scheme: light)" srcset="./assets/metrics-light.svg?v=847a958d">
+  <img src="./assets/metrics-dark.svg?v=e2256092" alt="Stepik-Python-Grader: 4000+ tests, 246 test modules, 19 checks per PR" width="92%">
 </picture>
 
 <br><br>
@@ -37,9 +37,9 @@
 <div align="center">
 <a href="https://github.com/ArtVsMark?tab=repositories">
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./assets/featured-dark.svg?v=08719bac">
-  <source media="(prefers-color-scheme: light)" srcset="./assets/featured-light.svg?v=098c32da">
-  <img src="./assets/featured-dark.svg?v=08719bac" alt="Stepik-Python-Grader — Offline Python autograder: unlimited local checks, honest side-by-side comparison of solutions. release/pypi 1.11, CI success, coverage 91.5%, version 1.11.76. 3 stars, 1697 commits, 39 issues, 12 releases, 686 prs. CLI · web UI · GUI · pytest plugin · OS sandbox · Engineering-Incidents-Playbook — Rules for agent sessions and a GitHub pipeline — each one carrying the incident it grew from. release/pypi 1.1, CI success, coverage 62%, version 1.1.70. 1 stars, 299 commits, 3 issues, 3 releases, 187 prs. docs · RU/EN · Claude-Code_Usage-Token — Turns a three-step limit indicator into a number. Early: the spec is written, the tool is not. release/pypi 2.0.0, CI success, coverage none, version none. 0 stars, 31 commits, 7 issues, 1 releases, 28 prs. Python · JSONL over git · Glossary-Python — The RU/EN glossary the grader links into when a run fails. release/pypi none, CI none, coverage none, version none. 2 stars, 3 commits, 3 issues, 0 releases, 0 prs. content · tooling" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="./assets/featured-dark.svg?v=d7fd1ed0">
+  <source media="(prefers-color-scheme: light)" srcset="./assets/featured-light.svg?v=c84dcc2d">
+  <img src="./assets/featured-dark.svg?v=d7fd1ed0" alt="Stepik-Python-Grader — Offline Python autograder: unlimited local checks, honest side-by-side comparison of solutions. release/pypi 1.11, CI success, coverage 91.5%, version 1.11.77. 3 stars, 1698 commits, 39 issues, 12 releases, 687 prs. CLI · web UI · GUI · pytest plugin · OS sandbox · Engineering-Incidents-Playbook — Rules for agent sessions and a GitHub pipeline — each one carrying the incident it grew from. release/pypi 1.1, CI success, coverage 63%, version 1.1.82. 1 stars, 311 commits, 3 issues, 3 releases, 200 prs. docs · RU/EN · Claude-Code_Usage-Token — Turns a three-step limit indicator into a number. Early: the spec is written, the tool is not. release/pypi 2.0.0, CI success, coverage none, version none. 0 stars, 35 commits, 9 issues, 1 releases, 32 prs. Python · JSONL over git · Glossary-Python — The RU/EN glossary the grader links into when a run fails. release/pypi none, CI none, coverage none, version none. 2 stars, 3 commits, 3 issues, 0 releases, 0 prs. content · tooling" width="100%">
 </picture>
 </a>
 </div>
@@ -48,8 +48,8 @@
 <div align="center">
 
 <a href="https://github.com/ArtVsMark/Stepik-Python-Grader"><picture><source media="(prefers-color-scheme: dark)" srcset="./assets/tile-stepik-python-grader-dark.svg?v=c11f5616"><source media="(prefers-color-scheme: light)" srcset="./assets/tile-stepik-python-grader-light.svg?v=28539d07"><img src="./assets/tile-stepik-python-grader-dark.svg?v=c11f5616" alt="Open Stepik-Python-Grader on GitHub" width="23%"></picture></a>
-<a href="https://github.com/ArtVsMark/Engineering-Incidents-Playbook"><picture><source media="(prefers-color-scheme: dark)" srcset="./assets/tile-engineering-incidents-playbook-dark.svg?v=89d67de5"><source media="(prefers-color-scheme: light)" srcset="./assets/tile-engineering-incidents-playbook-light.svg?v=1df6c568"><img src="./assets/tile-engineering-incidents-playbook-dark.svg?v=89d67de5" alt="Open Engineering-Incidents-Playbook on GitHub" width="23%"></picture></a>
 <a href="https://github.com/ArtVsMark/Claude-Code_Usage-Token"><picture><source media="(prefers-color-scheme: dark)" srcset="./assets/tile-claude-code-usage-token-dark.svg?v=834179d6"><source media="(prefers-color-scheme: light)" srcset="./assets/tile-claude-code-usage-token-light.svg?v=6143f0a0"><img src="./assets/tile-claude-code-usage-token-dark.svg?v=834179d6" alt="Open Claude-Code_Usage-Token on GitHub" width="23%"></picture></a>
+<a href="https://github.com/ArtVsMark/Engineering-Incidents-Playbook"><picture><source media="(prefers-color-scheme: dark)" srcset="./assets/tile-engineering-incidents-playbook-dark.svg?v=89d67de5"><source media="(prefers-color-scheme: light)" srcset="./assets/tile-engineering-incidents-playbook-light.svg?v=1df6c568"><img src="./assets/tile-engineering-incidents-playbook-dark.svg?v=89d67de5" alt="Open Engineering-Incidents-Playbook on GitHub" width="23%"></picture></a>
 <a href="https://github.com/ArtVsMark/Glossary-Python"><picture><source media="(prefers-color-scheme: dark)" srcset="./assets/tile-glossary-python-dark.svg?v=c3e901f8"><source media="(prefers-color-scheme: light)" srcset="./assets/tile-glossary-python-light.svg?v=7db11f01"><img src="./assets/tile-glossary-python-dark.svg?v=c3e901f8" alt="Open Glossary-Python on GitHub" width="23%"></picture></a>
 
 <sub>data as of 2026-09-02</sub>
