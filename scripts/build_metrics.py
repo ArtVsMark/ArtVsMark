@@ -85,6 +85,19 @@ RULES_EXPORT = "https://raw.githubusercontent.com/ArtVsMark/Engineering-Incident
 RULES_SCHEMA = "1"  # мажор, который умеет читать эта сборка
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 PROJECTS = ROOT / "projects.json"
+# Куда витрина ссылается за производными картинками. Они пересобираются чаще,
+# чем идут изменения, и в дереве общей ветки не хранятся (правило 160): ветку
+# `assets` раскладывает и публикует `metrics.yml`. Форма адреса не выбрана, а
+# взята с уже работающего: змейка живёт в ветке `output` и приезжает на витрину
+# ровно так же — `raw` отдаёт SVG с `content-type: image/svg+xml`.
+ASSETS_BRANCH = "https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets"
+# Ссылка на картинку витрины в ЛЮБОЙ из двух форм: относительной (рукодельное
+# лежит в дереве) и по ветке (производное). Обе нужны одному выражению: сборка
+# читает README, который сама же и переписала, и должна узнавать собственный
+# вывод — иначе первый переезд ссылки стал бы последним.
+ASSET_LINK = re.compile(
+    rf"(?:\./assets/|{re.escape(ASSETS_BRANCH)}/)(?P<name>[a-z0-9-]+)\.svg(?:\?v=[0-9a-f]+)?"
+)
 # Ответ витрины каталогу: что здесь принято, что отклонено, чего нет предмета.
 BINDINGS = ROOT / ".rules/bindings.json"
 # Потолок «Current focus». Двигается только вниз: рост означает, что уборку
@@ -1141,17 +1154,26 @@ def render(tiles: list[tuple[str, str]], dark: bool, owner: str = "") -> str:
     return "\n".join(out) + "\n</svg>\n"
 
 
-def aria_label(svg: pathlib.Path) -> str:
-    """Подпись картинки, как её объявляет сама картинка.
+def aria_of(svg: str) -> str:
+    """Подпись картинки, как её объявляет сама картинка — по её тексту.
 
     У разделителей ``aria-label`` нет намеренно — это декорация, и alt у неё
     пустой.
     """
-    match = re.search(r'aria-label="([^"]*)"', svg.read_text(encoding="utf-8"))
+    match = re.search(r'aria-label="([^"]*)"', svg)
     return match.group(1) if match else ""
 
 
-def asset_version(name: str) -> str:
+def aria_label(svg: pathlib.Path) -> str:
+    """То же, но для картинки, лежащей в дереве.
+
+    Остаётся ради рукодельных: шапки, печатающейся строки и разделителя. Для
+    них файл и есть источник — сборка их не рисует и перерисовать не может.
+    """
+    return aria_of(svg.read_text(encoding="utf-8"))
+
+
+def asset_version(name: str, drawn: dict[str, str] | None = None) -> str:
     """Отпечаток содержимого картинки — восемь знаков хеша.
 
     Нужен не для красоты адреса, а против кэша. Картинки на странице профиля
@@ -1163,25 +1185,45 @@ def asset_version(name: str) -> str:
 
     Это ровно то, от чего витрина защищается сборкой: число, устаревшее молча.
     Гейт на маркеры тут не помогает — в репозитории всё верно, врёт показ.
+
+    СЧИТАЕТСЯ ОТ ТОГО, ЧТО ОПУБЛИКУЕТСЯ, А НЕ ОТ ТОГО, ЧТО ЛЕЖИТ В ДЕРЕВЕ.
+    Производных картинок в дереве больше нет (правило 160), и читать их оттуда
+    стало не только нечем, но и неверно: отпечаток обязан описывать ту картинку,
+    которую увидит читатель. Нарисованное берётся из ``drawn``, с диска читаются
+    только рукодельные — шапка, печатающаяся строка, разделитель: для них файл и
+    есть источник. Тот же довод, что у ``sync_alt``: свой вывод не перечитывают.
     """
+    if drawn and name in drawn:
+        return hashlib.sha256(drawn[name].encode("utf-8")).hexdigest()[:8]
     return hashlib.sha256((ROOT / "assets" / f"{name}.svg").read_bytes()).hexdigest()[:8]
 
 
-def stamp_assets(text: str) -> tuple[str, int]:
+def stamp_assets(text: str, drawn: dict[str, str] | None = None) -> tuple[str, int]:
     """Проставляет отпечаток каждой ссылке на картинку витрины.
 
     Меняет и ``src``, и ``srcset``: тёмную с светлой кэшируют по отдельности, и
     забытый ``srcset`` означал бы, что половина читателей по-прежнему видит
     старое.
 
+    ЗАОДНО РЕШАЕТ, КУДА ССЫЛКА ВЕДЁТ. Производное живёт в ветке ``assets`` и
+    адресуется по ней; рукодельное лежит в дереве и адресуется относительно.
+    Признак — не имя файла, а ФАКТ: нарисовала ли эту картинку текущая сборка
+    (правило 147 — переключатель по имени отменяет операцию молча, стоит
+    префиксу разойтись). Появится новая плитка — она поедет в ветку сама, без
+    правки списка; перестанет рисоваться — вернётся в дерево тем же порядком.
+
     Возвращает число заменённых ссылок: ноль означает, что разметка изменилась
     и картинки перестали находиться, — а это отказ, а не «нечего делать».
     """
 
     def replace(match: re.Match[str]) -> str:
-        return f"./assets/{match.group('name')}.svg?v={asset_version(match.group('name'))}"
+        name = match.group("name")
+        version = asset_version(name, drawn)
+        if drawn and name in drawn:
+            return f"{ASSETS_BRANCH}/{name}.svg?v={version}"
+        return f"./assets/{name}.svg?v={version}"
 
-    return re.subn(r"\./assets/(?P<name>[a-z-]+)\.svg(?:\?v=[0-9a-f]+)?", replace, text)
+    return re.subn(ASSET_LINK, replace, text)
 
 
 def sync_alt(text: str, fresh: dict[str, str] | None = None) -> tuple[str, int]:
@@ -1204,13 +1246,15 @@ def sync_alt(text: str, fresh: dict[str, str] | None = None) -> tuple[str, int]:
         return f"{match.group('head')}{label.replace(chr(34), chr(39))}{match.group('tail')}"
 
     return re.subn(
-        r'(?P<head><img src="\./assets/(?P<name>[a-z-]+)\.svg(?:\?v=[0-9a-f]+)?" alt=")[^"]*(?P<tail>")',
+        rf'(?P<head><img src="(?:\./assets/|{re.escape(ASSETS_BRANCH)}/)'
+        rf'(?P<name>[a-z0-9-]+)\.svg(?:\?v=[0-9a-f]+)?" alt=")[^"]*(?P<tail>")',
         replace,
         text,
     )
 
 
-def patch_readme(values: dict[str, object], fresh: dict[str, str], write: bool = True) -> None:
+def patch_readme(values: dict[str, object], fresh: dict[str, str],
+                 drawn: dict[str, str] | None = None, write: bool = True) -> None:
     """Обновляет числа между маркерами ``<!--m:key-->`` … ``<!--/m:key-->``.
 
     Если маркер не нашёлся, скрипт падает, а не проходит молча: ``re.sub`` без
@@ -1238,7 +1282,7 @@ def patch_readme(values: dict[str, object], fresh: dict[str, str], write: bool =
     # потом строгим проставляем alt — и сверяем счётчики. Иначе защита
     # проверяет саму себя: строгое выражение не видит поехавшую разметку, не
     # находит её — и молча докладывает, что всё проставлено.
-    expected = len(re.findall(r"<img[^>]*assets/[a-z-]+\.svg", text))
+    expected = len(re.findall(r"<img[^>]*assets/[a-z0-9-]+\.svg", text))
     check_focus_limit(text)
     text, patched = sync_alt(text, fresh)
     if patched != expected:
@@ -1248,7 +1292,7 @@ def patch_readme(values: dict[str, object], fresh: dict[str, str], write: bool =
     # АДРЕСУ, а сборка переписывает их, не меняя имён. Без отпечатка читатель
     # какое-то время видит вчерашнюю картинку при верном репозитории — то есть
     # число, устаревшее молча, ровно то, от чего эта сборка и заведена.
-    text, stamped = stamp_assets(text)
+    text, stamped = stamp_assets(text, drawn)
     if not stamped:
         raise SystemExit(
             "ни одной ссылки на картинки витрины не нашлось — разметка изменилась.\n"
@@ -1749,22 +1793,31 @@ def main() -> int:
         config["projects"][0]["title"] if config["projects"] else "",
     )
 
-    fresh = {}
+    # РИСУЕТСЯ ВСЕГДА, ПИШЕТСЯ НА ДИСК — ТОЛЬКО В БОЕВОМ ПРОГОНЕ. Раньше при
+    # проверке плитки не рисовались вовсе, и это сходило с рук ровно потому, что
+    # производные лежали в дереве: подпись и отпечаток читались из файла. С
+    # переездом в ветку `assets` (правило 160) читать стало нечего, и разница
+    # между «проверить» и «собрать» перестала быть в том, ЧТО считается, —
+    # осталась только в том, записывается ли результат.
+    fresh: dict[str, str] = {}
+    drawn: dict[str, str] = {}
     for theme, dark in (("dark", True), ("light", False)):
-        svg = render(plate, dark, owner=flagship)
+        drawn[f"metrics-{theme}"] = render(plate, dark, owner=flagship)
         fresh[f"metrics-{theme}"] = f"{flagship}: " + ", ".join(
             f"{value} {name}" for value, name in plate)
-        banner = render_featured(accents, dark)
+        drawn[f"featured-{theme}"] = render_featured(accents, dark)
         fresh[f"featured-{theme}"] = accent_label(accents)
+        for project in config["projects"]:
+            tile = render_tile(project, dark)
+            name = f"tile-{slug(project['repo'])}-{theme}"
+            drawn[name] = tile
+            # Подпись плитки берётся из только что нарисованного текста, а не из
+            # файла: файла может не быть вовсе — в дереве его больше не хранят.
+            fresh[name] = aria_of(tile)
         if not check:
-            (ROOT / f"assets/metrics-{theme}.svg").write_text(svg, encoding="utf-8")
-            (ROOT / f"assets/featured-{theme}.svg").write_text(banner, encoding="utf-8")
-            # Плитки пишутся до правки README: их подпись и отпечаток берутся
-            # из самих файлов, и на первом прогоне их иначе ещё нет.
-            for project in config["projects"]:
-                (ROOT / f"assets/tile-{slug(project['repo'])}-{theme}.svg").write_text(
-                    render_tile(project, dark), encoding="utf-8")
-    patch_readme(values, fresh, write=not check)
+            for name, body in drawn.items():
+                (ROOT / f"assets/{name}.svg").write_text(body, encoding="utf-8")
+    patch_readme(values, fresh, drawn, write=not check)
     print("проверка прошла: источники живы, маркеры на месте" if check
           else "assets/metrics-*.svg и README обновлены")
     return 0
