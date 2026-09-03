@@ -39,11 +39,6 @@ import re
 import sys
 
 
-def unique_names(runs: list[dict]) -> set[str]:
-    """Имена проверок без повторов — «сколько проверок на этом коммите»."""
-    return {run["name"] for run in runs}
-
-
 #: Уровни площадки. Список закрытый: команда с чужим словом площадкой
 #: игнорируется молча, и находка не доехала бы никуда.
 LEVELS = ("error", "warning", "notice")

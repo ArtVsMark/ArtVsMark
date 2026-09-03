@@ -8,17 +8,16 @@
 
 Что откуда берётся:
 
-* число тестов и число тест-модулей — из клона грейдера (подсчёт ``def test_``
-  и файлов ``test_*.py``; грубее, чем ``pytest --collect-only``, зато без
-  установки зависимостей — на витрине всё равно показывается порядок «4000+»);
-* проверок на PR — сколько РАЗНЫХ check-runs создано на последних смерженных
-  PR (медиана, см. ``checks_per_pr``);
+* число тестов, число тест-модулей, экспериментальные версии Python и проверок
+  на PR — из ``facts.json``, который грейдер публикует о себе сам (ветка
+  ``badges``, см. ``grader_facts``). Раньше витрина считала это сама: клонировала
+  чужой репозиторий ради двух подсчётов, разбирала чужой ``ci.yml`` регулярным
+  выражением и оценивала проверки медианой по семи PR. Знание о чужом устройстве
+  жило здесь и молча устарело бы от переноса каталога на той стороне;
 * обязательные проверки, число ОС и версий Python — из ruleset защиты ветки
   ``main``. Список правил ветки (``/rules/branches/main``) читается **без прав
   admin**, в отличие от самого объекта ruleset: имена обязательных контекстов
   там есть, и «11 обязательных» больше не приходится держать в памяти;
-* экспериментальные версии Python — из матрицы ``ci.yml`` грейдера: они под
-  ``continue-on-error`` и в ruleset намеренно не входят, поэтому в API их нет;
 * релизов — длиной списка релизов. Номер последней версии витрина не
   повторяет: его показывает живой бейдж PyPI, а два места для одного числа —
   это два места, где оно может разойтись;
@@ -64,7 +63,6 @@ import json
 import os
 import pathlib
 import re
-import statistics
 import subprocess
 import sys
 import urllib.error
@@ -83,6 +81,23 @@ API = "https://api.github.com"
 # клона, ни токена. Так его и задумал контракт: подключиться может кто угодно.
 RULES_EXPORT = "https://raw.githubusercontent.com/ArtVsMark/Engineering-Incidents-Playbook/main/export/rules.json"
 RULES_SCHEMA = "1"  # мажор, который умеет читать эта сборка
+# Факты грейдера, опубликованные им самим (его PR #1411). До этого витрина
+# считала их сама: клонировала репозиторий ЦЕЛИКОМ ради двух подсчётов по
+# tests/, разбирала чужой ci.yml регулярным выражением и оценивала число
+# проверок медианой по семи последним PR — потому что снаружи точного ответа
+# не видно. Внутри он есть, и теперь издатель считает, а потребитель читает.
+#
+# Цена была не в расходе, а в связанности: знание о том, где у грейдера лежат
+# тесты и как устроена его матрица, жило здесь. Перенеси он каталог — у витрины
+# молча изменилось бы число, а не сломалась сборка.
+FACTS_PATH = ".github/badges/facts.json"
+FACTS_SCHEMA = "1"  # мажор ЧУЖОГО контракта, который умеет читать эта сборка
+# Порог устаревания фактов. Не «сколько живёт число», а «за сколько молчание
+# издателя перестаёт быть тишиной выходных»: файл пересобирается на каждом пуше
+# в main, витрина собирается ежесуточно. Две недели без пуша у активного
+# соседа — это остановка его прогона либо остановка проекта, и человеку стоит
+# знать о любой из них. Порог назван здесь, а не спрятан в условии.
+FACTS_STALE_DAYS = 14
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 PROJECTS = ROOT / "projects.json"
 # Куда витрина ссылается за производными картинками. Они пересобираются чаще,
@@ -905,46 +920,91 @@ def check_focus_limit(text: str) -> None:
         raise SystemExit(f"в «Current focus» {len(rows)} строк при потолке {FOCUS_LIMIT}")
 
 
-def count_tests(grader: pathlib.Path) -> int:
-    """Число тест-функций в клоне грейдера."""
-    total = 0
-    for path in (grader / "tests").rglob("*.py"):
-        total += len(re.findall(r"^\s*def test_", path.read_text(encoding="utf-8"), re.M))
-    return total
+def grader_facts() -> dict:
+    """Факты грейдера — из файла, который он публикует о себе сам.
 
+    ПОЧЕМУ НЕ СЧИТАЕМ САМИ. Три числа из четырёх требовали знания чужого
+    устройства: где лежат тесты, как назван каталог, как устроена матрица в
+    ci.yml. Четвёртое — проверок на PR — вычислялось медианой по семи последним
+    PR, потому что снаружи точный ответ не виден; внутри он есть, тем же
+    набором, каким грейдер держит собственный мерж-гейт. Приём тот же, что у
+    каталога правил: издатель считает, потребитель читает (правило 090 — второй
+    копии чужого определения не заводят).
 
-def count_test_modules(grader: pathlib.Path) -> int:
-    """Число тест-модулей.
+    ЧИТАЕТСЯ ЧЕРЕЗ contents-API, а не через ``raw.githubusercontent.com``: raw
+    отвечает 404 на запрос с заголовком ``Authorization`` — токен для него
+    чужой. Тот же подвох уже разобран у значков, и труба здесь та же самая.
 
-    Считаются файлы ``test_*.py``, а не всё дерево ``tests/``: conftest и хелперы
-    тестами не являются. Прежняя витрина говорила «197-module suite» — число
-    было вписано руками и разошлось с деревом на дюжину файлов.
+    Несовместимый мажор — отказ, а не «прочитаем что получится»: формат,
+    сменивший смысл полей, хуже нечитаемого. Ровно так витрина уже поступает с
+    контрактом каталога.
     """
-    return len(list((grader / "tests").rglob("test_*.py")))
+    try:
+        payload = _api(f"/repos/{REPO}/contents/{FACTS_PATH}?ref=badges")
+        facts = json.loads(base64.b64decode(payload["content"]))
+    except (urllib.error.URLError, OSError, ValueError, KeyError) as error:
+        raise SystemExit(
+            f"факты грейдера не прочитаны ({REPO}:badges/{FACTS_PATH}): {error}.\n"
+            f"  Это отказ ИСТОЧНИКА, а не находка о витрине: числа не подставляются "
+            f"прошлыми — тихий откат к вчерашнему и есть то молчание, против которого "
+            f"сборка написана."
+        ) from error
+
+    schema = str(facts.get("schema", ""))
+    if schema.split(".")[0] != FACTS_SCHEMA:
+        raise SystemExit(f"схема фактов грейдера {schema!r}, а сборка умеет мажор {FACTS_SCHEMA}.x")
+    return facts
 
 
-def checks_per_pr(sample: int = 7) -> int:
-    """Сколько РАЗНЫХ проверок создаётся на PR.
+def facts_staleness(generated_at: str, now: dt.datetime, limit: int = FACTS_STALE_DAYS) -> str:
+    """Насколько факты отстали от жизни. Пусто — не отстали.
 
-    Считаются уникальные имена, а не ``total_count``: после ``update-branch``
-    GitHub создаёт второй комплект check-runs, а первый остаётся висеть на
-    коммите. Сумма тогда удваивается — так на витрине и появилось «32 checks
-    per PR» вместо действительных шестнадцати.
+    ЗАЧЕМ ОТДЕЛЬНАЯ ПРОВЕРКА. Файл соседа не пропадает, когда его прогон
+    перестаёт работать: он просто остаётся вчерашним. Витрина показывала бы
+    старые числа сколько угодно долго, и снаружи это неотличимо от «числа не
+    менялись» — то самое молчание, ради которого вся сборка и заведена. Раньше
+    предмета не было: числа считались здесь и устареть не могли.
 
-    Берётся медиана по нескольким последним PR, а не максимум: у отдельно
-    взятого PR часть джобов могла не стартовать (конфликт, отменённый прогон) —
-    и такая выборка занизила бы число; а один разовый лишний workflow, наоборот,
-    задрал бы максимум навсегда. Медиана переживает и то, и другое.
+    ОТСУТСТВИЕ ОТМЕТКИ — НАХОДКА, А НЕ МОЛЧАНИЕ. Пустое поле означает «когда
+    измеряли, неизвестно», и читать его как «свежо» значило бы решать за
+    издателя. Первая редакция так и делала.
     """
-    counts = []
-    for pull in _api(f"/repos/{REPO}/pulls?state=closed&per_page=30"):
-        if not pull.get("merged_at"):
-            continue
-        runs = _api(f"/repos/{REPO}/commits/{pull['head']['sha']}/check-runs?per_page=100")
-        counts.append(len(checks.unique_names(runs["check_runs"])))
-        if len(counts) >= sample:
-            break
-    return int(statistics.median(counts)) if counts else 0
+    if not str(generated_at).strip():
+        return ("факты грейдера без отметки времени — когда их измеряли, неизвестно, "
+                "и свежесть проверить нечем")
+    try:
+        stamp = dt.datetime.fromisoformat(str(generated_at))
+    except ValueError:
+        return f"отметка времени фактов {generated_at!r} не разобрана — свежесть проверить нечем"
+    if stamp.tzinfo is None:
+        stamp = stamp.replace(tzinfo=dt.timezone.utc)
+    days = (now - stamp).days
+    if days <= limit:
+        return ""
+    return (f"факты грейдера собраны {days} дней назад (порог {limit}) — либо остановился "
+            f"его прогон, либо проект; витрина всё это время показывала бы прежние числа "
+            f"как свежие")
+
+
+def facts_gaps(facts: dict) -> list[str]:
+    """Чего в фактах нет из того, что витрина показывает. Пусто — всё на месте.
+
+    «КЛЮЧА НЕТ — ЗНАЧИТ НЕ ИЗМЕРЯЛИ» — это контракт издателя, и он честнее нуля:
+    ноль читался бы как «проверок не создаётся». Но витрине от честного
+    отсутствия не легче: показать число она всё равно не может, а показать
+    прошлое — нельзя.
+
+    Поэтому пробел назван поимённо и разведён со своей поломкой: сборка
+    отказывает, называя СТОРОНУ. «Издатель не измерил» и «мы не собрали» чинятся
+    в разных репозиториях, и путать их дороже, чем разбирать (правило 039).
+    """
+    needed = {
+        "tests.functions": facts.get("tests", {}).get("functions"),
+        "tests.modules": facts.get("tests", {}).get("modules"),
+        "python.experimental": facts.get("python", {}).get("experimental"),
+        "checks_per_pr.count": facts.get("checks_per_pr", {}).get("count"),
+    }
+    return sorted(key for key, value in needed.items() if value in (None, "", [], {}))
 
 
 def protection_facts() -> tuple[int, int, int]:
@@ -967,17 +1027,6 @@ def protection_facts() -> tuple[int, int, int]:
     systems = {m.group(1) for m in matrix if m}
     versions = {m.group(2) for m in matrix if m}
     return len(contexts), len(systems), len(versions)
-
-
-def experimental_versions(grader: pathlib.Path) -> str:
-    """Версии Python, помеченные в матрице грейдера экспериментальными.
-
-    В ruleset их нет по устройству: комбинации идут под ``continue-on-error`` и
-    блокировать мерж не должны. Значит единственный источник — сама матрица.
-    """
-    ci = (grader / ".github/workflows/ci.yml").read_text(encoding="utf-8")
-    found = re.findall(r'python-version:\s*"([^"]+)",\s*experimental:\s*true', ci)
-    return " · ".join(sorted(set(found)))
 
 
 def release_count() -> int:
@@ -1509,18 +1558,48 @@ def selftest() -> int:
     except SystemExit:
         print("  отвергнут — баннер: описание длиннее потолка")
 
-    # Исход «вызвано без клона грейдера» объявлен в main и до сих пор не
-    # прогонялся: он живёт за проверкой каталога, а не в разбираемой функции
-    # (правило 145). Сети не требует — отказ наступает раньше первого запроса.
-    probe = subprocess.run(
-        [sys.executable, __file__, "/nonexistent-grader"],
-        capture_output=True, text=True,
-    )
-    if probe.returncode != 1:
-        broken.append(f"вызов без клона грейдера дал код {probe.returncode}, а не 1")
-    if "нет клона грейдера" not in probe.stderr:
-        broken.append("отказ без клона грейдера не называет предмет")
-    print(f"  код {probe.returncode} — вызов без клона грейдера: отказ назван")
+    # ── свежесть чужих фактов ─────────────────────────────────────────────
+    # Обе стороны, и обе ошибки названы. Молчание здесь опаснее ложной находки:
+    # витрина показывала бы вчерашние числа как сегодняшние, а снаружи это
+    # неотличимо от «числа не менялись».
+    now = dt.datetime(2026, 9, 2, tzinfo=dt.timezone.utc)
+    stale_cases = [
+        ("сегодняшние", "2026-09-02T10:00:00+00:00", False),
+        ("вчерашние", "2026-09-01T10:00:00+00:00", False),
+        ("ровно на пороге", "2026-08-19T10:00:00+00:00", False),
+        ("старше порога", "2026-08-01T10:00:00+00:00", True),
+        ("без часового пояса — читаются как UTC", "2026-09-02T10:00:00", False),
+        ("отметки нет вовсе", "", True),
+        ("отметка не разобрана", "позавчера", True),
+    ]
+    for name, stamp, must_find in stale_cases:
+        found = bool(facts_staleness(stamp, now))
+        if found != must_find:
+            broken.append(f"свежесть фактов, {name}: ожидалось "
+                          f"{'находка' if must_find else 'молчание'}, вышло {found}")
+        print(f"  {'найдено  ' if found else 'молчание '} — свежесть фактов: {name}")
+
+    # ── пробел у издателя ─────────────────────────────────────────────────
+    # «Ключа нет — значит не измеряли» это контракт грейдера, и витрине от такой
+    # честности не легче: показать число всё равно нечем. Проверяется, что
+    # пробел НАЙДЕН и НАЗВАН — «что-то не так с фактами» отправило бы читающего
+    # искать предмет самому.
+    whole = {"tests": {"functions": 4961, "modules": 247},
+             "python": {"experimental": ["3.14"]},
+             "checks_per_pr": {"count": 16}}
+    if facts_gaps(whole):
+        broken.append("полные факты объявлены неполными")
+    without = {**whole, "checks_per_pr": {}}
+    if facts_gaps(without) != ["checks_per_pr.count"]:
+        broken.append("пробел в фактах не назван поимённо")
+    if facts_gaps({}) != ["checks_per_pr.count", "python.experimental",
+                          "tests.functions", "tests.modules"]:
+        broken.append("пустые факты не дают всех пробелов")
+    # Ноль — измеренное значение, а не пробел: у проекта может не быть ни одного
+    # теста, и это ответ, а не молчание. Первая редакция считала иначе.
+    if facts_gaps({**whole, "tests": {"functions": 0, "modules": 0}}):
+        broken.append("ноль тестов принят за отсутствие ответа")
+    print("  отвергнут — факты: пробел назван поимённо, ноль пробелом не считается")
 
     # Сверка ответа с каталогом идёт в обе стороны, и вторая половина
     # появилась после живого дефекта: 148 ответов при 147 правилах.
@@ -1674,18 +1753,33 @@ def main() -> int:
     if "--selftest" in sys.argv[1:]:
         return selftest()
 
-    argv = [a for a in sys.argv[1:] if a != "--check"]
     check = "--check" in sys.argv
-    grader = pathlib.Path(argv[0] if argv else "grader")
-    if not (grader / "tests").is_dir():
-        print(f"нет клона грейдера в {grader}/ — ожидается каталог tests/", file=sys.stderr)
+
+    # КЛОНА ГРЕЙДЕРА ЗДЕСЬ БОЛЬШЕ НЕТ. Путь в аргументах принимается и молча
+    # игнорируется: прогоны соседних репозиториев и чужие вызовы передают его по
+    # привычке, и падать на лишнем слове значило бы ломать то, что работает.
+    # Отказ ради чистоты дороже совместимости (правило 051).
+    facts = grader_facts()
+
+    stale = facts_staleness(facts.get("generated_at", ""), dt.datetime.now(dt.timezone.utc))
+    if stale:
+        # Находка, а не отказ: числа в файле есть и они настоящие — вопрос лишь
+        # в том, когда их считали. Ронять суточную сборку из-за молчания соседа
+        # значило бы заморозить и остальную страницу.
+        print(checks.annotate("warning", stale), file=sys.stderr)
+
+    gaps = facts_gaps(facts)
+    if gaps:
+        print(checks.annotate("error", f"грейдер не измерил: {', '.join(gaps)} — "
+                              f"витрине эти числа брать неоткуда, и прошлые не подставляются"),
+              file=sys.stderr)
         return 1
 
-    tests = count_tests(grader)
-    modules = count_test_modules(grader)
-    per_pr = checks_per_pr()  # НЕ `checks`: это имя занято модулем разметки
+    tests = int(facts["tests"]["functions"])
+    modules = int(facts["tests"]["modules"])
+    per_pr = int(facts["checks_per_pr"]["count"])  # НЕ `checks`: имя занято модулем разметки
     required, systems, versions = protection_facts()
-    experimental = experimental_versions(grader)
+    experimental = " · ".join(facts["python"]["experimental"])
     releases = release_count()
     glossary = badge("glossary").split()[0]
     open_for_newcomers = good_first_issues()
