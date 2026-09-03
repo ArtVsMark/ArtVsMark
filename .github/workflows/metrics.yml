@@ -88,12 +88,11 @@ jobs:
           # проверку изменения (см. врезку выше).
           token: ${{ env.MERGE_QUEUE_TOKEN }}
 
-      - name: Забрать грейдер (только рабочее дерево)
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: ArtVsMark/Stepik-Python-Grader
-          path: grader
-          fetch-depth: 1
+      # ЧЕКАУТА ГРЕЙДЕРА ЗДЕСЬ БОЛЬШЕ НЕТ. Он стоял ради трёх чисел: тестов,
+      # тест-модулей и экспериментальных версий Python — то есть ради подсчётов
+      # по чужому дереву и разбора чужого ci.yml. Грейдер публикует их сам
+      # (facts.json в ветке badges, его PR #1411), и витрина их читает.
+      # Клонировать репозиторий целиком ради двух цифр больше незачем.
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
@@ -102,7 +101,7 @@ jobs:
       - name: Пересобрать метрики
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python scripts/build_metrics.py grader
+        run: python scripts/build_metrics.py
 
       # Токена площадки у шага больше нет: `gh` он не зовёт, а лишний секрет в
       # окружении — это расширение доверия без предмета. Пуш идёт учётными

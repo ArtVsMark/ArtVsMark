@@ -82,12 +82,8 @@ jobs:
           # на сборку, но не на диапазон origin/main..HEAD.
           fetch-depth: 0
 
-      - name: Забрать грейдер (только рабочее дерево)
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: ArtVsMark/Stepik-Python-Grader
-          path: grader
-          fetch-depth: 1
+      # ЧЕКАУТА ГРЕЙДЕРА ЗДЕСЬ БОЛЬШЕ НЕТ — см. врезку в metrics.yml: числа,
+      # ради которых он клонировался, грейдер публикует о себе сам.
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
@@ -161,7 +157,7 @@ jobs:
       - name: Собрать витрину вхолостую
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python scripts/build_metrics.py grader --check
+        run: python scripts/build_metrics.py --check
 
       # Вердикт в bindings.json — утверждение о текущем коде, и устаревает оно
       # молча: count_rules переименовали в rules_export, и две ссылки полгода
