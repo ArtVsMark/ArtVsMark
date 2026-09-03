@@ -138,7 +138,9 @@ def main() -> int:
     rng = next((a for a in argv if not a.startswith("-")), "origin/main..HEAD")
     try:
         base, head = rng.split("..", 1) if ".." in rng else ("origin/main", "HEAD")
-        paths = _git("diff", "--name-only", f"{base}...{head}").split()
+        # По NUL, а не по строкам и тем более не `.split()`: тот рвал бы путь с
+        # пробелом надвое, а git ещё и экранирует не-ASCII имена (правило 165).
+        paths = checks.git_paths("diff", "--name-only", f"{base}...{head}")
         messages = _git("log", "--format=%B", rng)
     except (subprocess.CalledProcessError, OSError, ValueError) as e:
         # Третий исход: диапазон не разобран — чинит это тот, кто запускает, а

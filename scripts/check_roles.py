@@ -25,7 +25,6 @@ from __future__ import annotations
 import fnmatch
 import pathlib
 import re
-import subprocess
 import sys
 
 import checks
@@ -48,11 +47,7 @@ def patterns(text: str) -> list[str]:
 
 def tracked() -> list[str]:
     """Файлы репозитория глазами git."""
-    out = subprocess.run(
-        ["git", "-C", str(ROOT), "ls-files"],
-        capture_output=True, text=True, check=True,
-    )
-    return [line for line in out.stdout.splitlines() if line]
+    return checks.git_paths("ls-files", cwd=ROOT)
 
 
 def audit(globs: list[str], files: list[str]) -> tuple[list[str], list[str]]:
