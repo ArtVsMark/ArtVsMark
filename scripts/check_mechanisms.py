@@ -254,9 +254,31 @@ def audit_charter(root) -> list[str]:
         return [f"{CHARTER}: свода нет — окно стартует вслепую, и это дословно "
                 f"инцидент правила (134)"]
     text = charter.read_text(encoding="utf-8")
-    missing = [part for part in CHARTER_PARTS if part not in text]
+    missing = [part for part in CHARTER_PARTS if not links_to(text, part)]
     return [f"{CHARTER}: свод не ведёт к {', '.join(missing)} — правила приходят "
             f"оттуда, и свод без этой ссылки обрывает дорогу (134)"] if missing else []
+
+
+def links_to(text: str, target: str) -> bool:
+    """Есть ли в тексте ССЫЛКА на цель, а не просто её имя.
+
+    ПРОВЕРКА ОТНОШЕНИЯ ЧЕРЕЗ ПОДСТРОКУ ЗЕЛЕНЕЕТ ТАМ, ГДЕ ОТНОШЕНИЯ НЕТ. Адрес
+    встречается в документе дважды — в цели ссылки и в её подписи, — и условие
+    «имя есть в тексте» выполняется на подписи, даже когда цель подменили.
+
+    Воспроизведено на своде: из CLAUDE.md убраны ВСЕ ссылки на каталог и на
+    `.rules/` — цели заменены на несуществующие, подписи оставлены. Прежний
+    гейт остался зелёным: ни одной находки при нуле живых ссылок. Он говорил
+    «свод ведёт к каталогу», а проверял «каталог упомянут» (правило 166).
+
+    Ищется ровно то, чем ссылка является в разметке: `](адрес)` для встроенной
+    и `]: адрес` для ссылочной формы. Цель ищется ВНУТРИ адреса, а не в его
+    начале: каталог адресуется полной ссылкой на площадку, и требовать префикса
+    значило бы проверять форму адреса вместо наличия ссылки.
+    """
+    quoted = re.escape(target)
+    return bool(re.search(rf"\]\([^)\s]*{quoted}", text)
+                or re.search(rf"\]:\s*\S*{quoted}", text))
 
 
 def tracked_assets(root) -> set[str]:
@@ -266,9 +288,9 @@ def tracked_assets(root) -> set[str]:
     рисует их каждым прогоном, и проверка по файловой системе отвечала бы
     «лежат» там, где верный ответ — «не хранятся».
     """
-    out = subprocess.run(["git", "ls-files", "assets"], cwd=root, capture_output=True,
-                         text=True, check=True).stdout
-    return {pathlib.Path(line).stem for line in out.splitlines() if line.endswith(".svg")}
+    return {pathlib.Path(path).stem
+            for path in checks.git_paths("ls-files", "assets", cwd=root)
+            if path.endswith(".svg")}
 
 
 def derived_findings(readme: str, tracked: set[str]) -> list[str]:
@@ -919,8 +941,12 @@ def main() -> int:
               "\n  меняют объявление, а не отключают проверку.", file=sys.stderr)
         return 1
 
+    # Картинки названы числом, а не подразумеваются: проверка, читающая список
+    # путей у git, обязана сказать, сколько их увидела — иначе её слепота
+    # неотличима от чистого результата (правило 165). Ровно так и было: разбор
+    # по строкам терял имена с не-ASCII символами, а итог выглядел прежним.
     print(f"механизмы держат объявленное: скриптов {len(sources)}, "
-          f"прогонов {len(flows)}, вердиктов {len(rules)}")
+          f"прогонов {len(flows)}, вердиктов {len(rules)}, картинок в дереве {len(tracked)}")
     return 0
 
 
