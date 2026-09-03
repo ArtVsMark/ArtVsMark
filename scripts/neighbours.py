@@ -120,7 +120,7 @@ def selftest() -> int:
     # main, и вызвать его подстановкой нельзя (правило 145).
     import subprocess
     probe = subprocess.run([sys.executable, __file__, "--selftest-broken-bindings"],
-                           capture_output=True, text=True, env={"PATH": "/usr/bin:/bin"})
+                           capture_output=True, text=True, encoding="utf-8", env={"PATH": "/usr/bin:/bin"})
     print(f"  код {probe.returncode} — исход «предмет не разобран» прогнан")
 
     if broken:

@@ -152,7 +152,7 @@ def selftest() -> int:
     # проверить его вызовом `offenders` нельзя, он живёт в `main`.
     probe = subprocess.run(
         [sys.executable, __file__, "нет-такой-ветки..HEAD"],
-        capture_output=True, text=True,
+        capture_output=True, text=True, encoding="utf-8",
     )
     if probe.returncode != 2:
         broken.append(
@@ -182,7 +182,7 @@ def main() -> int:
         # потому что тело многострочное и по строкам его не разобрать.
         out = subprocess.run(
             ["git", "log", "--no-merges", "--format=%an <%ae>%x00%h%x00%s%x00%b%x1e", rng],
-            capture_output=True, text=True, check=True).stdout
+            capture_output=True, text=True, encoding="utf-8", check=True).stdout
     except (subprocess.CalledProcessError, OSError) as e:
         print(f"проверка не отработала: диапазон {rng!r} не разобран — {e}", file=sys.stderr)
         return 2

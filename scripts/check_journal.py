@@ -73,7 +73,7 @@ def audit(paths: list[str], messages: str) -> tuple[list[str], str]:
 
 
 def _git(*args: str) -> str:
-    return subprocess.run(["git", *args], capture_output=True, text=True,
+    return subprocess.run(["git", *args], capture_output=True, text=True, encoding="utf-8",
                           check=True).stdout
 
 

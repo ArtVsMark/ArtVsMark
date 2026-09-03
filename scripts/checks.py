@@ -65,7 +65,7 @@ def git_paths(*args: str, cwd=None) -> list[str]:
     if cwd is not None:
         command += ["-C", str(cwd)]
     out = subprocess.run([*command, *args, "-z"], capture_output=True,
-                         text=True, check=True).stdout
+                         text=True, encoding="utf-8", check=True).stdout
     return [path for path in out.split("\0") if path]
 
 

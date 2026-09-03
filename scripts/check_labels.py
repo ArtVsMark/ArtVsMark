@@ -382,7 +382,7 @@ def selftest() -> int:
             os.environ["GITHUB_ACTIONS"] = saved
 
     # Вызов без изменения — тоже объявленный исход, и живёт он в main.
-    probe = subprocess.run([sys.executable, __file__], capture_output=True, text=True)
+    probe = subprocess.run([sys.executable, __file__], capture_output=True, text=True, encoding="utf-8")
     if probe.returncode != 1:
         broken.append(f"вызов без номера изменения дал код {probe.returncode}, а не 1")
     print(f"  код {probe.returncode}, без номера  — вызов без изменения")
