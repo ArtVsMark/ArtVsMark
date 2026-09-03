@@ -207,9 +207,41 @@ def selftest() -> int:
     return 0
 
 
+def unchecked(rules: dict[str, dict]) -> list[tuple[str, str]]:
+    """Ответы «предмета нет», которые не проверяет ничто. Очередь на перечитывание.
+
+    НЕ ГЕЙТ, А ПОДСКАЗКА, и это решение, а не слабость. Перечитан ли ответ,
+    машине не видно: отметка «проверено» устарела бы ровно так же, как сам
+    ответ, и заводить её значило бы завести второе враньё поверх первого.
+
+    Зато видно, какие ответы держатся **одной прозой**. Их и печатает эта
+    очередь — по одному предмету за заход, а не «когда-нибудь целиком».
+
+    Цена известна и измерена: 3 сентября из трёх наугад перечитанных ответов
+    «предмета нет» неверными оказались ТРИ. Двум из них правило было уже
+    действующим — витрина отвечала «предмета нет» месяцами. Половина корпуса
+    ответов на прозе — не фон, а очередь.
+    """
+    return [(number, str(binding.get("why", "")))
+            for number, binding in sorted(rules.items())
+            if binding.get("status") == "not-applicable" and not binding.get("refuted_by")]
+
+
 def main() -> int:
     if "--selftest" in sys.argv[1:]:
         return selftest()
+
+    if "--queue" in sys.argv[1:]:
+        # Очередь на перечитывание. Печатается всегда с нулевым кодом: это
+        # рабочий список, а не находка, и красить им прогон нечем (039).
+        rules = json.loads(BINDINGS.read_text(encoding="utf-8"))["rules"]
+        queue = unchecked(rules)
+        total = sum(1 for b in rules.values() if b.get("status") == "not-applicable")
+        print(f"ответов «предмета нет»: {total}; проверяется опровержением "
+              f"{total - len(queue)}, держится прозой {len(queue)}")
+        for number, why in queue:
+            print(f"  {number}: {why[:96]}")
+        return 0
 
     try:
         bindings = json.loads(BINDINGS.read_text(encoding="utf-8"))
