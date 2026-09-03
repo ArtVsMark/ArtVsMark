@@ -1065,6 +1065,126 @@ def rules_export() -> dict:
     return export
 
 
+#: Имя репозитория в дереве витрины. Ищется всюду, кроме журнала: там ссылки на
+#: старые имена стоят НАМЕРЕННО — редирект держится, а прошлое не переписывают.
+REPO_MENTION = re.compile(r"ArtVsMark/[A-Za-z][A-Za-z0-9_.-]*")
+CENSUS_SKIP = ("HISTORY.md",)
+
+
+def mentioned_repos(root: pathlib.Path) -> dict[str, list[str]]:
+    """Перепись: какое имя репозитория где записано.
+
+    ЗАЧЕМ ПЕРЕПИСЬ, А НЕ ГЕЙТ НА ОТКАЗ. Переименование репозитория держит
+    ПЛОЩАДКА: редирект работает, и отключить его нельзя. Значит сигнала о
+    незавершённой миграции не будет вовсе — ни красного прогона, ни битой
+    ссылки. Заменить его может только перечисление мест, сверяемое с живым
+    источником (правило 172).
+
+    Цена уже заплачена: 28 августа владелец переименовал двух соседей за день,
+    и старые имена нашлись в двадцати местах — значки, ссылки, адреса выгрузки.
+    Чинилось это чтением дерева глазами (#111).
+    """
+    census: dict[str, list[str]] = {}
+    for path in sorted(root.rglob("*")):
+        if (not path.is_file() or ".git/" in str(path) or path.name in CENSUS_SKIP
+                or path.suffix not in (".py", ".json", ".yml", ".yaml", ".md")):
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        for name in REPO_MENTION.findall(text):
+            # `.git` на конце — часть адреса клона, а не имени репозитория:
+            # площадка такого имени не знает, и запрос о нём был бы отказом.
+            name = name.removesuffix(".git")
+            if name.count("/") == 1 and not name.endswith("/"):
+                census.setdefault(name, []).append(str(path.relative_to(root)))
+    return census
+
+
+def renaming_finding(name: str, live: str, places: list[str]) -> str:
+    """Находка о переименовании, отдельно от похода в сеть — ради набора.
+
+    Пустая строка означает «имя живое». Пустой ответ площадки — тоже: у окна
+    может не быть доступа к репозиторию, и это говорит о правах, а не о
+    миграции (039).
+    """
+    if not live or live == name:
+        return ""
+    seen = sorted(set(places))
+    return (f"{name} переименован в {live}, а имя записано в {len(seen)} местах: "
+            f"{', '.join(seen[:4])}{' …' if len(seen) > 4 else ''} (172)")
+
+
+def renamed_repos(census: dict[str, list[str]]) -> list[str]:
+    """Имена из переписи, которые площадка знает уже под другим именем.
+
+    ЖИВОЙ ИСТОЧНИК, А НЕ КОНСТАНТА: при переименовании площадка продолжает
+    отвечать по старому адресу, но в ``full_name`` возвращает НОВОЕ имя. Это
+    единственный доступный признак незавершённой миграции — сам по себе старый
+    адрес работает и выглядеть сломанным не будет никогда.
+
+    Отказ по конкретному имени пропускается молча: у окна может не быть доступа
+    к репозиторию, и это говорит о правах, а не о миграции (039).
+    """
+    found = []
+    for name, places in sorted(census.items()):
+        try:
+            live = str(_api(f"/repos/{name}").get("full_name", ""))
+        except (urllib.error.URLError, OSError, ValueError, KeyError):
+            continue
+        finding = renaming_finding(name, live, places)
+        if finding:
+            found.append(finding)
+    return found
+
+
+def protection_names(repo: str = "ArtVsMark/ArtVsMark") -> list[str]:
+    """Имена обязательных проверок в защите ветки — как их видит площадка."""
+    contexts: list[str] = []
+    for rule in _api(f"/repos/{repo}/rules/branches/main"):
+        if rule.get("type") == "required_status_checks":
+            contexts = [c["context"] for c in rule["parameters"]["required_status_checks"]]
+    return contexts
+
+
+def job_names(root: pathlib.Path) -> set[str]:
+    """Имена работ, объявленные прогонами В ДЕРЕВЕ ЭТОГО ИЗМЕНЕНИЯ.
+
+    Состав читается из дерева, а не из прогонов на общей ветке: эталон с общей
+    ветки приходит из прошлого и делает неразрешимым ровно тот класс изменений,
+    который сам состав и меняет — переименование работы не уехало бы никогда
+    (правило 171).
+    """
+    names = set()
+    for flow in sorted((root / ".github/workflows").glob("*.yml")):
+        for match in re.finditer(r"^\s{4}name:\s*(.+?)\s*$", flow.read_text(encoding="utf-8"),
+                                 re.M):
+            names.add(match.group(1))
+    return names
+
+
+def unmet_contexts(required: list[str], declared: set[str]) -> list[str]:
+    """Обязательные проверки, которых никто не создаёт. Пусто — все создаются.
+
+    ЗАЧЕМ. Защита ветки требует проверок ПО ИМЕНИ, и имя попадает в настройку
+    дословно — вне репозитория и вне ревью. Имя, которого никто не создаёт,
+    переводит изменение в ВЕЧНОЕ ожидание: снаружи всё зелено, слияния нет, и
+    единственный след — отказ автомержа в логе.
+
+    Цена уже заплачена: 22 августа работа звалась `check`, а обязательным
+    контекстом стал `PR check`. Несливаемым стал КАЖДЫЙ PR, включая тот,
+    которым это чинили. Совпадение с тех пор держалось ничем.
+
+    СВЕРКА ИДЁТ ОТ НАСТРОЙКИ К ДЕРЕВУ, а не наоборот: работ в дереве больше,
+    чем обязательных проверок, и это законно — лишняя работа никого не
+    блокирует, а недостающая блокирует всё (правила 168 и 171).
+    """
+    return [f"обязательная проверка {name!r} не создаётся ни одной работой — "
+            f"изменение встанет навсегда, и снаружи это выглядит как «ещё бежит» (168)"
+            for name in sorted(set(required) - declared)]
+
+
 def answer_contract_version() -> str:
     """Версия формата ОТВЕТА потребителя — у издателя, из его же заготовки.
 
@@ -1670,6 +1790,51 @@ def selftest() -> int:
     if not ("1.2" in said and "1.0" in said and "bindings.json" in said):
         broken.append("отставание от контракта: отказ не называет обе версии и файл")
 
+    # ── обязательная проверка кем-то создаётся ────────────────────────────
+    # Сверка идёт ОТ НАСТРОЙКИ К ДЕРЕВУ: лишняя работа никого не блокирует, а
+    # недостающая блокирует всё. Набор проверяет обе стороны именно поэтому.
+    context_cases = [
+        ("имена совпадают", ["PR check"], {"PR check", "automerge"}, False),
+        ("работу переименовали", ["PR check"], {"check", "automerge"}, True),
+        ("лишняя работа в дереве", ["PR check"], {"PR check", "прочее"}, False),
+        ("обязательных нет вовсе", [], {"PR check"}, False),
+        ("две обязательных, одной нет", ["PR check", "e2e"], {"PR check"}, True),
+    ]
+    for name, required, declared, expected in context_cases:
+        got = bool(unmet_contexts(required, declared))
+        if got is not expected:
+            broken.append(f"обязательные проверки, {name}: ожидалось "
+                          f"{'находка' if expected else 'пропуск'}, вышло наоборот")
+        print(f"  {'найдено ' if got else 'пропущен'} — обязательные проверки: {name}")
+
+    # Отказ обязан назвать ИМЯ несозданной проверки: «что-то не так с защитой»
+    # отправляет читающего в настройки искать предмет самому.
+    unmet = unmet_contexts(["PR check"], {"check"})
+    if not (unmet and "'PR check'" in unmet[0]):
+        broken.append("обязательные проверки: отказ не называет имя несозданной проверки")
+
+    # ── перепись имён репозиториев ────────────────────────────────────────
+    # Переименование держит площадка, отключить редирект нельзя, и сигнала о
+    # незавершённой миграции не будет вовсе. Проверяется решение, а не поход в
+    # сеть: сеть приносит `full_name`, набор проверяет, что с ним делают.
+    rename_cases = [
+        ("имя живое", "ArtVsMark/Showcase", "ArtVsMark/Showcase", False),
+        ("имя переименовано", "ArtVsMark/old-name", "ArtVsMark/New-Name", True),
+        ("площадка промолчала — прав нет, а не миграция", "ArtVsMark/x", "", False),
+    ]
+    for name, mentioned, live, expected in rename_cases:
+        got = bool(renaming_finding(mentioned, live, ["a.py", "b.md"]))
+        if got is not expected:
+            broken.append(f"перепись имён, {name}: ожидалось "
+                          f"{'находка' if expected else 'пропуск'}, вышло наоборот")
+        print(f"  {'найдено ' if got else 'пропущен'} — перепись имён: {name}")
+
+    # Находка обязана назвать ОБА имени и число мест: чинящий идёт править их,
+    # и «что-то переименовали» отправило бы его искать самому.
+    said = renaming_finding("ArtVsMark/old", "ArtVsMark/new", ["a.py", "b.md", "c.yml"])
+    if not ("ArtVsMark/old" in said and "ArtVsMark/new" in said and "3 местах" in said):
+        broken.append("перепись имён: находка не называет оба имени и число мест")
+
     # ── третий исход называет предмет, а не только причину ─────────────────
     # Сети набор не требует: отказ подставной, а спрашивается механизм —
     # доедет ли адрес до печати (правило 150).
@@ -1840,6 +2005,30 @@ def main() -> int:
         return 1
     if drift:
         print(checks.annotate("warning", f"ответ витрины отстал от контракта: {drift}"))
+
+    # Обязательная проверка обязана кем-то создаваться. Отказ площадки здесь —
+    # третий исход, а не находка: настройка защиты живёт вне репозитория, и её
+    # недоступность говорит о доступе, а не о витрине (039).
+    try:
+        unmet = unmet_contexts(protection_names(), job_names(ROOT))
+    except (urllib.error.URLError, OSError, ValueError, KeyError) as error:
+        print(checks.annotate("warning", f"защита ветки витрины не прочитана: {error}. "
+                              f"Совпадение имён проверить нечем"), file=sys.stderr)
+        unmet = []
+    # Перепись имён соседей — против миграции, о незавершённости которой никто
+    # не сообщит: редирект площадки отключить нельзя (172). Находка, а не отказ:
+    # старый адрес работает, страница не ломается, чинится это спокойно.
+    for line in renamed_repos(mentioned_repos(ROOT)):
+        print(checks.annotate("warning", line), file=sys.stderr)
+
+    if unmet:
+        for line in unmet:
+            print(checks.annotate("error", line), file=sys.stderr)
+        print("  Имя работы и обязательный контекст — два имени в разных системах "
+              "координат.\n  Совпадали они до сих пор ничем не подкреплённо: 22 августа "
+              "расхождение\n  сделало несливаемым каждый PR, включая тот, которым чинили.",
+              file=sys.stderr)
+        return 1
 
     left = orphaned(export, answer["rules"])
     if check and left:

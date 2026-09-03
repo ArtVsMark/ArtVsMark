@@ -243,6 +243,16 @@ def selftest() -> int:
     # Три исхода, и каждый прогоняется (правило 145). Обе ошибки названы:
     # ложное «зелено» сливает изменение, чья проверка не отработала; ложное
     # «ждём» оставляет стоп-кран, и это дешевле.
+    #
+    # У ПОДДЕЛКИ ЗДЕСЬ ЕСТЬ ИСТОЧНИК, И ОН СНЯТ С ЖИВОЙ СТОРОНЫ (правило 170).
+    # Формы ДВЕ, и обе настоящие: `gh pr view --json statusCheckRollup` отдаёт
+    # GraphQL-форму в ВЕРХНЕМ регистре (`"conclusion": "SUCCESS"`), а REST
+    # `/commits/{sha}/check-runs` — ту же запись в НИЖНЕМ
+    # (`"conclusion": "success"`), снято на коммите 6a8be4e витрины:
+    #     name='build' status='completed' conclusion='success'
+    # Регистр здесь нормализуется, но до 3 сентября набор гонялся ТОЛЬКО на
+    # верхней форме: зелёное на ней доказывало согласованность кода с
+    # представлением автора о площадке, а не с площадкой.
     OK = {"status": "COMPLETED", "conclusion": "SUCCESS"}
     state_cases = [
         ("успех один", [OK], "success"),
@@ -259,6 +269,13 @@ def selftest() -> int:
         ("старая форма: контекст со state", [{"state": "SUCCESS"}], "success"),
         ("старая форма: контекст ждёт", [{"state": "PENDING"}], "pending"),
         ("старая форма: контекст провален", [{"state": "FAILURE"}], "failure"),
+        # Форма REST, снятая с живого ответа: тот же исход в нижнем регистре.
+        ("ответ REST: успех в нижнем регистре",
+         [{"status": "completed", "conclusion": "success"}], "success"),
+        ("ответ REST: провал в нижнем регистре",
+         [{"status": "completed", "conclusion": "failure"}], "failure"),
+        ("ответ REST: ещё бежит",
+         [{"status": "in_progress", "conclusion": None}], "pending"),
     ]
     for name, rollup, expected in state_cases:
         got = checks_state(rollup)

@@ -333,6 +333,42 @@ def derived_findings(readme: str, tracked: set[str]) -> list[str]:
     return found
 
 
+#: Имя переменной оболочки: присваивание в начале строки либо обращение `$ИМЯ`.
+#: Ищутся ЛЮБЫЕ имена, а не только кириллические, — не-ASCII отбирается потом.
+SHELL_NAME = re.compile(
+    r"^\s*(?P<set>[^\W\d][\w]*)=|\$\{?(?P<get>[^\W\d][\w]*)\}?", re.UNICODE | re.MULTILINE
+)
+
+
+def shell_names(flows: dict[str, str]) -> list[str]:
+    """Имена переменных оболочки с не-ASCII символами. Пусто — все латиницей.
+
+    ВНУТРЕННИЙ ЯЗЫК ПРОЕКТА НА ОБОЛОЧКУ НЕ РАСПРОСТРАНЯЕТСЯ. Витрина ведётся
+    по-русски — докстроки, комментарии, тексты ошибок, — и девять прогонов из
+    десяти несут shell-логику: соблазн назвать переменную по-русски здесь не
+    теоретический.
+
+    ОШИБКА ПРОЯВЛЯЕТСЯ ДВУМЯ СПОСОБАМИ, И ВТОРОЙ ОПАСНЕЕ. Присваивание с
+    не-ASCII именем bash разбирает как ИМЯ КОМАНДЫ — прогон падает кодом 127, и
+    это видно сразу. Но переменная окружения с таким именем создаётся штатно, а
+    `$ИМЯ` не раскрывается вовсе: парсеру нужен ASCII-идентификатор, подстановка
+    выходит пустой, и условие на такой переменной всегда даёт одну ветку. Гейт
+    при этом ЗЕЛЁНЫЙ и не проверяет ничего (правило 167).
+
+    Здесь нарушений нет и на момент заведения не было: гейт стоит против
+    завтрашней правки, а не чинит сегодняшнюю.
+    """
+    found = []
+    for name, text in sorted(flows.items()):
+        for match in SHELL_NAME.finditer(text):
+            variable = match.group("set") or match.group("get")
+            if variable and not variable.isascii():
+                kind = "присваивание" if match.group("set") else "обращение"
+                found.append(f"{name}: {kind} к переменной {variable!r} — имя не ASCII, "
+                             f"и подстановка выйдет пустой, не сломав прогон (167)")
+    return found
+
+
 def audit_runners(flows: dict[str, str]) -> list[str]:
     """Утверждения о прогонах, которые до 28 августа держались одной прозой.
 
@@ -903,6 +939,24 @@ def selftest() -> int:
     if not (returned and "metrics-dark.svg" in returned[0]):
         broken.append("производное: отказ не называет файл, вернувшийся в дерево")
 
+    # ── имена переменных оболочки ─────────────────────────────────────────
+    # Обе стороны, и вторая важнее: присваивание с не-ASCII именем роняет прогон
+    # заметно, а ОБРАЩЕНИЕ к такой переменной выходит пустым и оставляет гейт
+    # зелёным. Пропустить второй случай значило бы проверить только громкий.
+    shell_cases = [
+        ("всё латиницей", {"a.yml": "run: |\n  base=main\n  echo \"$base\"\n"}, False),
+        ("присваивание по-русски", {"a.yml": "run: |\n  файлы=x\n  echo done\n"}, True),
+        ("обращение по-русски", {"a.yml": "run: |\n  echo \"$файлы\"\n"}, True),
+        ("кириллица в ТЕКСТЕ, а не в имени", {"a.yml": "run: echo 'числа не изменились'\n"}, False),
+        ("кириллица в комментарии", {"a.yml": "run: |\n  # считаем файлы\n  n=1\n"}, False),
+    ]
+    for name, flows, must_reject in shell_cases:
+        found = bool(shell_names(flows))
+        if found != must_reject:
+            broken.append(f"имена оболочки, {name}: ожидалось "
+                          f"{'отказ' if must_reject else 'пропуск'}, вышло {found}")
+        print(f"  {'отвергнут' if found else 'пропущен '} — имена оболочки: {name}")
+
     if broken:
         print("\nсамопроверка провалена:", file=sys.stderr)
         for line in broken:
@@ -931,7 +985,7 @@ def main() -> int:
              + audit_gaps(rules) + audit_workflows(flows) + audit_runners(flows)
              + audit_harness(sources, flows) + audit_charter(ROOT)
              + audit_sparse(sources, flows) + audit_verdicts(sources)
-             + audit_pipeline_labels(sources, flows)
+             + audit_pipeline_labels(sources, flows) + shell_names(flows)
              + derived_findings((ROOT / "README.md").read_text(encoding="utf-8"), tracked))
     if found:
         print(checks.annotate("error", f"механизмы держат не то, что объявили: {len(found)}"), file=sys.stderr)
