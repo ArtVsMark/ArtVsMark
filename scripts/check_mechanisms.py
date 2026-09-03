@@ -369,6 +369,42 @@ def shell_names(flows: dict[str, str]) -> list[str]:
     return found
 
 
+def env_defaults(sources: dict[str, str]) -> list[str]:
+    """Вызовы, берущие кодировку из окружения. Пусто — все задают её явно.
+
+    ``text=True`` без ``encoding=`` декодирует вывод кодировкой ЛОКАЛИ. Это
+    скрытая зависимость от платформы, и матрица прогонов её не доказывает: код
+    зелен на одних ячейках и красен на других, а краснеет ещё и только на
+    подходящих данных — должны совпасть два условия (правило 176).
+
+    ПОЧЕМУ ГЕЙТ, ЕСЛИ У ВИТРИНЫ ОДНО ОКРУЖЕНИЕ. Именно поэтому: прогон такого
+    дефекта не покажет никогда — ubuntu отдаёт UTF-8, и зелёное здесь означает
+    «совпадения не случилось», а не «умолчание задано верно». Ловится это
+    разбором исходника, и цена вопроса — одно слово на вызов.
+
+    Предмет у витрины живой: шесть вызовов читали вывод git, а тела коммитов и
+    темы здесь по-русски. Сменись окружение или запусти скрипт кто-то локально
+    — упало бы на первой же кириллической букве.
+
+    Разбирается ДЕРЕВОМ, а не строкой: `text=True` и `encoding=` могут стоять на
+    разных строках вызова, и поиск подстроки в окне из N символов угадывал бы.
+    """
+    found = []
+    for name, source in sorted(sources.items()):
+        try:
+            tree = ast.parse(source)
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            keywords = {kw.arg for kw in node.keywords if kw.arg}
+            if "text" in keywords and "encoding" not in keywords:
+                found.append(f"{name}: строка {node.lineno} — text=True без encoding=, "
+                             f"кодировка берётся из локали (176)")
+    return found
+
+
 def audit_runners(flows: dict[str, str]) -> list[str]:
     """Утверждения о прогонах, которые до 28 августа держались одной прозой.
 
@@ -957,6 +993,29 @@ def selftest() -> int:
                           f"{'отказ' if must_reject else 'пропуск'}, вышло {found}")
         print(f"  {'отвергнут' if found else 'пропущен '} — имена оболочки: {name}")
 
+    # ── умолчание, взятое из окружения ────────────────────────────────────
+    # Разбирается ДЕРЕВОМ: `text=True` и `encoding=` бывают на разных строках
+    # вызова, и поиск подстроки в окне угадывал бы. Ложный отказ здесь дороже
+    # пропуска — он заставил бы дописывать encoding туда, где текста нет.
+    env_cases = [
+        ("кодировка задана явно",
+         {"a.py": 'subprocess.run(x, text=True, encoding="utf-8")'}, False),
+        ("кодировка из локали",
+         {"a.py": "subprocess.run(x, text=True)"}, True),
+        ("многострочный вызов с кодировкой",
+         {"a.py": 'subprocess.run(\n  x,\n  text=True,\n  encoding="utf-8",\n)'}, False),
+        ("вызов без text= вовсе — не предмет",
+         {"a.py": "subprocess.run(x, capture_output=True)"}, False),
+        ("файл не разобрался — молчим, а не выдумываем",
+         {"a.py": "def broken(:"}, False),
+    ]
+    for name, sources_case, must_reject in env_cases:
+        found = bool(env_defaults(sources_case))
+        if found != must_reject:
+            broken.append(f"умолчание окружения, {name}: ожидалось "
+                          f"{'отказ' if must_reject else 'пропуск'}, вышло {found}")
+        print(f"  {'отвергнут' if found else 'пропущен '} — умолчание окружения: {name}")
+
     if broken:
         print("\nсамопроверка провалена:", file=sys.stderr)
         for line in broken:
@@ -985,7 +1044,7 @@ def main() -> int:
              + audit_gaps(rules) + audit_workflows(flows) + audit_runners(flows)
              + audit_harness(sources, flows) + audit_charter(ROOT)
              + audit_sparse(sources, flows) + audit_verdicts(sources)
-             + audit_pipeline_labels(sources, flows) + shell_names(flows)
+             + audit_pipeline_labels(sources, flows) + shell_names(flows) + env_defaults(sources)
              + derived_findings((ROOT / "README.md").read_text(encoding="utf-8"), tracked))
     if found:
         print(checks.annotate("error", f"механизмы держат не то, что объявили: {len(found)}"), file=sys.stderr)
