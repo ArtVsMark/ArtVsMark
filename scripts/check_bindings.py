@@ -81,6 +81,38 @@ def declared(file: pathlib.Path) -> set[str]:
     return names
 
 
+def refuted(rules: dict[str, dict], exists) -> list[str]:
+    """Ответы «предмета нет», у которых предмет нашёлся.
+
+    ОТВЕТ «ЭТОГО У НАС НЕТ» — УТВЕРЖДЕНИЕ О ДЕЙСТВИТЕЛЬНОСТИ, а не оборот речи,
+    и устаревает оно молча: прозу не двигает никакой механизм, а выглядит она
+    осознанным решением (правило 175). Проверяется подкласс, сводимый к наличию
+    объекта: вердикт называет его сам, полем ``refuted_by`` — образцом пути,
+    существование которого опровергает ответ.
+
+    ОТКАЗ ТОЛЬКО В ОДНУ СТОРОНУ: нашли опровержение — красное; не нашли —
+    молчим. Незнание не доказывает отсутствия, и односторонность здесь не
+    послабление, а условие работы в мелком клоне, где команда отвечает «нет» на
+    всё.
+
+    ЦЕНА ЗАПЛАЧЕНА ТРЕМЯ ВЕРДИКТАМИ РАЗОМ. 3 сентября нашлись: «входного свода
+    у витрины нет» при живом CLAUDE.md, «сознательных дублей нет: скрипт один»
+    при тринадцати скриптах и подписанном дубле, «один прогон в сутки» при пяти
+    расписаниях. Все три опровергались одной командой и стояли месяцами.
+    """
+    found = []
+    for number, binding in sorted(rules.items()):
+        pattern = binding.get("refuted_by")
+        if not pattern:
+            continue
+        hits = exists(pattern)
+        if hits:
+            found.append(f"{number}: ответ «предмета нет» опровергается — {pattern} "
+                         f"существует ({', '.join(sorted(hits)[:3])}). Утверждение о "
+                         f"действительности устарело молча (175)")
+    return found
+
+
 def audit(rules: dict[str, dict]) -> tuple[list[str], int]:
     """Мёртвые ссылки вердиктов и число проверенных."""
     dead: list[str] = []
@@ -138,6 +170,34 @@ def selftest() -> int:
             broken.append(f"{name}: ожидалось {'отказ' if must_reject else 'пропуск'}, вышло наоборот")
         print(f"  {'отвергнут' if dead else 'пропущен '} — {name}")
 
+    # ── ответ «предмета нет», у которого предмет нашёлся ──────────────────
+    # Отказ ОДНОСТОРОННИЙ: нашли опровержение — красное, не нашли — молчим.
+    # Незнание не доказывает отсутствия, и в мелком клоне двусторонний гейт
+    # стал бы генератором ложных находок.
+    refute_cases = [
+        ("предмет нашёлся — ответ устарел",
+         {"053": {"status": "not-applicable", "refuted_by": "x.yml"}}, ["x.yml"], True),
+        ("предмета нет — молчим",
+         {"053": {"status": "not-applicable", "refuted_by": "x.yml"}}, [], False),
+        ("опровержение не названо — не наше дело",
+         {"053": {"status": "not-applicable", "why": "очереди нет"}}, ["x.yml"], False),
+        ("действующий вердикт поля не несёт",
+         {"011": {"status": "active", "where": "metrics.yml"}}, ["x.yml"], False),
+    ]
+    for name, rules, hits, must_reject in refute_cases:
+        found = bool(refuted(rules, lambda glob, h=hits: h))
+        if found is not must_reject:
+            broken.append(f"опровержение, {name}: ожидалось "
+                          f"{'отказ' if must_reject else 'пропуск'}, вышло {found}")
+        print(f"  {'отвергнут' if found else 'пропущен '} — опровержение: {name}")
+
+    # Находка обязана назвать НОМЕР и НАЙДЕННОЕ: «что-то устарело» отправляет
+    # читающего искать предмет самому.
+    said = refuted({"053": {"status": "not-applicable", "refuted_by": "q.yml"}},
+                   lambda glob: ["q.yml"])
+    if not (said and "053" in said[0] and "q.yml" in said[0]):
+        broken.append("опровержение: находка не называет номер и найденное")
+
     if broken:
         print("\nсамопроверка провалена:", file=sys.stderr)
         for line in broken:
@@ -154,11 +214,24 @@ def main() -> int:
     try:
         bindings = json.loads(BINDINGS.read_text(encoding="utf-8"))
         dead, checked = audit(bindings["rules"])
+        # Существование предмета спрашивается у дерева одной командой — без
+        # сети, как и требует правило: то, что видно локально.
+        alive = refuted(bindings["rules"], lambda glob: [str(p.relative_to(ROOT))
+                                                        for p in ROOT.glob(glob)])
     except (OSError, ValueError, SyntaxError) as e:
         # Третий исход, а не разновидность второго: находку чинит автор, а
         # неотработавшую проверку — тот, кто её запускает (правило 039).
         print(f"проверка не отработала: ответ каталогу не разобран — {e}", file=sys.stderr)
         return 2
+
+    if alive:
+        print(checks.annotate("error", f"ответы «предмета нет» опровергаются: {len(alive)}"),
+              file=sys.stderr)
+        for line in alive:
+            print(f"  {line}", file=sys.stderr)
+        print("\nОтвет «этого у нас нет» — утверждение о действительности, и оно устарело."
+              "\nЛибо предмет появился и вердикт стал действующим, либо уберите refuted_by.",
+              file=sys.stderr)
 
     if dead:
         print(checks.annotate("error", f"вердикты показывают в пустоту, мёртвых ссылок: {len(dead)}"), file=sys.stderr)
@@ -170,8 +243,12 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
+    if alive:
+        return 1
 
-    print(f"ссылок в вердиктах: {checked}, все живые")
+    checkable = sum(1 for b in bindings["rules"].values() if b.get("refuted_by"))
+    print(f"ссылок в вердиктах: {checked}, все живые; "
+          f"ответов «предмета нет» с проверяемым опровержением: {checkable}")
     return 0
 
 
