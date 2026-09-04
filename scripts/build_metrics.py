@@ -494,21 +494,40 @@ BADGE_LABELS = {"release": "release/pypi", "ci": "CI",
                 "coverage": "coverage", "version": "version"}
 
 
-def _badge_files(repo: str) -> list[str]:
-    """Имена значков в ветке по умолчанию. Пусто — каталога значков нет.
+#: По какому слову узнаётся значок показателя. Имя целиком не годится: грейдер
+#: публикует покрытие как ``coverage-combined.json``, а каталог правил — как
+#: ``coverage.json``. Слово — минимум, который у обоих общий.
+BADGE_MARKERS = {"coverage": "coverage", "version": "version"}
 
-    404 здесь — законный ответ «такого каталога нет», а не сбой: у большинства
+
+def _badge_files(repo: str, kind: str) -> list[str]:
+    """Значки ПОКАЗАТЕЛЯ — в обеих ветках, где их кладут. Пусто — значка нет.
+
+    ПОКАЗАТЕЛЬ, А НЕ «ЛЮБОЙ ЗНАЧОК». Прежняя версия фильтровала имена по слову
+    ``coverage`` — всегда, каким бы ни был показатель, — и вызывалась в том
+    числе проверкой версии. То есть на вопрос «публикует ли сосед версию»
+    отвечала находкой файла ПОКРЫТИЯ. В докстроке при этом стояло «значок
+    версии»: список был в прозе, а в коде — одно слово из двух.
+
+    ОБЕ ВЕТКИ, А НЕ ОДНА. Значок кладут либо на отдельную ``badges``, либо
+    рядом с кодом; спрашивать одну значит пропускать половину случаев.
+
+    404 — законный ответ «такого каталога нет», а не сбой: у большинства
     репозиториев значков не бывает вовсе. Остальные коды поднимаются, иначе
     молчаливый except спрячет сеть и права (правило 039).
     """
-    try:
-        entries = _api(f"/repos/{repo}/contents/.github/badges")
-    except urllib.error.HTTPError as absent:
-        if absent.code != 404:
-            raise
-        return []
-    return [e["name"] for e in entries
-            if e["type"] == "file" and "coverage" in e["name"]]
+    marker = BADGE_MARKERS[kind]
+    found: list[str] = []
+    for ref in ("?ref=badges", ""):
+        try:
+            entries = _api(f"/repos/{repo}/contents/.github/badges{ref}")
+        except urllib.error.HTTPError as absent:
+            if absent.code != 404:
+                raise
+            continue
+        found += [e["name"] for e in entries
+                  if e["type"] == "file" and marker in e["name"]]
+    return sorted(set(found))
 
 
 def verify_absence(repo: str, kind: str, why: str) -> None:
@@ -548,30 +567,26 @@ def verify_absence(repo: str, kind: str, why: str) -> None:
             found = f"прогоны в репозитории есть и в причине не названы: {', '.join(sorted(unnamed))}"
         else:
             return
-    elif kind == "coverage":
-        # Обе площадки, а не одна: с тех пор как значок научились класть в
-        # ветку по умолчанию, проверка только ветки `badges` пропускала бы
-        # ровно тот случай, ради которого она написана. Так и вышло у каталога
-        # правил: покрытие появилось в main, а ответ витрины ещё говорил
-        # «тестов нет».
-        branches = _api(f"/repos/{repo}/branches?per_page=100")
-        if any(branch["name"] == "badges" for branch in branches):
-            found = "ветка badges существует, значит показатель публикуется"
-        elif _badge_files(repo):
-            found = "в ветке по умолчанию лежит значок покрытия"
-        else:
-            return
-    elif kind == "version":
-        # Проверяется тем же способом, что и покрытие: версию публикуют значком,
-        # и значок либо есть, либо нет. До 27 августа непроверяемым здесь был
-        # «пакет» — у него при отказе не объявлено имя, и спросить PyPI не о чем.
-        # Пакет теперь входит в «release», и его отсутствие проверяется выпусками
-        # площадки.
-        branches = _api(f"/repos/{repo}/branches?per_page=100")
-        if any(branch["name"] == "badges" for branch in branches):
-            found = "ветка badges существует, значит показатель публикуется"
-        elif _badge_files(repo):
-            found = "в ветке по умолчанию лежит значок версии"
+    elif kind in BADGE_MARKERS:
+        # ЗНАЧОК, А НЕ ВЕТКА. Прежде отказ выносился по существованию ветки
+        # `badges`: раз она есть — «показатель публикуется». Ветка общая на все
+        # показатели, и у первого же соседа, который завёл её ради одного из
+        # них, ответ покраснел бы по всем четырём. Так и вышло у глоссария
+        # 4 сентября: ветка появилась вместе с покрытием и фактами, версии в
+        # ней нет и не планируется, а гейт требовал бы её ровно так же.
+        #
+        # Обе площадки, а не одна: с тех пор как значок научились класть рядом
+        # с кодом, вопрос только к `badges` пропускал бы ровно тот случай, ради
+        # которого проверка написана. Так вышло у каталога правил: покрытие
+        # появилось в main, а ответ витрины ещё говорил «тестов нет».
+        #
+        # Версия попадает сюда тем же путём, что и покрытие. До 27 августа
+        # непроверяемым здесь был «пакет» — у него при отказе не объявлено имя,
+        # и спросить PyPI не о чем. Пакет теперь входит в «release», и его
+        # отсутствие проверяется выпусками площадки.
+        published = _badge_files(repo, kind)
+        if published:
+            found = f"значок публикуется: {', '.join(published)}"
         else:
             return
     else:
@@ -1689,6 +1704,53 @@ def selftest() -> int:
         if rejected is not must_reject:
             broken.append(f"показатели, {name}: ожидалось {'отказ' if must_reject else 'пропуск'}")
         print(f"  {'отвергнут' if rejected else 'пропущен '} — показатели: {name}")
+
+    # ── отказ по показателю сверяется со значком, а не с веткой ───────────
+    # Ветка `badges` общая на все показатели: сосед заводит её ради покрытия, а
+    # краснеет ответ и по версии, которой там нет. Набор ЗОВЁТ проверку на
+    # подставном дереве и смотрит на её ответ, а не повторяет условие
+    # (правило 150).
+    absence_cases = [
+        ("покрытие есть, версии нет — краснеет только покрытие",
+         ["coverage.json", "facts.json"], {"coverage": True, "version": False}),
+        ("грейдерская форма имени тоже находится",
+         ["coverage-combined.json"], {"coverage": True, "version": False}),
+        ("значков нет вовсе — оба отказа законны", [], {"coverage": False, "version": False}),
+        ("обе публикации — краснеют оба",
+         ["coverage.json", "version.json"], {"coverage": True, "version": True}),
+    ]
+    saved_api = globals()["_api"]
+    try:
+        for name, files, expected in absence_cases:
+            globals()["_api"] = lambda path, _files=files: (
+                [{"type": "file", "name": n} for n in _files]
+                if "?ref=badges" in path else []
+            )
+            for kind, must_reject in expected.items():
+                try:
+                    verify_absence("o/r", kind, "предмета нет")
+                    rejected = False
+                except SystemExit:
+                    rejected = True
+                if rejected is not must_reject:
+                    broken.append(f"отказ по «{kind}», {name}: "
+                                  f"ожидалось {'отказ' if must_reject else 'пропуск'}")
+                print(f"  {'отвергнут' if rejected else 'пропущен '} — отказ «{kind}»: {name}")
+        # Отказ обязан НАЗЫВАТЬ найденное: «показатель публикуется» без имени
+        # файла — это отказ, по которому нечего чинить (правило 083).
+        globals()["_api"] = lambda path: (
+            [{"type": "file", "name": "coverage-combined.json"}]
+            if "?ref=badges" in path else []
+        )
+        try:
+            verify_absence("o/r", "coverage", "тестов нет")
+        except SystemExit as refusal:
+            if "coverage-combined.json" not in str(refusal):
+                broken.append("отказ по покрытию не называет найденный значок")
+        else:
+            broken.append("отказ по покрытию не вынесен при живом значке")
+    finally:
+        globals()["_api"] = saved_api
 
     # Обязательный список, объявленный в данных, тоже проверяется: показатель,
     # которого сборка не умеет, — это опечатка, тихо снимающая требование.
