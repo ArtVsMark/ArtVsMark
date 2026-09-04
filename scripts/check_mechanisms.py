@@ -160,6 +160,49 @@ def audit_workflows(sources: dict[str, str]) -> list[str]:
         found.append("open-pr.yml: изменение открывается не на любой рабочей ветке. "
                      "Переключатель по имени отменяет операцию МОЛЧА — ни прогона, "
                      "ни красного, ни строки на вкладке (147)")
+    found += cancellation_groups(sources)
+    return found
+
+
+#: Голова в имени группы отмены. Годится и `pull_request.head.sha`, и `github.sha`:
+#: второе площадка подставляет сама там, где события изменения нет.
+HEAD_IN_GROUP = re.compile(r"head\.sha|github\.sha")
+
+
+def cancellation_groups(sources: dict[str, str]) -> list[str]:
+    """Группа, ОТМЕНЯЮЩАЯ предыдущий прогон, обязана называть голову (правило 179).
+
+    ЧЕМ ПЛАТИТ ГРУППА БЕЗ ГОЛОВЫ. Имя, собранное из номера изменения, знает о
+    поколении прогона только время доставки события — а его площадка не
+    упорядочивает. У соседа `Claude-Code_Usage-Token` за 35 секунд пришли четыре
+    события, `labeled` доставлено после `synchronize` и принесло УЖЕ устаревшую
+    голову: прогон на актуальной был отменён прогоном на старой. Обязательной
+    проверки на актуальной голове после этого нет и взяться ей неоткуда — новый
+    прогон рождается только от нового события, а событий больше не будет.
+    Расклинивается руками.
+
+    Цена несимметрична: лишний прогон на одной голове стоит минуты машинного
+    времени, отменённый на актуальной — выхода из автоматики.
+
+    Отмена при этом НЕ выключается, а голова ДОБАВЛЯЕТСЯ: дубли на одной голове
+    гасить по-прежнему нужно.
+
+    Предмет — прогоны, будящиеся событием изменения: только у них номер и голова
+    расходятся. Расписание и толчок в группу по номеру не попадают.
+    """
+    found = []
+    for name, source in sorted(sources.items()):
+        events = _section(source, "on")
+        if "pull_request" not in events:
+            continue
+        group = _section(source, "concurrency")
+        if "cancel-in-progress: true" not in group:
+            continue
+        if not HEAD_IN_GROUP.search(group):
+            found.append(
+                f"{name}: группа отмены не называет голову — прогон на актуальном "
+                f"коммите отменяется прогоном на устаревшем, и обязательной "
+                f"проверки на нём не появится (179)")
     return found
 
 
@@ -388,6 +431,14 @@ def env_defaults(sources: dict[str, str]) -> list[str]:
 
     Разбирается ДЕРЕВОМ, а не строкой: `text=True` и `encoding=` могут стоять на
     разных строках вызова, и поиск подстроки в окне из N символов угадывал бы.
+
+    ПРЕДМЕТ — ВЫЗОВ ПОДПРОЦЕССА, А НЕ ЛЮБОЙ ВЫЗОВ С ``text=`` (правило 180).
+    Первая редакция смотрела только на имена аргументов, и своя функция с
+    параметром `text` становилась находкой — у витрины такая есть,
+    ``checks.annotate(level, text)``, и от ложного отказа её спасало лишь то,
+    что зовут её позиционно. У соседа тот же приём стоил пятнадцати упавших
+    тестов. Разрешение идёт по импортам файла, поэтому виден и
+    ``from subprocess import run as запустить``.
     """
     found = []
     for name, source in sorted(sources.items()):
@@ -395,8 +446,11 @@ def env_defaults(sources: dict[str, str]) -> list[str]:
             tree = ast.parse(source)
         except SyntaxError:
             continue
+        imports = _import_table(tree)
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
+                continue
+            if not _called(node, imports).startswith("subprocess."):
                 continue
             keywords = {kw.arg for kw in node.keywords if kw.arg}
             if "text" in keywords and "encoding" not in keywords:
@@ -454,7 +508,7 @@ def audit_runners(flows: dict[str, str]) -> list[str]:
 #: Имена, по которым скрипт печатает находку командой площадки. Замер правила
 #: 151: окну логи прогонов закрыты, и до него доходит только то, что напечатано
 #: командой, — всё прочее сворачивается в «Process completed with exit code 1».
-ANNOTATOR = "annotate"
+ANNOTATOR = "checks.annotate"
 
 
 def audit_voice(sources: dict[str, str]) -> list[str]:
@@ -470,7 +524,8 @@ def audit_voice(sources: dict[str, str]) -> list[str]:
         if not can_fail(source):
             continue
         tree = ast.parse(source)
-        if not any(_called(node) == ANNOTATOR
+        imports = _import_table(tree)
+        if not any(_called(node, imports) == ANNOTATOR
                    for node in ast.walk(tree) if isinstance(node, ast.Call)):
             found.append(f"{name}: находка печатается в поток, а не командой "
                          f"площадки — до окна доедет «exit code 1» (151)")
@@ -488,7 +543,7 @@ def audit_voice(sources: dict[str, str]) -> list[str]:
         own = {n.name for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)}
         body = next(n for n in ast.walk(tree)
                     if isinstance(n, ast.FunctionDef) and n.name == "selftest")
-        if not any(_called(c) in own - {"selftest"}
+        if not any(_called(c, imports) in own - {"selftest"}
                    for c in ast.walk(body) if isinstance(c, ast.Call)):
             found.append(f"{name}: самопроверка не зовёт механизм — она "
                          f"пересказывает условие и разойдётся с ним молча (150)")
@@ -659,21 +714,77 @@ def _strings(node: ast.AST) -> list[str]:
             if isinstance(n, ast.Constant) and isinstance(n.value, str)]
 
 
-def _called(node: ast.Call) -> str:
-    """Имя вызываемого: ``urlopen`` и ``urllib.request.urlopen`` одинаково."""
-    f = node.func
-    return f.attr if isinstance(f, ast.Attribute) else getattr(f, "id", "")
+def _dotted(node: ast.expr) -> str:
+    """Точечное имя вызываемого как оно записано: ``urllib.request.urlopen``."""
+    parts = []
+    while isinstance(node, ast.Attribute):
+        parts.append(node.attr)
+        node = node.value
+    if not isinstance(node, ast.Name):
+        # Вызов результата вызова, подписки, литерала — имени у него нет, и
+        # выдумывать его нельзя: молчание честнее догадки.
+        return ""
+    parts.append(node.id)
+    return ".".join(reversed(parts))
+
+
+def _import_table(tree: ast.Module) -> dict[str, str]:
+    """Как файл называет то, что импортировал: местное имя → исходное."""
+    table: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                # `import urllib.request` вводит имя `urllib`; `as` — своё.
+                table[alias.asname or alias.name.split(".")[0]] = (
+                    alias.name if alias.asname else alias.name.split(".")[0])
+        elif isinstance(node, ast.ImportFrom) and node.module and not node.level:
+            for alias in node.names:
+                table[alias.asname or alias.name] = f"{node.module}.{alias.name}"
+    return table
+
+
+def _called(node: ast.Call, imports: dict[str, str]) -> str:
+    """Исходное имя вызываемого — по ИМПОРТАМ ФАЙЛА, а не по звену имени.
+
+    ПОЧЕМУ НЕ ПОСЛЕДНЕЕ ЗВЕНО (правило 180). Прежняя редакция брала
+    ``node.func.attr`` — то есть `urlopen` одинаково у чужой библиотеки и у
+    своей функции с тем же именем. У соседа `Claude-Code_Usage-Token` это стоило
+    пятнадцати упавших тестов: гейт объявил находками свои `pr_check.run` и
+    `merge_queue.run`, и автоматическая правка дописала им чужой аргумент.
+
+    У нас ложных находок не было — но по той же счастливой случайности, что у
+    соседа: спасал второй признак, адрес площадки в аргументах. Своей функции с
+    именем `urlopen` просто не завелось.
+
+    ОБРАТНАЯ ПОЛОВИНА БЫЛА ЖИВОЙ ДЫРОЙ. ``from urllib.request import urlopen as
+    fetch`` прежний разбор не видел вовсе: в списке проверяемых имён псевдонима
+    нет. Гейт зеленел ровно за отсутствие такого вызова — то есть молчал там,
+    где обязан говорить.
+
+    Имя, которого файл не импортировал, возвращается как есть: своя функция
+    остаётся собой, и совпасть с чужой полной формой ей нечем.
+    """
+    name = _dotted(node.func)
+    if not name:
+        return ""
+    head, dot, tail = name.partition(".")
+    base = imports.get(head)
+    if base is None:
+        return name
+    return f"{base}{dot}{tail}"
 
 
 def audit_calls(sources: dict[str, str]) -> list[str]:
     """Обращения мимо общего входа и авторизация, уходящая на чужой хост."""
     found: list[str] = []
     for name, source in sorted(sources.items()):
-        for node in ast.walk(ast.parse(source)):
+        tree = ast.parse(source)
+        imports = _import_table(tree)
+        for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
                 continue
-            called, pieces = _called(node), " ".join(_strings(node))
-            if called == "urlopen" and API_HOST in pieces:
+            called, pieces = _called(node, imports), " ".join(_strings(node))
+            if called == "urllib.request.urlopen" and API_HOST in pieces:
                 found.append(f"{name}: обращение к площадке мимо _api() — у REST один "
                              f"вход, второй заводит второе место, где ломается "
                              f"авторизация и разбор ошибок (001)")
@@ -767,9 +878,21 @@ def selftest() -> int:
         ("обращение через общий вход", audit_calls,
          {"a.py": "def f():\n    return _api('/repos/x')\n"}, False),
         ("обращение мимо общего входа", audit_calls,
-         {"a.py": "urlopen('https://api.github.com/repos/x')\n"}, True),
+         {"a.py": "import urllib.request\nurllib.request.urlopen('https://api.github.com/repos/x')\n"}, True),
         ("упоминание в комментарии — не обращение", audit_calls,
          {"a.py": "# urlopen('https://api.github.com/x') так делать нельзя\n"}, False),
+        # ── вызов разрешается по импортам файла (правило 180) ──────────────
+        # Обе стороны, и вторая была живой дырой: гейт зеленел ровно за
+        # отсутствие вызова, которого не умел видеть.
+        ("псевдоним библиотеки виден", audit_calls,
+         {"a.py": "from urllib.request import urlopen as fetch\n"
+                  "fetch('https://api.github.com/repos/x')\n"}, True),
+        ("модуль под псевдонимом тоже виден", audit_calls,
+         {"a.py": "import urllib.request as web\n"
+                  "web.urlopen('https://api.github.com/repos/x')\n"}, True),
+        ("своя функция с тем же именем находкой не считается", audit_calls,
+         {"a.py": "def urlopen(url):\n    return url\n"
+                  "urlopen('https://api.github.com/repos/x')\n"}, False),
         ("raw без заголовка авторизации", audit_calls,
          {"a.py": "_get(f'https://raw.githubusercontent.com/x', authenticated=False)\n"}, False),
         ("raw с заголовком авторизации", audit_calls,
@@ -782,6 +905,23 @@ def selftest() -> int:
           "x.yml": "run: |\n  while true; do\n    sleep 30\n  done\n"}, True),
         ("переключатель по имени ветки", audit_workflows,
          {"open-pr.yml": "on:\n  push:\n    branches: ['agent/**']\n"}, True),
+
+        # ── группа отмены называет голову (правило 179) ───────────────────
+        # Ложный отказ здесь дороже пропуска ровно наоборот: группа без
+        # отмены и прогон не от изменения — законные случаи, и требовать
+        # головы от них значило бы приучить дописывать её впустую.
+        ("группа отмены с головой", cancellation_groups,
+         {"a.yml": "on:\n  pull_request:\nconcurrency:\n  group: a-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}\n  cancel-in-progress: true\n"}, False),
+        ("группа отмены без головы", cancellation_groups,
+         {"a.yml": "on:\n  pull_request:\nconcurrency:\n  group: a-${{ github.event.pull_request.number }}\n  cancel-in-progress: true\n"}, True),
+        ("github.sha головой тоже считается", cancellation_groups,
+         {"a.yml": "on:\n  pull_request:\nconcurrency:\n  group: a-${{ github.sha }}\n  cancel-in-progress: true\n"}, False),
+        ("без отмены голова не нужна", cancellation_groups,
+         {"a.yml": "on:\n  pull_request:\nconcurrency:\n  group: a-${{ github.event.pull_request.number }}\n  cancel-in-progress: false\n"}, False),
+        ("прогон не от изменения — не предмет", cancellation_groups,
+         {"a.yml": "on:\n  schedule:\n    - cron: '0 4 * * *'\nconcurrency:\n  group: a\n  cancel-in-progress: true\n"}, False),
+        ("голова из шагов группой не считается", cancellation_groups,
+         {"a.yml": "on:\n  pull_request:\nconcurrency:\n  group: a-${{ github.event.pull_request.number }}\n  cancel-in-progress: true\njobs:\n  x:\n    steps:\n      - run: echo ${{ github.event.pull_request.head.sha }}\n"}, True),
 
         ("прогон полон", audit_runners, {"a.yml": GOOD_FLOW}, False),
         ("нет ручной кнопки", audit_runners,
@@ -1008,6 +1148,20 @@ def selftest() -> int:
          {"a.py": "subprocess.run(x, capture_output=True)"}, False),
         ("файл не разобрался — молчим, а не выдумываем",
          {"a.py": "def broken(:"}, False),
+        # ── предмет — подпроцесс, а не любой вызов с text= (правило 180) ───
+        # Своя функция с параметром `text` у витрины есть: checks.annotate.
+        # Требовать от неё encoding= значило бы дописывать чужой аргумент в
+        # свой код — ровно то, что у соседа уронило пятнадцать тестов.
+        ("своя функция с параметром text — не предмет",
+         {"a.py": "import checks\nchecks.annotate(level='error', text='находка')"}, False),
+        ("подпроцесс под псевдонимом модуля — предмет",
+         {"a.py": "import subprocess as sp\nsp.run(x, text=True)"}, True),
+        ("подпроцесс, импортированный по имени, — предмет",
+         {"a.py": "from subprocess import run\nrun(x, text=True)"}, True),
+        ("он же под псевдонимом — предмет",
+         {"a.py": "from subprocess import run as запустить\nзапустить(x, text=True)"}, True),
+        ("вызов без импорта библиотекой не считается",
+         {"a.py": "run(x, text=True)"}, False),
     ]
     for name, sources_case, must_reject in env_cases:
         found = bool(env_defaults(sources_case))
