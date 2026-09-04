@@ -1,0 +1,22 @@
+<svg width="1000" height="146" viewBox="0 0 1000 146" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Stepik-Python-Grader: 5000+ tests, 254 test modules, 16 checks per PR">
+<defs><linearGradient id="a" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#58A6FF"/><stop offset="100%" stop-color="#7EE787"/></linearGradient></defs>
+<text x="500" y="17" fill="#636C76" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="13" font-weight="700" text-anchor="middle" letter-spacing="0.4">Stepik-Python-Grader</text>
+  <g>
+    <rect x="0.5" y="28.5" width="320" height="117" rx="14" fill="#FFFFFF" stroke="#D0D7DE"/>
+    <rect x="22" y="50" width="44" height="4" rx="2" fill="url(#a)"/>
+    <text x="160" y="101" fill="#1F2328" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="40" font-weight="800" text-anchor="middle" letter-spacing="-1">5000+</text>
+    <text x="160" y="126" fill="#636C76" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="15.5" font-weight="600" text-anchor="middle">tests</text>
+  </g>
+  <g>
+    <rect x="339.5" y="28.5" width="320" height="117" rx="14" fill="#FFFFFF" stroke="#D0D7DE"/>
+    <rect x="361" y="50" width="44" height="4" rx="2" fill="url(#a)"/>
+    <text x="500" y="101" fill="#1F2328" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="46" font-weight="800" text-anchor="middle" letter-spacing="-1">254</text>
+    <text x="500" y="126" fill="#636C76" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="15.5" font-weight="600" text-anchor="middle">test modules</text>
+  </g>
+  <g>
+    <rect x="678.5" y="28.5" width="320" height="117" rx="14" fill="#FFFFFF" stroke="#D0D7DE"/>
+    <rect x="700" y="50" width="44" height="4" rx="2" fill="url(#a)"/>
+    <text x="838" y="101" fill="#1F2328" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="46" font-weight="800" text-anchor="middle" letter-spacing="-1">16</text>
+    <text x="838" y="126" fill="#636C76" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="15.5" font-weight="600" text-anchor="middle">checks per PR</text>
+  </g>
+</svg>
