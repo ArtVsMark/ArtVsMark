@@ -68,8 +68,8 @@ def audit(paths: list[str], messages: str) -> tuple[list[str], str]:
         return [], ""
     if waiver:
         return [], waiver.group("why").strip()
-    return [f"поведение правится без записи в журнале: {', '.join(behaviour[:5])}"
-            + (f" и ещё {len(behaviour) - 5}" if len(behaviour) > 5 else "")], ""
+    return [f"поведение правится без записи в журнале: "
+            f"{checks.tail(behaviour, 5)}"], ""
 
 
 def _git(*args: str) -> str:

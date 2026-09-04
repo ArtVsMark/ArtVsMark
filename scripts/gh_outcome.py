@@ -52,6 +52,8 @@ import argparse
 import re
 import sys
 
+import checks
+
 #: Источник не ответил. Разбирается ПЕРВЫМ: исчерпанный лимит приходит тем же
 #: кодом 403, что и отказ в правах, и при обратном порядке прочтётся отказом.
 SOURCE_SILENT: tuple[tuple[str, str], ...] = (
@@ -94,7 +96,7 @@ def classify(code: int, output: str) -> tuple[str, str]:
             return "broken", reason
 
     first = next((line.strip() for line in output.splitlines() if line.strip()), "")
-    return "broken", f"отказ не разобран (код {code}): {first[:200] or 'вывода нет'}"
+    return "broken", f"отказ не разобран (код {code}): {checks.clip(first, 200) or 'вывода нет'}"
 
 
 def selftest() -> int:

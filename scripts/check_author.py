@@ -195,7 +195,7 @@ def main() -> int:
     if bad:
         print(checks.annotate("error", f"подписано контейнерным умолчанием коммитов: {len(bad)} из {len(records)}"), file=sys.stderr)
         for author, sha, subject, _ in bad:
-            print(f"  • {sha} {subject[:60]}\n        автор: {author}", file=sys.stderr)
+            print(f"  • {sha} {checks.clip(subject, 60)}\n        автор: {author}", file=sys.stderr)
         print(
             f"\n  Соглашение: автор коммита — владелец, исполнитель уходит трейлером."
             f"\n  Выполните в окне:\n\n      {REMEDY}\n"
@@ -211,7 +211,7 @@ def main() -> int:
             "error", f"без трейлера исполнителя коммитов: {len(silent)} из {len(records)}"),
             file=sys.stderr)
         for sha, subject in silent:
-            print(f"  • {sha} {subject[:60]}", file=sys.stderr)
+            print(f"  • {sha} {checks.clip(subject, 60)}", file=sys.stderr)
         print(
             "\n  Общая ветка требует атрибуцию у КАЖДОГО первопредка, и красное там"
             "\n  означает долг: прошлое не переписать (114). Здесь оно ещё чинится —"

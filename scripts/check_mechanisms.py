@@ -459,6 +459,359 @@ def env_defaults(sources: dict[str, str]) -> list[str]:
     return found
 
 
+#: Производное и его источник. Пара — вход гейта: правило 118 требует, чтобы
+#: правящий видел оба, а видит он их, когда они лежат рядом.
+DERIVED_SOURCES = {"README.md": "projects.json"}
+
+
+def source_next_to_derived(root: pathlib.Path) -> list[str]:
+    """Источник лежит рядом с производным. Пусто — оба в одном каталоге.
+
+    ПРАВИЛО 118. Источник, унесённый в подкаталог, правят реже производного —
+    и тогда правят производное, то есть пишут в файл, который следующий прогон
+    перезапишет. У витрины предмет один: таблицу проектов в README собирает
+    сборка из ``projects.json``, и лежат они в корне рядом.
+
+    РАЗОБРАНО НАДВОЕ по 182. «Источник ли это по замыслу» машина не решит —
+    но соседство путей проверяется буквально, а именно оно и есть требование
+    правила. Гейт сломается ровно в тот день, когда источник унесут, оставив
+    производное на месте.
+    """
+    found = []
+    for derived, source in sorted(DERIVED_SOURCES.items()):
+        here, there = root / derived, root / source
+        if not here.exists() or not there.exists():
+            found.append(f"{derived} ← {source}: одного из двух нет в дереве "
+                         f"({'производного' if not here.exists() else 'источника'}) (118)")
+        elif here.parent != there.parent:
+            found.append(f"{derived} лежит в «{here.parent.name or '.'}», а его источник "
+                         f"{source} — в «{there.parent.name or '.'}». Разнесённый источник "
+                         f"правят реже производного, и тогда правят производное — то есть "
+                         f"пишут туда, что следующий прогон сотрёт (118)")
+    return found
+
+
+#: Разрез прозы пунктуацией: точка с пробелом, набор знаков конца фразы.
+#: Правило 144: у прозы окно — абзац, а границей служит разметка. Точка стоит
+#: в путях (`.github/workflows/pr-check.yml`) и в номерах версий, и разрез по
+#: ней рвёт именно ссылки — тот же класс, что в инциденте правила.
+PROSE_CUT = re.compile(r"""split\(\s*r?["'](?:\.\s|\[\.!\?\]|\\.\s)""")
+
+
+def prose_cut_by_punctuation(sources: dict[str, str]) -> list[str]:
+    """Разбор прозы, режущий её пунктуацией. Пусто — режут по разметке.
+
+    ПРАВИЛО 144. Витрина машинно разбирает написанную людьми прозу в трёх
+    местах, и все три режут по СТРУКТУРЕ: ``check_bindings`` берёт поля
+    вердикта целиком, ``check_roles`` — по строкам таблицы, ``build_metrics``
+    — по маркерам README. Точка в этих текстах встречается постоянно, и разрез
+    по ней рвал бы ровно ссылки.
+
+    РАЗОБРАНО НАДВОЕ по 182: судить, проза ли перед разбором, машина не может,
+    но узнать разрез по знакам конца фразы — может.
+
+    НАРУШЕНИЙ НЕТ И НА МОМЕНТ ЗАВЕДЕНИЯ НЕ БЫЛО: гейт стоит против завтрашней
+    правки, как ::shell_names, и это названо, а не выдано за находку.
+    """
+    return [f"{name}: строка {source[:m.start()].count(chr(10)) + 1} — проза режется "
+            f"пунктуацией. У прозы окно — абзац, а граница берётся у разметки: "
+            f"точка стоит в путях и версиях, и разрез по ней рвёт ссылки (144)"
+            for name, source in sorted(sources.items())
+            for m in PROSE_CUT.finditer(source)
+            # Подделка в наборе — данные: она лежит там, чтобы гейт её отверг.
+            if source[:m.start()].count(chr(10)) + 1 not in _selftest_lines(source)]
+
+
+def _selftest_lines(source: str) -> set[int]:
+    """Строки отрицательного набора. Пусто — набора в файле нет.
+
+    Подделки в наборе — ДАННЫЕ: они лежат там затем, чтобы гейт их отверг, и
+    судить их как код значит краснеть на собственной проверке. Граница берётся
+    у структуры файла (тело функции ``selftest``), а не у похожести текста.
+    """
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == "selftest":
+            return set(range(node.lineno, (node.end_lineno or node.lineno) + 1))
+    return set()
+
+
+#: Открывающий маркер витрины в образце разбора.
+MARKER_OPEN = re.compile(r"<!--\s*m:")
+#: Он же закрывающий. Правило 141: маркер сверяется ЦЕЛИКОМ, вместе с
+#: закрывающими знаками, иначе `m:rules` совпадёт с `m:required`.
+MARKER_CLOSE = re.compile(r"<!--\s*/\s*m:")
+
+
+def prefix_matched_markers(sources: dict[str, str]) -> list[str]:
+    """Образец, ищущий маркер витрины без закрывающей пары. Пусто — сверяют целиком.
+
+    ПРАВИЛО 141, И ЦЕНА У НЕГО ТИХАЯ. Ключи маркеров вложены друг в друга:
+    ``m:rules`` — начало ``m:required``… не совпадает, а вот ``m:rule`` и
+    ``m:rules`` совпадут началом. Образец, знающий только открывающий маркер,
+    подставит число в чужое место — и не пожалуется: подстановка удалась.
+
+    РАЗОБРАНО НАДВОЕ по 182. Судить, всякое ли сравнение в коде берёт предмет
+    целиком, машина не может — это свойство выражения, и увидит она его только
+    когда оно соврёт. Но у маркеров витрины предмет узкий и разбираемый: если
+    в исходнике есть образец с открывающим маркером, закрывающий обязан стоять
+    рядом. Это ровно та половина, что следует из данных.
+    """
+    found = []
+    for name, source in sorted(sources.items()):
+        # ПОДДЕЛКА В НАБОРЕ — ДАННЫЕ, А НЕ РАЗБОР. Гейт поймал сам себя на
+        # первом же прогоне: в его отрицательном наборе лежит образец без
+        # закрывающей пары — он там затем, чтобы гейт его отверг. Отбирать
+        # такие случаи по «похоже на тест» нельзя, поэтому граница берётся у
+        # структуры файла: строки внутри selftest пропускаются целиком.
+        skip = _selftest_lines(source)
+        for number, line in enumerate(source.splitlines(), 1):
+            if number in skip:
+                continue
+            if MARKER_OPEN.search(line) and not MARKER_CLOSE.search(line):
+                found.append(
+                    f"{name}: строка {number} — маркер витрины ищется без закрывающей "
+                    f"пары. Ключи вложены друг в друга, и совпадение началом подставит "
+                    f"число в чужое место молча: подстановка ведь удалась (141)")
+    return found
+
+
+#: Имя репозитория-соседа в прозе. Своё имя не предмет: о себе витрина
+#: рассказывает целиком и здесь.
+NEIGHBOUR = re.compile(r"(?<![\w/])(ArtVsMark/(?!ArtVsMark(?![\w-]))[A-Za-z0-9._-]+)")
+
+
+def foreign_why_links(documents: dict[str, str]) -> list[str]:
+    """Сосед, упомянутый в прозе без пути к его решению. Пусто — все ведут.
+
+    ПРАВИЛО 153, И ОНО РОДИЛОСЬ ЗДЕСЬ. scripts/build_metrics.py хранил у себя
+    обоснование ЧУЖОГО решения — почему каталог держит значок покрытия в ветке
+    по умолчанию. Через сутки каталог унёс значки на отдельную ветку: данные
+    починил гейт отказом 404, а объяснение осталось стоять уверенно и
+    починилось лишь потому, что человек его перечитал.
+
+    РАЗОБРАНО НАДВОЕ по 182. Отличить своё обоснование от чужого машина не
+    может — это смысл абзаца. Но проверить, что от имени соседа есть ПУТЬ к
+    его решению, может: пересказ без ссылки — это копия, и устаревает она
+    молча, а ссылка ведёт туда, где чужое решение живёт и меняется.
+
+    ГРАНИЦА: цитата кодом не предмет. `uses: Владелец/Имя/...` в примере и
+    строка чужой ошибки — не обоснование, а буквальный текст; требовать от них
+    ссылки значило бы ломать цитату (правило 051).
+    """
+    found = []
+    for name, text in sorted(documents.items()):
+        for match in NEIGHBOUR.finditer(text):
+            before = text[: match.start()]
+            # Внутри обратных кавычек — цитата, а не рассказ о чужом решении.
+            if before.count("`") % 2 == 1:
+                continue
+            # Внутри markdown-ссылки: последнее `](` не закрыто.
+            if "](" in before and before.rindex("](") > before.rfind(")"):
+                continue
+            line = before.count("\n") + 1
+            found.append(
+                f"{name}: строка {line} — сосед {match.group(1)} назван без пути к его "
+                f"решению. Чужое «почему» живёт у соседа и меняется у него: пересказ "
+                f"без ссылки — копия, и устаревает она молча (153)")
+    return found
+
+
+#: Слова, которыми прогон объявляет, чем ему служит расписание. Набор
+#: закрытый: «объявлено вслух» — это named-выбор из списка, а не любое слово,
+#: иначе гейт удовлетворяется случайным текстом.
+BACKUP_WORDS = ("страхов", "страхует", "не подстрах", "замер")
+#: События, от которых прогон просыпается помимо расписания.
+EVENT_TRIGGERS = ("push", "pull_request", "pull_request_target", "workflow_run",
+                  "issues", "release", "issue_comment")
+
+
+def schedule_as_backup(flows: dict[str, str]) -> list[str]:
+    """Прогон с расписанием И событием обязан сказать, страховка это или нет.
+
+    ПРАВИЛО 169. Расписание планировщика площадки говорит «когда-нибудь», а не
+    «раз в полчаса», поэтому рассуждение «событие потеряется — подхватит
+    расписание» неверно по построению; у механизма, объявленного страховкой,
+    обязан быть замер срабатываний.
+
+    РАЗОБРАНО НАДВОЕ по 182. Судить, СТРАХУЕТ ли расписание событие, машина не
+    может: это замысел автора. Но увидеть прогон, где оба повода стоят рядом, и
+    потребовать, чтобы автор сказал вслух, чем расписание ему служит, — может.
+    Пока не сказано, следующий читатель достроит сам, и достроит в сторону
+    «подстрахованы» — то есть в сторону запрещённого правилом рассуждения.
+
+    Гейт не судит ответ, а требует его наличия: это граница между «объявлено» и
+    «подразумевается», и она проверяема (правило 146).
+    """
+    found = []
+    for name, text in sorted(flows.items()):
+        events = _section(text, "on")
+        if "schedule:" not in events:
+            continue
+        together = [word for word in EVENT_TRIGGERS if f"{word}:" in events]
+        if not together:
+            continue
+        if any(word in text for word in BACKUP_WORDS):
+            continue
+        found.append(
+            f"{name}: расписание стоит рядом с событием ({', '.join(together)}), "
+            f"и чем оно тут служит — не сказано. Расписание площадки означает "
+            f"«когда-нибудь»: страховать им событие нельзя, а молчание читается "
+            f"как «подстраховано». Скажите вслух (169)")
+    return found
+
+
+#: Читатели записей проверок. Свёртка по имени у них ОДНА — scripts/checks.py:
+#: правило 009 было известно, помечено действующим и всё равно нарушено новым
+#: кодом, потому что жило выражением внутри функции (090).
+CHECK_RUNS = re.compile(r"check[-_]runs")
+
+
+def check_run_readers(sources: dict[str, str]) -> list[str]:
+    """Скрипт, читающий записи проверок мимо общей свёртки. Пусто — читают через неё.
+
+    ПРАВИЛО 009 И ЕГО ЦЕНА. GitHub отдаёт по одному имени столько записей,
+    сколько раз проверка запускалась, и ``total_count`` их складывает: витрина
+    показывала «32 проверки на PR», когда их шестнадцать. Число прожило сутки и
+    пережило пять сторонних обзоров.
+
+    Знание правила не помогло во второй раз: свёртка жила выражением внутри
+    функции, и конвейер слияния, написанный позже, посчитал по-своему.
+
+    РАЗОБРАНО НАДВОЕ по 182. Судить, правильно ли свёрнуты записи, машина не
+    может — это смысл выражения. Но увидеть, что файл вообще ТЯНЕТСЯ к записям
+    проверок, не взяв общий модуль, — может, и это тот самый признак, по
+    которому второй потребитель отличался от первого.
+
+    ЧИТАТЕЛЕЙ СЕЙЧАС НЕТ ВОВСЕ: конвейер слияния отдан автомержу площадки. Гейт
+    стоит против завтрашнего кода, и это названо, а не выдано за сегодняшнюю
+    находку — как у ::shell_names, заведённого на том же основании.
+    """
+    found = []
+    for name, source in sorted(sources.items()):
+        if name in ("checks.py", "check_mechanisms.py") or not CHECK_RUNS.search(source):
+            continue
+        try:
+            tree = ast.parse(source)
+        except SyntaxError:
+            continue
+        if "checks" not in _import_table(tree).values():
+            found.append(
+                f"{name}: читает записи проверок, не взяв общую свёртку из "
+                f"scripts/checks.py. По одному имени площадка отдаёт столько "
+                f"записей, сколько раз проверка запускалась, — счёт записей "
+                f"вместо имён уже стоил витрине «32 проверки» вместо 16 (009, 090)")
+    return found
+
+
+#: Кому в сборке позволено читать с диска то, что она же и записывает, — и
+#: ПОЧЕМУ каждому. Список — вход гейта, а не пояснение: функция вне его,
+#: потянувшаяся к своему выводу, становится находкой (правила 119, 125).
+OWN_OUTPUT_READERS = {
+    # Рукодельные SVG сборка не рисует и перерисовать не может: для шапки,
+    # печатающейся строки и разделителя файл и есть ИСТОЧНИК подписи.
+    "aria_label": "подпись рукодельной картинки — источник, а не вывод",
+    # Отпечаток нарисованного берётся из памяти; с диска — только рукодельное,
+    # по тому же доводу.
+    "asset_version": "отпечаток рукодельной картинки — источник, а не вывод",
+    # README смешанный: проза принадлежит человеку и служит источником, числа
+    # между маркерами пишет сборка и обратно НЕ читает.
+    "patch_readme": "проза README — источник; числа между маркерами не читаются обратно",
+}
+#: Что считается собственным выводом сборки.
+OWN_OUTPUT = re.compile(r"assets|README")
+#: Чтение с диска. `open` сюда не входит намеренно: в сборке его нет, а
+#: добавлять образец без предмета значит держать гейт на будущее вслепую.
+DISK_READ = ("read_text", "read_bytes")
+
+
+def own_output_readers(sources: dict[str, str]) -> list[str]:
+    """Функции сборки, читающие с диска её же вывод. Пусто — читают только названные.
+
+    ЗАЧЕМ. Генератор, читающий собственный вывод, делает единственным источником
+    значения его же прошлую копию (правило 125), а свой артефакт, попавший под
+    маску входа, обрабатывается наравне с входами (119). У витрины оба правила
+    стояли действующими и не держались ничем: довод «подпись берётся из памяти»
+    жил комментарием внутри ``sync_alt``, то есть до первой правки.
+
+    ГРАНИЦА НАЗВАНА, А НЕ УГАДЫВАЕТСЯ. Отличить чтение «ради свежести» от чтения
+    ради рукодельного файла машина не может — это замысел вызова. Поэтому
+    проверяется не смысл, а СПИСОК: кому позволено и почему, и он же печатается
+    в отказе. Появится четвёртый читатель — его придётся объявить вслух, и это
+    ровно тот момент, когда решение принимают, а не наследуют.
+    """
+    found = []
+    for name, source in sorted(sources.items()):
+        if name != "build_metrics.py":
+            continue
+        try:
+            tree = ast.parse(source)
+        except SyntaxError:
+            continue
+        for fn in (n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)):
+            if fn.name in OWN_OUTPUT_READERS:
+                continue
+            for node in ast.walk(fn):
+                if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                        and node.func.attr in DISK_READ):
+                    continue
+                line = ast.get_source_segment(source, node) or ""
+                if OWN_OUTPUT.search(line):
+                    found.append(
+                        f"{name}::{fn.name}: строка {node.lineno} читает с диска "
+                        f"собственный вывод сборки. Читателей трое и каждый назван: "
+                        f"{', '.join(sorted(OWN_OUTPUT_READERS))}. Четвёртый объявляется "
+                        f"вслух, с доводом, а не заводится молча (119, 125)")
+    return found
+
+
+#: Как режут правильно: общий помощник, у которого знак обрыва один на всё
+#: дерево. Имена исходные — разрешение идёт по импортам файла (правило 180).
+CLIPPERS = ("checks.clip", "checks.tail")
+
+
+def silent_truncation(sources: dict[str, str]) -> list[str]:
+    """Срез с константой внутри печатаемой строки. Пусто — режут с маркером.
+
+    ПРАВИЛО 016, И ПРЕДМЕТ БЫЛ ЖИВОЙ. Урезанный вывод, не сказавший, что он
+    урезан, выглядит ПОЛНЫМ. Восемь мест в гейтах витрины резали голым срезом:
+    тему коммита на 60 знаках (check_author, дважды), причину вердикта на 96
+    (check_bindings --queue), заголовок изменения на 52 (check_labels), текст
+    чужого отказа на 200 (gh_outcome). Читатель видел законченную фразу и не
+    знал, что у неё есть продолжение.
+
+    ГРАНИЦА — ПЕЧАТЬ, А НЕ ЛЮБОЙ СРЕЗ. ``hexdigest()[:8]`` — не урезанный
+    вывод, а короткий идентификатор; ``(поля + [""] * 4)[:4]`` — разбор записи.
+    Предмет опознаётся местом: срез ВНУТРИ f-строки, то есть на пути к
+    читателю. Ложный отказ здесь дороже пропуска — он заставил бы дописывать
+    многоточие к хешам (правило 051).
+
+    Вызов помощника срезом не считается: у ``checks.clip`` знак обрыва внутри.
+    """
+    found = []
+    for name, source in sorted(sources.items()):
+        try:
+            tree = ast.parse(source)
+        except SyntaxError:
+            continue
+        imports = _import_table(tree)
+        for shown in (n for n in ast.walk(tree) if isinstance(n, ast.JoinedStr)):
+            for node in ast.walk(shown):
+                if not isinstance(node, ast.Subscript) or not isinstance(node.slice, ast.Slice):
+                    continue
+                upper = node.slice.upper
+                if not isinstance(upper, ast.Constant) or not isinstance(upper.value, int):
+                    continue
+                found.append(
+                    f"{name}: строка {node.lineno} — вывод режется срезом [:{upper.value}] "
+                    f"без знака обрыва, и обрубок выглядит целым; режьте через "
+                    f"{' или '.join(CLIPPERS)} (016)")
+    return found
+
+
 def audit_runners(flows: dict[str, str]) -> list[str]:
     """Утверждения о прогонах, которые до 28 августа держались одной прозой.
 
@@ -906,6 +1259,84 @@ def selftest() -> int:
         ("переключатель по имени ветки", audit_workflows,
          {"open-pr.yml": "on:\n  push:\n    branches: ['agent/**']\n"}, True),
 
+        # ── маркер сверяется целиком, а не началом (правило 141) ──────────
+        ("маркер ищется без закрывающей пары", prefix_matched_markers,
+         {"a.py": 'rf"(<!--m:{key}-->).*"\n'}, True),
+        ("маркер сверяется вместе с закрывающим", prefix_matched_markers,
+         {"a.py": 'rf"(<!--m:{key}-->).*?(<!--/m:{key}-->)"\n'}, False),
+        ("маркеров нет вовсе — не предмет", prefix_matched_markers,
+         {"a.py": 'text.replace("a", "b")\n'}, False),
+
+        # ── проза режется по разметке, а не пунктуацией (правило 144) ──────
+        ("проза режется точкой с пробелом", prose_cut_by_punctuation,
+         {"a.py": 'parts = text.split(". ")\n'}, True),
+        ("проза режется набором знаков конца фразы", prose_cut_by_punctuation,
+         {"a.py": 'parts = re.split(r"[.!?]", text)\n'}, True),
+        ("разрез по разметке — законный", prose_cut_by_punctuation,
+         {"a.py": 'parts = re.split(r"\\n\\s*\\n", text)\n'}, False),
+        ("расширение файла точкой — не проза", prose_cut_by_punctuation,
+         {"a.py": 'stem = name.split(".")[0]\n'}, False),
+
+        # ── чужое «почему» — ссылкой, а не пересказом (правило 153) ───────
+        ("сосед назван без пути к решению", foreign_why_links,
+         {"a.md": "Каталог держит значок в ветке ArtVsMark/Engineering-Incidents-Playbook.\n"}, True),
+        ("сосед назван ссылкой", foreign_why_links,
+         {"a.md": "Так решил [каталог](https://github.com/ArtVsMark/Engineering-Incidents-Playbook).\n"}, False),
+        ("имя в цитате кодом — не обоснование", foreign_why_links,
+         {"a.md": "Строка отказа: `Permission to ArtVsMark/Other.git denied`.\n"}, False),
+        ("своё имя предметом не является", foreign_why_links,
+         {"a.md": "Витрина ArtVsMark/ArtVsMark собирает числа сама.\n"}, False),
+
+        # ── расписание рядом с событием объявляется вслух (правило 169) ───
+        ("расписание и событие молча", schedule_as_backup,
+         {"a.yml": "on:\n  schedule:\n    - cron: '0 4 * * *'\n  push:\n"}, True),
+        ("расписание и событие с объяснением", schedule_as_backup,
+         {"a.yml": "# расписание тут основной повод, событие ничего не страхует\n"
+                   "on:\n  schedule:\n    - cron: '0 4 * * *'\n  push:\n"}, False),
+        ("только расписание — объяснять нечего", schedule_as_backup,
+         {"a.yml": "on:\n  schedule:\n    - cron: '0 4 * * *'\n  workflow_dispatch:\n"}, False),
+        ("только событие — не предмет", schedule_as_backup,
+         {"a.yml": "on:\n  pull_request:\n"}, False),
+
+        # ── записи проверок читают через общую свёртку (правило 009) ───────
+        ("читает записи проверок мимо свёртки", check_run_readers,
+         {"a.py": "runs = _api('/repos/x/commits/y/check-runs')\n"}, True),
+        ("читает, взяв общий модуль", check_run_readers,
+         {"a.py": "import checks\nruns = _api('/repos/x/commits/y/check-runs')\n"}, False),
+        ("записей проверок не касается", check_run_readers,
+         {"a.py": "runs = _api('/repos/x/actions/runs')\n"}, False),
+
+        # ── свой вывод читают только названные (правила 119, 125) ─────────
+        ("новый читатель своего вывода", own_output_readers,
+         {"build_metrics.py": "def freshen():\n"
+                              "    return (ROOT / 'assets' / 'x.svg').read_text()\n"}, True),
+        ("названный читатель — законный", own_output_readers,
+         {"build_metrics.py": "def aria_label(svg):\n"
+                              "    return (ROOT / 'assets' / 'x.svg').read_text()\n"}, False),
+        ("чтение чужого файла — не предмет", own_output_readers,
+         {"build_metrics.py": "def flows():\n    return (ROOT / 'projects.json').read_text()\n"}, False),
+        ("чтение README новым читателем — предмет", own_output_readers,
+         {"build_metrics.py": "def peek():\n    return (ROOT / 'README.md').read_text()\n"}, True),
+        ("другой скрипт под правило не подпадает", own_output_readers,
+         {"check_page.py": "def peek():\n    return (ROOT / 'README.md').read_text()\n"}, False),
+
+        # ── урезанный вывод говорит, что он урезан (правило 016) ──────────
+        # Ложный отказ дороже пропуска: гейт, ругающийся на короткий хеш,
+        # заставил бы дописывать многоточие туда, где ничего не потеряно.
+        ("вывод режется срезом", silent_truncation,
+         {"a.py": 'print(f"тема: {subject[:60]}")'}, True),
+        ("режется через общий помощник", silent_truncation,
+         {"a.py": 'import checks\nprint(f"тема: {checks.clip(subject, 60)}")'}, False),
+        ("срез вне вывода — не предмет", silent_truncation,
+         {"a.py": 'short = digest[:8]\n'}, False),
+        ("короткий хеш в выводе — тоже срез, и это находка",
+         silent_truncation, {"a.py": 'print(f"{digest[:8]}")'}, True),
+        ("срез без верхней границы — не урезание",
+         silent_truncation, {"a.py": 'print(f"{items[1:]}")'}, False),
+        ("срез переменной длины гейту не виден — молчим, а не гадаем",
+         silent_truncation, {"a.py": 'print(f"{text[:width]}")'}, False),
+        ("файл не разобрался — молчим", silent_truncation, {"a.py": "def broken(:"}, False),
+
         # ── группа отмены называет голову (правило 179) ───────────────────
         # Ложный отказ здесь дороже пропуска ровно наоборот: группа без
         # отмены и прогон не от изменения — законные случаи, и требовать
@@ -1194,11 +1625,23 @@ def main() -> int:
         print(f"проверка не отработала: {e}", file=sys.stderr)
         return 2
 
+    # Проза, где рассказывают о решениях — своих и чужих. Список закрытый:
+    # обходить всё дерево значило бы требовать ссылок от цитат в наборах.
+    prose = {name: (ROOT / name).read_text(encoding="utf-8")
+             for name in ("CLAUDE.md", "HISTORY.md", "README.md",
+                          ".rules/README.md", ".rules/roles.md",
+                          ".rules/facts-contract.md")
+             if (ROOT / name).exists()}
+
     found = (audit_scripts(sources) + audit_calls(sources) + audit_voice(sources)
              + audit_gaps(rules) + audit_workflows(flows) + audit_runners(flows)
              + audit_harness(sources, flows) + audit_charter(ROOT)
              + audit_sparse(sources, flows) + audit_verdicts(sources)
              + audit_pipeline_labels(sources, flows) + shell_names(flows) + env_defaults(sources)
+             + silent_truncation(sources) + own_output_readers(sources)
+             + schedule_as_backup(flows) + check_run_readers(sources)
+             + foreign_why_links(prose) + prefix_matched_markers(sources)
+             + source_next_to_derived(ROOT) + prose_cut_by_punctuation(sources)
              + derived_findings((ROOT / "README.md").read_text(encoding="utf-8"), tracked))
     if found:
         print(checks.annotate("error", f"механизмы держат не то, что объявили: {len(found)}"), file=sys.stderr)
