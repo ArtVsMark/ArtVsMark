@@ -525,8 +525,22 @@ def _badge_files(repo: str, kind: str) -> list[str]:
             if absent.code != 404:
                 raise
             continue
-        found += [e["name"] for e in entries
-                  if e["type"] == "file" and marker in e["name"]]
+        for entry in entries:
+            if entry["type"] != "file" or marker not in entry["name"]:
+                continue
+            # ИМЯ НЕ ДОКАЗЫВАЕТ, ЧТО ЭТО ЗНАЧОК. У глоссария `coverage.json`
+            # четыре часа был shields-значком «99.2%», а потом стал отчётом о
+            # том, какая доля официального Python покрыта карточками, — другой
+            # предмет под тем же именем. Значок опознаётся полем `message`,
+            # которое shields и читает; ошибка чтения — «не значок», а не сбой:
+            # чужой файл вправе быть чем угодно.
+            path = f".github/badges/{entry['name']}" + ("?ref=badges" if ref else "")
+            try:
+                payload = _api(f"/repos/{repo}/contents/{path}")
+                if "message" in json.loads(base64.b64decode(payload["content"])):
+                    found.append(entry["name"])
+            except (urllib.error.HTTPError, ValueError, KeyError):
+                continue
     return sorted(set(found))
 
 
@@ -706,7 +720,19 @@ def badge_value(repo: str, answer: dict) -> str:
     else:
         path = f".github/badges/{answer['endpoint']}.json?ref=badges"
     payload = _api(f"/repos/{repo}/contents/{path}")
-    return json.loads(base64.b64decode(payload["content"]))["message"]
+    body = json.loads(base64.b64decode(payload["content"]))
+    if "message" not in body:
+        # ОТКАЗ НАЗЫВАЕТ ПРЕДМЕТ (правило 083). Голый KeyError печатался как
+        # «источник не ответил — 'message'»: ни репозитория, ни файла, ни того,
+        # что искали. Чинить по такому отказу нечего, а случай живой — сосед
+        # переиспользовал имя `coverage.json` под другой предмет.
+        raise SystemExit(
+            f"{repo}: файл {path.split('?')[0]} есть, но значком не является — "
+            f"в нём нет поля «message», которое читает shields.\n"
+            f"  Ключи файла: {', '.join(sorted(body)) or '—'}\n\n"
+            "  Имя файла не доказывает, ЧТО в нём лежит. Либо назовите другой\n"
+            "  значок, либо ответьте «none» с причиной.")
+    return body["message"]
 
 
 def project_badges(repo: str, answers: dict) -> list[tuple[str, str, str]]:
@@ -1173,7 +1199,7 @@ def renaming_finding(name: str, live: str, places: list[str]) -> str:
         return ""
     seen = sorted(set(places))
     return (f"{name} переименован в {live}, а имя записано в {len(seen)} местах: "
-            f"{', '.join(seen[:4])}{' …' if len(seen) > 4 else ''} (172)")
+            f"{checks.tail(seen, 4)} (172)")
 
 
 def renamed_repos(census: dict[str, list[str]]) -> list[str]:
@@ -1806,22 +1832,40 @@ def selftest() -> int:
     # краснеет ответ и по версии, которой там нет. Набор ЗОВЁТ проверку на
     # подставном дереве и смотрит на её ответ, а не повторяет условие
     # (правило 150).
+    # Файл называется значком по СОДЕРЖИМОМУ, а не по имени: у соседа
+    # `coverage.json` четыре часа был shields-значком, а потом стал отчётом о
+    # покрытии официального Python карточками — другой предмет под тем же
+    # именем. Подделка отдаёт и список, и тела файлов.
+    BADGE = {"schemaVersion": 1, "message": "99%"}
+    REPORT = {"schema": 1, "totals": {"ratio": 0.79}}
     absence_cases = [
         ("покрытие есть, версии нет — краснеет только покрытие",
-         ["coverage.json", "facts.json"], {"coverage": True, "version": False}),
+         {"coverage.json": BADGE, "facts.json": REPORT}, {"coverage": True, "version": False}),
         ("грейдерская форма имени тоже находится",
-         ["coverage-combined.json"], {"coverage": True, "version": False}),
-        ("значков нет вовсе — оба отказа законны", [], {"coverage": False, "version": False}),
+         {"coverage-combined.json": BADGE}, {"coverage": True, "version": False}),
+        ("значков нет вовсе — оба отказа законны", {}, {"coverage": False, "version": False}),
         ("обе публикации — краснеют оба",
-         ["coverage.json", "version.json"], {"coverage": True, "version": True}),
+         {"coverage.json": BADGE, "version.json": BADGE}, {"coverage": True, "version": True}),
+        ("имя значка при чужом предмете внутри — не значок",
+         {"coverage.json": REPORT}, {"coverage": False, "version": False}),
     ]
     saved_api = globals()["_api"]
+
+    def _fake(files):
+        """Ветка `badges` с этими файлами; ветки по умолчанию нет вовсе."""
+        def call(path):
+            where, _, query = path.partition("?")
+            if "ref=badges" not in query:
+                return []
+            if where.endswith("/badges"):
+                return [{"type": "file", "name": n} for n in files]
+            return {"content": base64.b64encode(
+                json.dumps(files[where.rsplit("/", 1)[-1]]).encode("utf-8")).decode()}
+        return call
+
     try:
         for name, files, expected in absence_cases:
-            globals()["_api"] = lambda path, _files=files: (
-                [{"type": "file", "name": n} for n in _files]
-                if "?ref=badges" in path else []
-            )
+            globals()["_api"] = _fake(files)
             for kind, must_reject in expected.items():
                 try:
                     verify_absence("o/r", kind, "предмета нет")
@@ -1834,10 +1878,7 @@ def selftest() -> int:
                 print(f"  {'отвергнут' if rejected else 'пропущен '} — отказ «{kind}»: {name}")
         # Отказ обязан НАЗЫВАТЬ найденное: «показатель публикуется» без имени
         # файла — это отказ, по которому нечего чинить (правило 083).
-        globals()["_api"] = lambda path: (
-            [{"type": "file", "name": "coverage-combined.json"}]
-            if "?ref=badges" in path else []
-        )
+        globals()["_api"] = _fake({"coverage-combined.json": BADGE})
         try:
             verify_absence("o/r", "coverage", "тестов нет")
         except SystemExit as refusal:

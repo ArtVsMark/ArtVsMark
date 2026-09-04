@@ -317,7 +317,8 @@ def selftest() -> int:
         got = label_for_subject(subject)
         if got != expected:
             broken.append(f"заголовок {subject!r}: ожидалась метка {expected!r}, вышла {got!r}")
-        print(f"  {got or '— не разобрано':<14} — {subject.strip()[:52] or '(пустой заголовок)'}")
+        print(f"  {got or '— не разобрано':<14} — "
+              f"{checks.clip(subject.strip(), 52) or '(пустой заголовок)'}")
 
     # Зоны, выводимые для `open-pr.yml`, — это тот же derive_zones, которым
     # гейт потом ПРОВЕРЯЕТ полноту. Один список на обе стороны (правило 090):
@@ -374,8 +375,8 @@ def selftest() -> int:
             want_mark = checks.annotate(level, "") if level else want_text
             if code != want_code or want_mark not in text:
                 broken.append(f"{name}: ожидалось {want_code}/{want_mark!r}, "
-                              f"вышло {code}/{text[:40]!r}")
-            print(f"  код {code}, {(want_mark or want_text)[:11]:<11} — {name}")
+                              f"вышло {code}/{checks.clip(text, 40)!r}")
+            print(f"  код {code}, {checks.clip(want_mark or want_text, 11):<11} — {name}")
     finally:
         os.environ.pop("GITHUB_ACTIONS", None)
         if saved is not None:

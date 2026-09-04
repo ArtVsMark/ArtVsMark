@@ -108,7 +108,7 @@ def refuted(rules: dict[str, dict], exists) -> list[str]:
         hits = exists(pattern)
         if hits:
             found.append(f"{number}: ответ «предмета нет» опровергается — {pattern} "
-                         f"существует ({', '.join(sorted(hits)[:3])}). Утверждение о "
+                         f"существует ({checks.tail(sorted(hits), 3)}). Утверждение о "
                          f"действительности устарело молча (175)")
     return found
 
@@ -271,7 +271,7 @@ def main() -> int:
         print(f"ответов «предмета нет»: {total}; проверяется опровержением "
               f"{total - len(queue)}, держится прозой {len(queue)}")
         for number, why in queue:
-            print(f"  {number}: {why[:96]}")
+            print(f"  {number}: {checks.clip(why, 96)}")
         return 0
 
     try:

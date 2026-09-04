@@ -125,7 +125,13 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
-          sparse-checkout: scripts/gh_outcome.py
+          # ВЫБОРКА БЕРЁТ И ТО, ЧТО ЗОВЁТ ВЗЯТОЕ (правила 090, 152): gh_outcome
+          # зовёт checks ради общего знака обрыва, и один файл без второго
+          # уронил бы прогон импортом. Держит это check_mechanisms::audit_sparse
+          # — он и нашёл обрыв в тот же заход, что появилась зависимость.
+          sparse-checkout: |
+            scripts/gh_outcome.py
+            scripts/checks.py
           sparse-checkout-cone-mode: false
 
       - name: состояние изменения
