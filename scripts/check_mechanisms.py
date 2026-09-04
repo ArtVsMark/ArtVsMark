@@ -459,6 +459,126 @@ def env_defaults(sources: dict[str, str]) -> list[str]:
     return found
 
 
+#: Производное и его источник. Пара — вход гейта: правило 118 требует, чтобы
+#: правящий видел оба, а видит он их, когда они лежат рядом.
+DERIVED_SOURCES = {"README.md": "projects.json"}
+
+
+def source_next_to_derived(root: pathlib.Path) -> list[str]:
+    """Источник лежит рядом с производным. Пусто — оба в одном каталоге.
+
+    ПРАВИЛО 118. Источник, унесённый в подкаталог, правят реже производного —
+    и тогда правят производное, то есть пишут в файл, который следующий прогон
+    перезапишет. У витрины предмет один: таблицу проектов в README собирает
+    сборка из ``projects.json``, и лежат они в корне рядом.
+
+    РАЗОБРАНО НАДВОЕ по 182. «Источник ли это по замыслу» машина не решит —
+    но соседство путей проверяется буквально, а именно оно и есть требование
+    правила. Гейт сломается ровно в тот день, когда источник унесут, оставив
+    производное на месте.
+    """
+    found = []
+    for derived, source in sorted(DERIVED_SOURCES.items()):
+        here, there = root / derived, root / source
+        if not here.exists() or not there.exists():
+            found.append(f"{derived} ← {source}: одного из двух нет в дереве "
+                         f"({'производного' if not here.exists() else 'источника'}) (118)")
+        elif here.parent != there.parent:
+            found.append(f"{derived} лежит в «{here.parent.name or '.'}», а его источник "
+                         f"{source} — в «{there.parent.name or '.'}». Разнесённый источник "
+                         f"правят реже производного, и тогда правят производное — то есть "
+                         f"пишут туда, что следующий прогон сотрёт (118)")
+    return found
+
+
+#: Разрез прозы пунктуацией: точка с пробелом, набор знаков конца фразы.
+#: Правило 144: у прозы окно — абзац, а границей служит разметка. Точка стоит
+#: в путях (`.github/workflows/pr-check.yml`) и в номерах версий, и разрез по
+#: ней рвёт именно ссылки — тот же класс, что в инциденте правила.
+PROSE_CUT = re.compile(r"""split\(\s*r?["'](?:\.\s|\[\.!\?\]|\\.\s)""")
+
+
+def prose_cut_by_punctuation(sources: dict[str, str]) -> list[str]:
+    """Разбор прозы, режущий её пунктуацией. Пусто — режут по разметке.
+
+    ПРАВИЛО 144. Витрина машинно разбирает написанную людьми прозу в трёх
+    местах, и все три режут по СТРУКТУРЕ: ``check_bindings`` берёт поля
+    вердикта целиком, ``check_roles`` — по строкам таблицы, ``build_metrics``
+    — по маркерам README. Точка в этих текстах встречается постоянно, и разрез
+    по ней рвал бы ровно ссылки.
+
+    РАЗОБРАНО НАДВОЕ по 182: судить, проза ли перед разбором, машина не может,
+    но узнать разрез по знакам конца фразы — может.
+
+    НАРУШЕНИЙ НЕТ И НА МОМЕНТ ЗАВЕДЕНИЯ НЕ БЫЛО: гейт стоит против завтрашней
+    правки, как ::shell_names, и это названо, а не выдано за находку.
+    """
+    return [f"{name}: строка {source[:m.start()].count(chr(10)) + 1} — проза режется "
+            f"пунктуацией. У прозы окно — абзац, а граница берётся у разметки: "
+            f"точка стоит в путях и версиях, и разрез по ней рвёт ссылки (144)"
+            for name, source in sorted(sources.items())
+            for m in PROSE_CUT.finditer(source)
+            # Подделка в наборе — данные: она лежит там, чтобы гейт её отверг.
+            if source[:m.start()].count(chr(10)) + 1 not in _selftest_lines(source)]
+
+
+def _selftest_lines(source: str) -> set[int]:
+    """Строки отрицательного набора. Пусто — набора в файле нет.
+
+    Подделки в наборе — ДАННЫЕ: они лежат там затем, чтобы гейт их отверг, и
+    судить их как код значит краснеть на собственной проверке. Граница берётся
+    у структуры файла (тело функции ``selftest``), а не у похожести текста.
+    """
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == "selftest":
+            return set(range(node.lineno, (node.end_lineno or node.lineno) + 1))
+    return set()
+
+
+#: Открывающий маркер витрины в образце разбора.
+MARKER_OPEN = re.compile(r"<!--\s*m:")
+#: Он же закрывающий. Правило 141: маркер сверяется ЦЕЛИКОМ, вместе с
+#: закрывающими знаками, иначе `m:rules` совпадёт с `m:required`.
+MARKER_CLOSE = re.compile(r"<!--\s*/\s*m:")
+
+
+def prefix_matched_markers(sources: dict[str, str]) -> list[str]:
+    """Образец, ищущий маркер витрины без закрывающей пары. Пусто — сверяют целиком.
+
+    ПРАВИЛО 141, И ЦЕНА У НЕГО ТИХАЯ. Ключи маркеров вложены друг в друга:
+    ``m:rules`` — начало ``m:required``… не совпадает, а вот ``m:rule`` и
+    ``m:rules`` совпадут началом. Образец, знающий только открывающий маркер,
+    подставит число в чужое место — и не пожалуется: подстановка удалась.
+
+    РАЗОБРАНО НАДВОЕ по 182. Судить, всякое ли сравнение в коде берёт предмет
+    целиком, машина не может — это свойство выражения, и увидит она его только
+    когда оно соврёт. Но у маркеров витрины предмет узкий и разбираемый: если
+    в исходнике есть образец с открывающим маркером, закрывающий обязан стоять
+    рядом. Это ровно та половина, что следует из данных.
+    """
+    found = []
+    for name, source in sorted(sources.items()):
+        # ПОДДЕЛКА В НАБОРЕ — ДАННЫЕ, А НЕ РАЗБОР. Гейт поймал сам себя на
+        # первом же прогоне: в его отрицательном наборе лежит образец без
+        # закрывающей пары — он там затем, чтобы гейт его отверг. Отбирать
+        # такие случаи по «похоже на тест» нельзя, поэтому граница берётся у
+        # структуры файла: строки внутри selftest пропускаются целиком.
+        skip = _selftest_lines(source)
+        for number, line in enumerate(source.splitlines(), 1):
+            if number in skip:
+                continue
+            if MARKER_OPEN.search(line) and not MARKER_CLOSE.search(line):
+                found.append(
+                    f"{name}: строка {number} — маркер витрины ищется без закрывающей "
+                    f"пары. Ключи вложены друг в друга, и совпадение началом подставит "
+                    f"число в чужое место молча: подстановка ведь удалась (141)")
+    return found
+
+
 #: Имя репозитория-соседа в прозе. Своё имя не предмет: о себе витрина
 #: рассказывает целиком и здесь.
 NEIGHBOUR = re.compile(r"(?<![\w/])(ArtVsMark/(?!ArtVsMark(?![\w-]))[A-Za-z0-9._-]+)")
@@ -1139,6 +1259,24 @@ def selftest() -> int:
         ("переключатель по имени ветки", audit_workflows,
          {"open-pr.yml": "on:\n  push:\n    branches: ['agent/**']\n"}, True),
 
+        # ── маркер сверяется целиком, а не началом (правило 141) ──────────
+        ("маркер ищется без закрывающей пары", prefix_matched_markers,
+         {"a.py": 'rf"(<!--m:{key}-->).*"\n'}, True),
+        ("маркер сверяется вместе с закрывающим", prefix_matched_markers,
+         {"a.py": 'rf"(<!--m:{key}-->).*?(<!--/m:{key}-->)"\n'}, False),
+        ("маркеров нет вовсе — не предмет", prefix_matched_markers,
+         {"a.py": 'text.replace("a", "b")\n'}, False),
+
+        # ── проза режется по разметке, а не пунктуацией (правило 144) ──────
+        ("проза режется точкой с пробелом", prose_cut_by_punctuation,
+         {"a.py": 'parts = text.split(". ")\n'}, True),
+        ("проза режется набором знаков конца фразы", prose_cut_by_punctuation,
+         {"a.py": 'parts = re.split(r"[.!?]", text)\n'}, True),
+        ("разрез по разметке — законный", prose_cut_by_punctuation,
+         {"a.py": 'parts = re.split(r"\\n\\s*\\n", text)\n'}, False),
+        ("расширение файла точкой — не проза", prose_cut_by_punctuation,
+         {"a.py": 'stem = name.split(".")[0]\n'}, False),
+
         # ── чужое «почему» — ссылкой, а не пересказом (правило 153) ───────
         ("сосед назван без пути к решению", foreign_why_links,
          {"a.md": "Каталог держит значок в ветке ArtVsMark/Engineering-Incidents-Playbook.\n"}, True),
@@ -1502,7 +1640,8 @@ def main() -> int:
              + audit_pipeline_labels(sources, flows) + shell_names(flows) + env_defaults(sources)
              + silent_truncation(sources) + own_output_readers(sources)
              + schedule_as_backup(flows) + check_run_readers(sources)
-             + foreign_why_links(prose)
+             + foreign_why_links(prose) + prefix_matched_markers(sources)
+             + source_next_to_derived(ROOT) + prose_cut_by_punctuation(sources)
              + derived_findings((ROOT / "README.md").read_text(encoding="utf-8"), tracked))
     if found:
         print(checks.annotate("error", f"механизмы держат не то, что объявили: {len(found)}"), file=sys.stderr)
