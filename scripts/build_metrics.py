@@ -625,14 +625,59 @@ def latest_tag(repo: str) -> str | None:
     return releases[0]["tag_name"] if releases else None
 
 
-def pypi_version(package: str) -> str:
-    """Версия пакета в PyPI. Источник чужой и объявлен ответом проекта."""
+def owns_package(repo: str, info: dict) -> bool:
+    """Ведёт ли пакет обратно на этот репозиторий.
+
+    ИМЯ — НЕ ДОКАЗАТЕЛЬСТВО ПРИНАДЛЕЖНОСТИ, и это оплачено. В ответе соседа
+    ``Claude-Code_Usage-Token`` стояло ``{"pypi": "claude-code-usage"}``, и на
+    витрине месяц висело «release/pypi **2.0.0**». Пакет с таким именем на PyPI
+    есть — только он чужой (``Maex-z9/CC_Usage``, автор Max), а у соседа
+    собственный выпуск ``v0.2.0``. Ошибка не выглядела ошибкой ни секунды:
+    правдоподобное число рядом с правдоподобным именем.
+
+    Проверка идёт ОБРАТНОЙ ссылкой: у пакета в метаданных объявлен репозиторий,
+    и он обязан совпасть с тем, о ком витрина рассказывает. Односторонняя связь
+    «мы назвали имя» доказывает только то, что имя занято — кем угодно.
+
+    Регистр не важен: PyPI отдаёт ссылки как их вписал издатель, а github.com
+    к регистру владельца и имени безразличен.
+
+    СРАВНИВАЕТСЯ СЕГМЕНТ ПУТИ, А НЕ ПОДСТРОКА. Первая редакция искала
+    ``github.com/o/r`` вхождением — и признавала своим ``github.com/o/r-fork``,
+    то есть ровно тот класс чужого, ради которого проверка и написана. Дефект
+    нашёлся подделкой в наборе, а не в жизни (правило 166: проверяя ссылку,
+    ищут ссылку).
+    """
+    links = [info.get("home_page") or ""]
+    links += [str(link) for link in (info.get("project_urls") or {}).values()]
+    # Хвост сегмента: конец строки, следующий сегмент пути, `.git`, якорь или
+    # параметры. Дефис и буква — уже другое имя репозитория.
+    pattern = re.compile(rf"github\.com/{re.escape(repo)}(?:[/#?.]|$)", re.I)
+    return any(pattern.search(link) for link in links)
+
+
+def pypi_version(repo: str, package: str) -> str:
+    """Версия пакета в PyPI — но только если пакет принадлежит репозиторию.
+
+    Источник чужой и объявлен ответом проекта; принадлежность проверяется, а не
+    принимается на веру (правило 146: не утверждать того, чего не проверяешь).
+    """
     url = f"https://pypi.org/pypi/{package}/json"
     with naming(url), urllib.request.urlopen(
         urllib.request.Request(url, headers={"User-Agent": "artvsmark-profile"}),
         timeout=30,
     ) as response:
-        return json.loads(response.read())["info"]["version"]
+        info = json.loads(response.read())["info"]
+    if not owns_package(repo, info):
+        raise SystemExit(
+            f"{repo}: пакет «{package}» на PyPI не ведёт обратно на этот репозиторий.\n"
+            f"  Пакет ссылается на: {info.get('project_urls') or info.get('home_page') or '—'}\n\n"
+            "  Совпадения имени мало: чужой пакет с похожим названием даёт\n"
+            "  правдоподобное число, и отличить его от своего читатель не может.\n"
+            "  Уберите «pypi» из ответа либо назовите пакет, который объявляет\n"
+            "  этот репозиторий своим."
+        )
+    return info["version"]
 
 
 def badge_value(repo: str, answer: dict) -> str:
@@ -717,7 +762,7 @@ def project_badges(repo: str, answers: dict) -> list[tuple[str, str, str]]:
             if "endpoint" in answer or "badge" in answer:
                 badges.append((BADGE_LABELS["release"], badge_value(repo, answer), "info"))
             elif "pypi" in answer:
-                badges.append((BADGE_LABELS["release"], pypi_version(answer["pypi"]), "info"))
+                badges.append((BADGE_LABELS["release"], pypi_version(repo, answer["pypi"]), "info"))
             else:
                 badges.append((BADGE_LABELS["release"], latest_tag(repo) or "—",
                                "info" if latest_tag(repo) else "muted"))
@@ -1704,6 +1749,39 @@ def selftest() -> int:
         if rejected is not must_reject:
             broken.append(f"показатели, {name}: ожидалось {'отказ' if must_reject else 'пропуск'}")
         print(f"  {'отвергнут' if rejected else 'пропущен '} — показатели: {name}")
+
+    # ── пакет обязан вести обратно на репозиторий ─────────────────────────
+    # Совпадения имени мало: чужой пакет с похожим названием даёт
+    # правдоподобное число, и месяц давал (release/pypi 2.0.0 у соседа, чей
+    # собственный выпуск — v0.2.0).
+    ownership_cases = [
+        ("репозиторий объявлен в Repository", "o/r",
+         {"project_urls": {"Repository": "https://github.com/o/r"}}, True),
+        ("репозиторий объявлен в Homepage", "o/r",
+         {"project_urls": {"Homepage": "https://github.com/o/r/"}}, True),
+        ("старое поле home_page тоже считается", "o/r",
+         {"home_page": "https://github.com/o/r"}, True),
+        ("регистр владельца не важен", "ArtVsMark/Repo",
+         {"project_urls": {"Repository": "https://github.com/artvsmark/repo"}}, True),
+        ("чужой пакет с похожим именем", "ArtVsMark/Claude-Code_Usage-Token",
+         {"project_urls": {"Repository": "https://github.com/Maex-z9/CC_Usage"}}, False),
+        ("ссылок нет вовсе", "o/r", {}, False),
+        ("ссылки пустые", "o/r", {"home_page": None, "project_urls": None}, False),
+        # Чужой репозиторий, имя которого НАЧИНАЕТСЯ с нашего. Первая редакция
+        # проверки искала подстроку и признавала его своим — случай заведён
+        # подделкой и сразу нашёл дефект.
+        ("чужой репозиторий с нашим именем в начале", "o/r",
+         {"project_urls": {"Repository": "https://github.com/o/r-fork-by-someone"}}, False),
+        ("страница задач своего репозитория — своя", "o/r",
+         {"project_urls": {"Issues": "https://github.com/o/r/issues"}}, True),
+        ("адрес для клона тоже свой", "o/r",
+         {"project_urls": {"Repository": "https://github.com/o/r.git"}}, True),
+    ]
+    for name, repo_name, info, must_own in ownership_cases:
+        got = owns_package(repo_name, info)
+        if got is not must_own:
+            broken.append(f"принадлежность пакета, {name}: ожидалось {must_own}, вышло {got}")
+        print(f"  {'свой  ' if got else 'чужой '} — пакет: {name}")
 
     # ── отказ по показателю сверяется со значком, а не с веткой ───────────
     # Ветка `badges` общая на все показатели: сосед заводит её ради покрытия, а
