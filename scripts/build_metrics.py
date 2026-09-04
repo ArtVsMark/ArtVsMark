@@ -494,21 +494,40 @@ BADGE_LABELS = {"release": "release/pypi", "ci": "CI",
                 "coverage": "coverage", "version": "version"}
 
 
-def _badge_files(repo: str) -> list[str]:
-    """Имена значков в ветке по умолчанию. Пусто — каталога значков нет.
+#: По какому слову узнаётся значок показателя. Имя целиком не годится: грейдер
+#: публикует покрытие как ``coverage-combined.json``, а каталог правил — как
+#: ``coverage.json``. Слово — минимум, который у обоих общий.
+BADGE_MARKERS = {"coverage": "coverage", "version": "version"}
 
-    404 здесь — законный ответ «такого каталога нет», а не сбой: у большинства
+
+def _badge_files(repo: str, kind: str) -> list[str]:
+    """Значки ПОКАЗАТЕЛЯ — в обеих ветках, где их кладут. Пусто — значка нет.
+
+    ПОКАЗАТЕЛЬ, А НЕ «ЛЮБОЙ ЗНАЧОК». Прежняя версия фильтровала имена по слову
+    ``coverage`` — всегда, каким бы ни был показатель, — и вызывалась в том
+    числе проверкой версии. То есть на вопрос «публикует ли сосед версию»
+    отвечала находкой файла ПОКРЫТИЯ. В докстроке при этом стояло «значок
+    версии»: список был в прозе, а в коде — одно слово из двух.
+
+    ОБЕ ВЕТКИ, А НЕ ОДНА. Значок кладут либо на отдельную ``badges``, либо
+    рядом с кодом; спрашивать одну значит пропускать половину случаев.
+
+    404 — законный ответ «такого каталога нет», а не сбой: у большинства
     репозиториев значков не бывает вовсе. Остальные коды поднимаются, иначе
     молчаливый except спрячет сеть и права (правило 039).
     """
-    try:
-        entries = _api(f"/repos/{repo}/contents/.github/badges")
-    except urllib.error.HTTPError as absent:
-        if absent.code != 404:
-            raise
-        return []
-    return [e["name"] for e in entries
-            if e["type"] == "file" and "coverage" in e["name"]]
+    marker = BADGE_MARKERS[kind]
+    found: list[str] = []
+    for ref in ("?ref=badges", ""):
+        try:
+            entries = _api(f"/repos/{repo}/contents/.github/badges{ref}")
+        except urllib.error.HTTPError as absent:
+            if absent.code != 404:
+                raise
+            continue
+        found += [e["name"] for e in entries
+                  if e["type"] == "file" and marker in e["name"]]
+    return sorted(set(found))
 
 
 def verify_absence(repo: str, kind: str, why: str) -> None:
@@ -548,30 +567,26 @@ def verify_absence(repo: str, kind: str, why: str) -> None:
             found = f"прогоны в репозитории есть и в причине не названы: {', '.join(sorted(unnamed))}"
         else:
             return
-    elif kind == "coverage":
-        # Обе площадки, а не одна: с тех пор как значок научились класть в
-        # ветку по умолчанию, проверка только ветки `badges` пропускала бы
-        # ровно тот случай, ради которого она написана. Так и вышло у каталога
-        # правил: покрытие появилось в main, а ответ витрины ещё говорил
-        # «тестов нет».
-        branches = _api(f"/repos/{repo}/branches?per_page=100")
-        if any(branch["name"] == "badges" for branch in branches):
-            found = "ветка badges существует, значит показатель публикуется"
-        elif _badge_files(repo):
-            found = "в ветке по умолчанию лежит значок покрытия"
-        else:
-            return
-    elif kind == "version":
-        # Проверяется тем же способом, что и покрытие: версию публикуют значком,
-        # и значок либо есть, либо нет. До 27 августа непроверяемым здесь был
-        # «пакет» — у него при отказе не объявлено имя, и спросить PyPI не о чем.
-        # Пакет теперь входит в «release», и его отсутствие проверяется выпусками
-        # площадки.
-        branches = _api(f"/repos/{repo}/branches?per_page=100")
-        if any(branch["name"] == "badges" for branch in branches):
-            found = "ветка badges существует, значит показатель публикуется"
-        elif _badge_files(repo):
-            found = "в ветке по умолчанию лежит значок версии"
+    elif kind in BADGE_MARKERS:
+        # ЗНАЧОК, А НЕ ВЕТКА. Прежде отказ выносился по существованию ветки
+        # `badges`: раз она есть — «показатель публикуется». Ветка общая на все
+        # показатели, и у первого же соседа, который завёл её ради одного из
+        # них, ответ покраснел бы по всем четырём. Так и вышло у глоссария
+        # 4 сентября: ветка появилась вместе с покрытием и фактами, версии в
+        # ней нет и не планируется, а гейт требовал бы её ровно так же.
+        #
+        # Обе площадки, а не одна: с тех пор как значок научились класть рядом
+        # с кодом, вопрос только к `badges` пропускал бы ровно тот случай, ради
+        # которого проверка написана. Так вышло у каталога правил: покрытие
+        # появилось в main, а ответ витрины ещё говорил «тестов нет».
+        #
+        # Версия попадает сюда тем же путём, что и покрытие. До 27 августа
+        # непроверяемым здесь был «пакет» — у него при отказе не объявлено имя,
+        # и спросить PyPI не о чем. Пакет теперь входит в «release», и его
+        # отсутствие проверяется выпусками площадки.
+        published = _badge_files(repo, kind)
+        if published:
+            found = f"значок публикуется: {', '.join(published)}"
         else:
             return
     else:
@@ -610,14 +625,59 @@ def latest_tag(repo: str) -> str | None:
     return releases[0]["tag_name"] if releases else None
 
 
-def pypi_version(package: str) -> str:
-    """Версия пакета в PyPI. Источник чужой и объявлен ответом проекта."""
+def owns_package(repo: str, info: dict) -> bool:
+    """Ведёт ли пакет обратно на этот репозиторий.
+
+    ИМЯ — НЕ ДОКАЗАТЕЛЬСТВО ПРИНАДЛЕЖНОСТИ, и это оплачено. В ответе соседа
+    ``Claude-Code_Usage-Token`` стояло ``{"pypi": "claude-code-usage"}``, и на
+    витрине месяц висело «release/pypi **2.0.0**». Пакет с таким именем на PyPI
+    есть — только он чужой (``Maex-z9/CC_Usage``, автор Max), а у соседа
+    собственный выпуск ``v0.2.0``. Ошибка не выглядела ошибкой ни секунды:
+    правдоподобное число рядом с правдоподобным именем.
+
+    Проверка идёт ОБРАТНОЙ ссылкой: у пакета в метаданных объявлен репозиторий,
+    и он обязан совпасть с тем, о ком витрина рассказывает. Односторонняя связь
+    «мы назвали имя» доказывает только то, что имя занято — кем угодно.
+
+    Регистр не важен: PyPI отдаёт ссылки как их вписал издатель, а github.com
+    к регистру владельца и имени безразличен.
+
+    СРАВНИВАЕТСЯ СЕГМЕНТ ПУТИ, А НЕ ПОДСТРОКА. Первая редакция искала
+    ``github.com/o/r`` вхождением — и признавала своим ``github.com/o/r-fork``,
+    то есть ровно тот класс чужого, ради которого проверка и написана. Дефект
+    нашёлся подделкой в наборе, а не в жизни (правило 166: проверяя ссылку,
+    ищут ссылку).
+    """
+    links = [info.get("home_page") or ""]
+    links += [str(link) for link in (info.get("project_urls") or {}).values()]
+    # Хвост сегмента: конец строки, следующий сегмент пути, `.git`, якорь или
+    # параметры. Дефис и буква — уже другое имя репозитория.
+    pattern = re.compile(rf"github\.com/{re.escape(repo)}(?:[/#?.]|$)", re.I)
+    return any(pattern.search(link) for link in links)
+
+
+def pypi_version(repo: str, package: str) -> str:
+    """Версия пакета в PyPI — но только если пакет принадлежит репозиторию.
+
+    Источник чужой и объявлен ответом проекта; принадлежность проверяется, а не
+    принимается на веру (правило 146: не утверждать того, чего не проверяешь).
+    """
     url = f"https://pypi.org/pypi/{package}/json"
     with naming(url), urllib.request.urlopen(
         urllib.request.Request(url, headers={"User-Agent": "artvsmark-profile"}),
         timeout=30,
     ) as response:
-        return json.loads(response.read())["info"]["version"]
+        info = json.loads(response.read())["info"]
+    if not owns_package(repo, info):
+        raise SystemExit(
+            f"{repo}: пакет «{package}» на PyPI не ведёт обратно на этот репозиторий.\n"
+            f"  Пакет ссылается на: {info.get('project_urls') or info.get('home_page') or '—'}\n\n"
+            "  Совпадения имени мало: чужой пакет с похожим названием даёт\n"
+            "  правдоподобное число, и отличить его от своего читатель не может.\n"
+            "  Уберите «pypi» из ответа либо назовите пакет, который объявляет\n"
+            "  этот репозиторий своим."
+        )
+    return info["version"]
 
 
 def badge_value(repo: str, answer: dict) -> str:
@@ -702,7 +762,7 @@ def project_badges(repo: str, answers: dict) -> list[tuple[str, str, str]]:
             if "endpoint" in answer or "badge" in answer:
                 badges.append((BADGE_LABELS["release"], badge_value(repo, answer), "info"))
             elif "pypi" in answer:
-                badges.append((BADGE_LABELS["release"], pypi_version(answer["pypi"]), "info"))
+                badges.append((BADGE_LABELS["release"], pypi_version(repo, answer["pypi"]), "info"))
             else:
                 badges.append((BADGE_LABELS["release"], latest_tag(repo) or "—",
                                "info" if latest_tag(repo) else "muted"))
@@ -1179,9 +1239,17 @@ def unmet_contexts(required: list[str], declared: set[str]) -> list[str]:
     СВЕРКА ИДЁТ ОТ НАСТРОЙКИ К ДЕРЕВУ, а не наоборот: работ в дереве больше,
     чем обязательных проверок, и это законно — лишняя работа никого не
     блокирует, а недостающая блокирует всё (правила 168 и 171).
+
+    ОТКАЗ НАЗЫВАЕТ ОБЕ СТОРОНЫ РАСХОЖДЕНИЯ, а не только недостающее имя. Это
+    половина правила 178, которая следует из данных целиком: судить, «меряют ли
+    источники разное», машина не может, но положить оба списка рядом — может, и
+    без этого читатель достраивает вторую сторону по памяти. Инцидент 22 августа
+    был ровно таким: имя `check` против `PR check` — расхождение в одном слове,
+    и глазами оно не читается, пока списки не окажутся в одной строке.
     """
     return [f"обязательная проверка {name!r} не создаётся ни одной работой — "
-            f"изменение встанет навсегда, и снаружи это выглядит как «ещё бежит» (168)"
+            f"изменение встанет навсегда, и снаружи это выглядит как «ещё бежит» "
+            f"(168). Работы в дереве: {', '.join(sorted(declared)) or '—'}"
             for name in sorted(set(required) - declared)]
 
 
@@ -1283,10 +1351,20 @@ def sync_bindings(export: dict, write: bool = True) -> str:
         answer["rules"] = {key: rules[key] for key in sorted(rules)}
         BINDINGS.write_text(json.dumps(answer, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     unreviewed = sum(1 for binding in rules.values() if binding["status"] == "unreviewed")
+    # Правил каталога, на которые ответа нет вовсе. Это число знает только
+    # сборка — check_bindings живёт без сети и печатать его не вправе. До
+    # записи файла оно ненулевое, после — сходится к нулю: дописанное
+    # становится «не рассмотрено», то есть долг переезжает, а не исчезает (177).
+    unanswered = len(added) if not write else 0
+    unheld = sum(1 for binding in rules.values()
+                 if binding["status"] == "active" and binding.get("mechanism") == "none")
     left = orphaned(export, rules)
     tail = f", ответ без правила: {', '.join(left)}" if left else ""
-    return (f"ответ каталогу: записей {len(rules)}, нерассмотренных {unreviewed}, "
-            f"дописано {len(added)}{tail}")
+    # Долг называется ПЕРВЫМ, до числа записей: незакрытая работа по правилам
+    # идёт впереди новой, и увидеть её надо раньше, чем список нового (177).
+    return (f"долг по правилам: без ответа {unanswered} · не рассмотрено {unreviewed} · "
+            f"держится ничем {unheld}\n"
+            f"ответ каталогу: записей {len(rules)}, дописано {len(added)}{tail}")
 
 
 def orphaned(export: dict, rules: dict) -> list[str]:
@@ -1690,6 +1768,86 @@ def selftest() -> int:
             broken.append(f"показатели, {name}: ожидалось {'отказ' if must_reject else 'пропуск'}")
         print(f"  {'отвергнут' if rejected else 'пропущен '} — показатели: {name}")
 
+    # ── пакет обязан вести обратно на репозиторий ─────────────────────────
+    # Совпадения имени мало: чужой пакет с похожим названием даёт
+    # правдоподобное число, и месяц давал (release/pypi 2.0.0 у соседа, чей
+    # собственный выпуск — v0.2.0).
+    ownership_cases = [
+        ("репозиторий объявлен в Repository", "o/r",
+         {"project_urls": {"Repository": "https://github.com/o/r"}}, True),
+        ("репозиторий объявлен в Homepage", "o/r",
+         {"project_urls": {"Homepage": "https://github.com/o/r/"}}, True),
+        ("старое поле home_page тоже считается", "o/r",
+         {"home_page": "https://github.com/o/r"}, True),
+        ("регистр владельца не важен", "ArtVsMark/Repo",
+         {"project_urls": {"Repository": "https://github.com/artvsmark/repo"}}, True),
+        ("чужой пакет с похожим именем", "ArtVsMark/Claude-Code_Usage-Token",
+         {"project_urls": {"Repository": "https://github.com/Maex-z9/CC_Usage"}}, False),
+        ("ссылок нет вовсе", "o/r", {}, False),
+        ("ссылки пустые", "o/r", {"home_page": None, "project_urls": None}, False),
+        # Чужой репозиторий, имя которого НАЧИНАЕТСЯ с нашего. Первая редакция
+        # проверки искала подстроку и признавала его своим — случай заведён
+        # подделкой и сразу нашёл дефект.
+        ("чужой репозиторий с нашим именем в начале", "o/r",
+         {"project_urls": {"Repository": "https://github.com/o/r-fork-by-someone"}}, False),
+        ("страница задач своего репозитория — своя", "o/r",
+         {"project_urls": {"Issues": "https://github.com/o/r/issues"}}, True),
+        ("адрес для клона тоже свой", "o/r",
+         {"project_urls": {"Repository": "https://github.com/o/r.git"}}, True),
+    ]
+    for name, repo_name, info, must_own in ownership_cases:
+        got = owns_package(repo_name, info)
+        if got is not must_own:
+            broken.append(f"принадлежность пакета, {name}: ожидалось {must_own}, вышло {got}")
+        print(f"  {'свой  ' if got else 'чужой '} — пакет: {name}")
+
+    # ── отказ по показателю сверяется со значком, а не с веткой ───────────
+    # Ветка `badges` общая на все показатели: сосед заводит её ради покрытия, а
+    # краснеет ответ и по версии, которой там нет. Набор ЗОВЁТ проверку на
+    # подставном дереве и смотрит на её ответ, а не повторяет условие
+    # (правило 150).
+    absence_cases = [
+        ("покрытие есть, версии нет — краснеет только покрытие",
+         ["coverage.json", "facts.json"], {"coverage": True, "version": False}),
+        ("грейдерская форма имени тоже находится",
+         ["coverage-combined.json"], {"coverage": True, "version": False}),
+        ("значков нет вовсе — оба отказа законны", [], {"coverage": False, "version": False}),
+        ("обе публикации — краснеют оба",
+         ["coverage.json", "version.json"], {"coverage": True, "version": True}),
+    ]
+    saved_api = globals()["_api"]
+    try:
+        for name, files, expected in absence_cases:
+            globals()["_api"] = lambda path, _files=files: (
+                [{"type": "file", "name": n} for n in _files]
+                if "?ref=badges" in path else []
+            )
+            for kind, must_reject in expected.items():
+                try:
+                    verify_absence("o/r", kind, "предмета нет")
+                    rejected = False
+                except SystemExit:
+                    rejected = True
+                if rejected is not must_reject:
+                    broken.append(f"отказ по «{kind}», {name}: "
+                                  f"ожидалось {'отказ' if must_reject else 'пропуск'}")
+                print(f"  {'отвергнут' if rejected else 'пропущен '} — отказ «{kind}»: {name}")
+        # Отказ обязан НАЗЫВАТЬ найденное: «показатель публикуется» без имени
+        # файла — это отказ, по которому нечего чинить (правило 083).
+        globals()["_api"] = lambda path: (
+            [{"type": "file", "name": "coverage-combined.json"}]
+            if "?ref=badges" in path else []
+        )
+        try:
+            verify_absence("o/r", "coverage", "тестов нет")
+        except SystemExit as refusal:
+            if "coverage-combined.json" not in str(refusal):
+                broken.append("отказ по покрытию не называет найденный значок")
+        else:
+            broken.append("отказ по покрытию не вынесен при живом значке")
+    finally:
+        globals()["_api"] = saved_api
+
     # Обязательный список, объявленный в данных, тоже проверяется: показатель,
     # которого сборка не умеет, — это опечатка, тихо снимающая требование.
     try:
@@ -1812,6 +1970,14 @@ def selftest() -> int:
     unmet = unmet_contexts(["PR check"], {"check"})
     if not (unmet and "'PR check'" in unmet[0]):
         broken.append("обязательные проверки: отказ не называет имя несозданной проверки")
+    # ...и ВТОРУЮ сторону расхождения тоже (правило 178): без списка работ в
+    # дереве читатель достраивает его по памяти, а расхождение здесь бывает в
+    # одно слово — `check` против `PR check`.
+    if not (unmet and "check" in unmet[0].split("Работы в дереве:")[-1]):
+        broken.append("обязательные проверки: отказ не называет вторую сторону расхождения")
+    empty = unmet_contexts(["PR check"], set())
+    if not (empty and "—" in empty[0]):
+        broken.append("обязательные проверки: пустая сторона не названа состоянием")
 
     # ── перепись имён репозиториев ────────────────────────────────────────
     # Переименование держит площадка, отключить редирект нельзя, и сигнала о

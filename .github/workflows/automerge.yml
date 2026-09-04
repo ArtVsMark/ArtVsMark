@@ -72,8 +72,14 @@ permissions:
   contents: read
   pull-requests: read
 
+# Голова в имени группы по правилу 179: события изменения доставляются не в том
+# порядке, в каком сделаны коммиты, и прогон на устаревшей голове вытеснял бы
+# прогон на актуальной. Здесь цена мягче, чем у обязательной проверки, — тупика
+# с отсутствующим именем не будет, — но состояние застынет так же: решение об
+# автомерже вынесет прогон, видевший не ту голову.
 concurrency:
-  group: automerge-${{ github.event.pull_request.number || inputs.pr }}
+  group: automerge-${{ github.event.pull_request.number || inputs.pr }}-${{
+    github.event.pull_request.head.sha || github.sha }}
   cancel-in-progress: true
 
 jobs:
