@@ -238,9 +238,13 @@ jobs:
       - name: Тело изменения несёт атрибуцию
         env:
           BODY: ${{ github.event.pull_request.body }}
+          # Автор изменения, а не коммитов: описание пишет тот, кто открыл. У
+          # dependabot хвостового блока в теле нет и дописать его некому (051).
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
         run: |
           printf '%s\n' "$BODY" > "$RUNNER_TEMP/pr-body.md"
-          python scripts/check_author.py --body-file="$RUNNER_TEMP/pr-body.md"
+          python scripts/check_author.py --body-file="$RUNNER_TEMP/pr-body.md" \
+            --author="$PR_AUTHOR"
 
       # Трейлеры — предмет каталога, а не наш: логика живёт там и подключается
       # ссылкой на версию. Своей копии не заводим (правило 090); подключение

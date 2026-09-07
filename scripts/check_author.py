@@ -61,8 +61,15 @@ REMEDY = (
 )
 
 
-def body_attribution(body: str) -> str:
+def body_attribution(body: str, author: str = "") -> str:
     """Претензия к телу изменения, если атрибуции в нём нет. Пусто — есть.
+
+    С МАШИНЫ ТЕЛА НЕ СПРАШИВАЮТ. Описание изменения dependabot пишет площадка:
+    хвостового блока в нём нет и не будет, дописать его некому — бот не
+    напишет, а человек не станет править чужое тело, которое бот перезапишет
+    следующим прогоном. Это третий гейт подряд, у которого нашлось требование
+    невозможного (051), и здесь оно предусмотрено ДО первого красного, а не
+    после.
 
     ЗАЧЕМ ТРЕТИЙ ПРЕДМЕТ, ЕСЛИ ДВА УЖЕ ЕСТЬ. Пока площадка склеивает сообщение
     слияния из коммитов ветки (``squash_merge_commit_message =
@@ -82,6 +89,8 @@ def body_attribution(body: str) -> str:
     Спрашивается наличие, а не согласованность имени: список согласованных —
     предмет гейта каталога, второй копии здесь не заводится (правило 090).
     """
+    if author and checks.machine_made(author):
+        return ""
     found = checks.trailers(body)
     if "co-authored-by" not in found:
         return ("тело изменения не несёт соавторства: после перехода на PR_BODY "
@@ -149,6 +158,22 @@ def selftest() -> int:
     ]
     for name, body, must_reject in body_cases:
         said = body_attribution(body)
+        if bool(said) is not must_reject:
+            broken.append(f"тело изменения, {name}: ожидалось "
+                          f"{'отказ' if must_reject else 'пропуск'}, вышло {said!r}")
+        print(f"  {'отвергнуто' if said else 'принято   '} — тело изменения: {name}")
+
+    # Тело машинного изменения пишет площадка: хвостового блока там нет и
+    # дописать его некому. Обратная сторона обязательна — живой автор с тем же
+    # телом обязан быть отвергнут, иначе освобождение накрыло бы всех.
+    author_cases = [
+        ("тело бота без хвоста", "Bumps the actions group.", "dependabot[bot]", False),
+        ("тело прогона без хвоста", "Пересобранные метрики.", "github-actions[bot]", False),
+        ("живой автор с тем же телом", "Bumps the actions group.", "ArtVsMark", True),
+        ("автор не назван — судим по телу", "Bumps the actions group.", "", True),
+    ]
+    for name, body, author, must_reject in author_cases:
+        said = body_attribution(body, author)
         if bool(said) is not must_reject:
             broken.append(f"тело изменения, {name}: ожидалось "
                           f"{'отказ' if must_reject else 'пропуск'}, вышло {said!r}")
@@ -239,6 +264,10 @@ def main() -> int:
     # порвётся о цитирование оболочки.
     body_file = next((a.removeprefix("--body-file=") for a in argv
                       if a.startswith("--body-file=")), "")
+    # Автор изменения приходит рядом с телом: по нему решается, есть ли кому
+    # писать хвостовой блок. Пусто — судим по телу, то есть строже.
+    body_author = next((a.removeprefix("--author=") for a in argv
+                        if a.startswith("--author=")), "")
     if body_file:
         try:
             body = pathlib.Path(body_file).read_text(encoding="utf-8")
@@ -246,7 +275,7 @@ def main() -> int:
             print(checks.annotate("error", f"проверка не отработала: тело изменения "
                                   f"не прочитано ({body_file}) — {e}"), file=sys.stderr)
             return 2
-        said = body_attribution(body)
+        said = body_attribution(body, body_author)
         if said:
             print(checks.annotate("error", f"атрибуция в теле изменения: {said}"),
                   file=sys.stderr)
@@ -256,7 +285,9 @@ def main() -> int:
                   "  строк «Ключ: значение» — проза внутри него отменяет весь блок.",
                   file=sys.stderr)
             return 1
-        print("тело изменения несёт атрибуцию: соавтор и след сессии на месте")
+        print("тело изменения несёт атрибуцию: соавтор и след сессии на месте"
+              if not (body_author and checks.machine_made(body_author))
+              else f"тело написала машина ({body_author}) — хвостового блока с неё не спрашивают")
         return 0
 
     rng = next((a for a in argv if not a.startswith("-")), "origin/main..HEAD")
