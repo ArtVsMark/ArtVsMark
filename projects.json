@@ -83,7 +83,7 @@
           "workflow": "ci.yml"
         },
         "coverage": {
-          "none": "покрытие не публикуется: CI у проекта появился 28 августа, значка покрытия он пока не собирает"
+          "endpoint": "coverage"
         },
         "version": {
           "endpoint": "version"
