@@ -55,8 +55,23 @@ def touched(paths: list[str]) -> list[str]:
     return [p for p in paths if any(rx.match(p) for rx in BEHAVIOUR)]
 
 
-def audit(paths: list[str], messages: str) -> tuple[list[str], str]:
+def audit(paths: list[str], messages: str, authors: list[str] | None = None) -> tuple[list[str], str]:
     """Претензия к заходу и причина осознанного отказа, если она названа.
+
+    ЧТО ДЕЛАЕТ ТРЕТИЙ ДОВОД. Гейт требует запись о РЕШЕНИИ, а машина решений не
+    принимает: dependabot поднял SHA-пин чужого действия в pr-check.yml — по
+    списку BEHAVIOUR это правка поведения, и изменение #134 встало намертво.
+    Записать в журнал было нечего, а строку освобождения писать некому: бот её
+    не напишет, человек в чужое изменение не допишет — оно перезаписывается
+    следующим прогоном бота.
+
+    Освобождение даётся по АВТОРУ, а не по имени ветки: имя бот выбирает сам и
+    может сменить формат, учётная запись площадки устойчива. Список
+    освобождённых закрыт и лежит в scripts/checks.py::MACHINE_AUTHORS — это
+    признание «требовать нечего», а не «боту можно» (правило 051).
+
+    Довод односторонний: хоть один живой автор в диапазоне — журнал требуется
+    со всех. Иначе бот, подмешавшийся в человеческий заход, освободил бы его.
 
     Вынесено из ``main``, чтобы проверять на подставных наборах, не ходя в git.
     """
@@ -68,6 +83,8 @@ def audit(paths: list[str], messages: str) -> tuple[list[str], str]:
         return [], ""
     if waiver:
         return [], waiver.group("why").strip()
+    if authors and all(checks.machine_made(a) for a in authors):
+        return [], "правку сделала машина: решения она не принимает, записывать нечего"
     return [f"поведение правится без записи в журнале: "
             f"{checks.tail(behaviour, 5)}"], ""
 
@@ -106,6 +123,33 @@ def selftest() -> int:
     broken = []
     for name, paths, messages, must_reject in cases:
         found, _ = audit(paths, messages)
+
+    # ── у машины журнала не требуют (правило 051) ─────────────────────────
+    # Бот не принимает решений, и записывать ему нечего; строку освобождения
+    # тоже писать некому — его изменение перезаписывается следующим прогоном.
+    # Обратная сторона важнее: один живой автор в заходе возвращает требование
+    # всем, иначе подмешавшийся бот освободил бы человека.
+    machine_cases = [
+        ("правка бота без записи", ["scripts/a.py"], ["dependabot[bot]"], False),
+        ("прогон площадки", [".github/workflows/a.yml"], ["github-actions[bot]"], False),
+        ("человек в том же заходе — журнал нужен",
+         ["scripts/a.py"], ["dependabot[bot]", "ArtVsMark"], True),
+        ("живой автор", ["scripts/a.py"], ["ArtVsMark"], True),
+        ("авторов не прочитали — судим как раньше", ["scripts/a.py"], [], True),
+    ]
+    for name, paths, authors, must_reject in machine_cases:
+        found, why = audit(paths, "", authors)
+        if bool(found) is not must_reject:
+            broken.append(f"машинный заход, {name}: ожидалось "
+                          f"{'отказ' if must_reject else 'пропуск'}, вышло {found}")
+        # Освобождение обязано НАЗЫВАТЬ себя: молчаливый пропуск неотличим от
+        # «предмета не было» (правило 151).
+        if not must_reject and not why:
+            broken.append(f"машинный заход, {name}: пропуск молчит о причине")
+        print(f"  {'отвергнут' if found else 'пропущен '} — машинный заход: {name}")
+
+    for name, paths, messages, must_reject in cases:
+        found, _ = audit(paths, messages)
         if bool(found) is not must_reject:
             broken.append(f"{name}: ожидалось {'отказ' if must_reject else 'пропуск'}, вышло {found}")
         print(f"  {'отвергнут' if found else 'пропущен '} — {name}")
@@ -142,6 +186,8 @@ def main() -> int:
         # пробелом надвое, а git ещё и экранирует не-ASCII имена (правило 165).
         paths = checks.git_paths("diff", "--name-only", f"{base}...{head}")
         messages = _git("log", "--format=%B", rng)
+        # Авторы диапазона: по ним решается, есть ли кому писать журнал.
+        authors = [line for line in _git("log", "--format=%an", rng).splitlines() if line.strip()]
     except (subprocess.CalledProcessError, OSError, ValueError) as e:
         # Третий исход: диапазон не разобран — чинит это тот, кто запускает, а
         # не автор изменения (правило 039).
@@ -149,7 +195,7 @@ def main() -> int:
                               f"не разобран — {e}"), file=sys.stderr)
         return 2
 
-    found, why = audit(paths, messages)
+    found, why = audit(paths, messages, authors)
     if found:
         print(checks.annotate("error", f"журнал отстал от правки: {found[0]}"),
               file=sys.stderr)
