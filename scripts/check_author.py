@@ -38,6 +38,7 @@ noreply-адресом, и объявлять их дефектом неверн
 
 from __future__ import annotations
 
+import pathlib
 import subprocess
 import sys
 
@@ -58,6 +59,38 @@ REMEDY = (
     'git config user.name "ArtVsMark" && '
     'git config user.email "arvs.markitanov@gmail.com"'
 )
+
+
+def body_attribution(body: str) -> str:
+    """Претензия к телу изменения, если атрибуции в нём нет. Пусто — есть.
+
+    ЗАЧЕМ ТРЕТИЙ ПРЕДМЕТ, ЕСЛИ ДВА УЖЕ ЕСТЬ. Пока площадка склеивает сообщение
+    слияния из коммитов ветки (``squash_merge_commit_message =
+    COMMIT_MESSAGES``), тело изменения на атрибуцию не влияет: трейлеры едут в
+    общую ветку из коммитов. Ровно поэтому они там и ДВОЯТСЯ — по одному на
+    коммит ветки плюс свой от площадки: у изменения #129 их шесть.
+
+    Лечится это переключением на ``PR_BODY``, и тогда предмет меняется местами:
+    сообщением коммита в общей ветке становится ТЕЛО изменения, а тела окно
+    переписывает руками — и в переписанном трейлеров нет. Первое же слияние
+    после переключения уехало бы в `main` без атрибуции и покрасило
+    ``attribution-history`` там, где прошлое уже не переписать (правило 114).
+
+    Поэтому гейт заводится ДО переключения, а не после: переключатель настроек
+    у владельца, и он должен щёлкнуть его в подготовленное место.
+
+    Спрашивается наличие, а не согласованность имени: список согласованных —
+    предмет гейта каталога, второй копии здесь не заводится (правило 090).
+    """
+    found = checks.trailers(body)
+    if "co-authored-by" not in found:
+        return ("тело изменения не несёт соавторства: после перехода на PR_BODY "
+                "именно оно станет сообщением коммита в общей ветке, и слияние "
+                "уедет туда без атрибуции")
+    if "claude-session" not in found:
+        return ("тело изменения не несёт следа сессии: соавтор назван, а откуда он "
+                "взялся — нет; в общей ветке это уже не восстановить")
+    return ""
 
 
 def offenders(authors: list[str]) -> list[str]:
@@ -97,6 +130,30 @@ def selftest() -> int:
         ("коммитов нет", [], False),
     ]
     broken = []
+    # ── атрибуция в ТЕЛЕ изменения (готовность к PR_BODY) ────────────────
+    # Обе стороны: пропустить тело без трейлеров — потерять атрибуцию в общей
+    # ветке после переключения; потребовать их от прозы — приучить дописывать
+    # хвост наугад.
+    TAIL = ("\n\nCo-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+            "\nClaude-Session: https://claude.ai/code/session_x")
+    body_cases = [
+        ("тело с полным хвостом", "Разбор." + TAIL, False),
+        ("соавтора нет", "Разбор.\n\nClaude-Session: https://x", True),
+        ("следа сессии нет",
+         "Разбор.\n\nCo-Authored-By: Claude Opus 5 <noreply@anthropic.com>", True),
+        ("тело пустое", "", True),
+        ("трейлеры в середине, а не хвостом",
+         "Начало." + TAIL + "\n\nПродолжение прозой.", True),
+        ("слово в прозе трейлером не считается",
+         "Здесь сказано Co-Authored-By, но это середина фразы.", True),
+    ]
+    for name, body, must_reject in body_cases:
+        said = body_attribution(body)
+        if bool(said) is not must_reject:
+            broken.append(f"тело изменения, {name}: ожидалось "
+                          f"{'отказ' if must_reject else 'пропуск'}, вышло {said!r}")
+        print(f"  {'отвергнуто' if said else 'принято   '} — тело изменения: {name}")
+
     for name, authors, must_reject in cases:
         found = offenders(authors)
         if bool(found) is not must_reject:
@@ -175,6 +232,32 @@ def main() -> int:
     argv = sys.argv[1:]
     if "--selftest" in argv:
         return selftest()
+
+    # ТЕЛО ИЗМЕНЕНИЯ — ОТДЕЛЬНЫЙ ПРЕДМЕТ, И ПРОВЕРЯЕТСЯ ОТДЕЛЬНЫМ ЗАПУСКОМ.
+    # Файлом, а не аргументом: тело многострочное и содержит что угодно, включая
+    # кавычки и обратные апострофы, — в командной строке оно рано или поздно
+    # порвётся о цитирование оболочки.
+    body_file = next((a.removeprefix("--body-file=") for a in argv
+                      if a.startswith("--body-file=")), "")
+    if body_file:
+        try:
+            body = pathlib.Path(body_file).read_text(encoding="utf-8")
+        except OSError as e:
+            print(checks.annotate("error", f"проверка не отработала: тело изменения "
+                                  f"не прочитано ({body_file}) — {e}"), file=sys.stderr)
+            return 2
+        said = body_attribution(body)
+        if said:
+            print(checks.annotate("error", f"атрибуция в теле изменения: {said}"),
+                  file=sys.stderr)
+            print("\n  Допишите в КОНЕЦ тела хвостовой блок:\n\n"
+                  f"      {TRAILER}\n      Claude-Session: <адрес сессии>\n"
+                  "\n  Блок обязан быть последним абзацем и состоять только из\n"
+                  "  строк «Ключ: значение» — проза внутри него отменяет весь блок.",
+                  file=sys.stderr)
+            return 1
+        print("тело изменения несёт атрибуцию: соавтор и след сессии на месте")
+        return 0
 
     rng = next((a for a in argv if not a.startswith("-")), "origin/main..HEAD")
     try:
