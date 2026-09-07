@@ -76,15 +76,21 @@ def _body_trailers(body: str) -> set[str]:
     return {name for name, pattern in BODY_TRAILERS.items() if pattern.search(body or "")}
 
 
-def body_attribution(body: str, author: str = "") -> str:
+def body_attribution(body: str, author: str = "", branch: str = "") -> str:
     """Претензия к телу изменения, если атрибуции в нём нет. Пусто — есть.
 
-    С МАШИНЫ ТЕЛА НЕ СПРАШИВАЮТ. Описание изменения dependabot пишет площадка:
-    хвостового блока в нём нет и не будет, дописать его некому — бот не
-    напишет, а человек не станет править чужое тело, которое бот перезапишет
-    следующим прогоном. Это третий гейт подряд, у которого нашлось требование
-    невозможного (051), и здесь оно предусмотрено ДО первого красного, а не
-    после.
+    С МАШИНЫ ТЕЛА НЕ СПРАШИВАЮТ — НИ ПО АВТОРУ, НИ ПО ВЕТКЕ. Описание изменения
+    dependabot пишет площадка: хвостового блока там нет и дописать некому.
+
+    ВЕТКА ПОНАДОБИЛАСЬ ПОТОМУ, ЧТО АВТОРА НЕ ХВАТИЛО, и это стоило красного.
+    Суточную пересборку открывает `open-pr` токеном ВЛАДЕЛЬЦА — автор изменения
+    `ArtVsMark`, живой человек, — а тело составляет прогон, и следа сессии окна
+    в нём нет и быть не может. Гейт покраснел на #140 ровно на этом: четвёртое
+    требование невозможного подряд (051), и на сей раз оно не было предусмотрено
+    заранее.
+
+    Список машинных веток общий с гейтами журнала и имени —
+    scripts/checks.py::MACHINE_BRANCHES (правило 090).
 
     ЗАЧЕМ ТРЕТИЙ ПРЕДМЕТ, ЕСЛИ ДВА УЖЕ ЕСТЬ. Пока площадка склеивает сообщение
     слияния из коммитов ветки (``squash_merge_commit_message =
@@ -118,6 +124,9 @@ def body_attribution(body: str, author: str = "") -> str:
     сообщение коммита; здесь предмет другой.
     """
     if author and checks.machine_made(author):
+        return ""
+    if branch and any(branch == name or branch.startswith(name)
+                      for name in checks.MACHINE_BRANCHES):
         return ""
     found = _body_trailers(body)
     if "co-authored-by" not in found:
@@ -198,13 +207,22 @@ def selftest() -> int:
     # дописать его некому. Обратная сторона обязательна — живой автор с тем же
     # телом обязан быть отвергнут, иначе освобождение накрыло бы всех.
     author_cases = [
-        ("тело бота без хвоста", "Bumps the actions group.", "dependabot[bot]", False),
-        ("тело прогона без хвоста", "Пересобранные метрики.", "github-actions[bot]", False),
-        ("живой автор с тем же телом", "Bumps the actions group.", "ArtVsMark", True),
-        ("автор не назван — судим по телу", "Bumps the actions group.", "", True),
+        ("тело бота без хвоста", "Bumps the actions group.", "dependabot[bot]", "", False),
+        ("тело прогона без хвоста", "Пересобранные метрики.", "github-actions[bot]", "", False),
+        ("живой автор с тем же телом", "Bumps the actions group.", "ArtVsMark", "", True),
+        ("автор не назван — судим по телу", "Bumps the actions group.", "", "", True),
+        # Суточную пересборку открывает владелец, а составляет прогон: автора
+        # мало, спасает ветка. Этот случай и был красным на #140.
+        ("машинная ветка при живом авторе", "Пересобранные метрики.",
+         "ArtVsMark", "chore/metrics", False),
+        ("ветка dependabot", "Bumps.", "ArtVsMark", "dependabot/actions-x", False),
+        ("рабочая ветка окна освобождения не даёт", "Разбор.",
+         "ArtVsMark", "agent/some-task", True),
+        ("похожее имя ветки не считается машинным", "Разбор.",
+         "ArtVsMark", "my-chore/metrics", True),
     ]
-    for name, body, author, must_reject in author_cases:
-        said = body_attribution(body, author)
+    for name, body, author, branch, must_reject in author_cases:
+        said = body_attribution(body, author, branch)
         if bool(said) is not must_reject:
             broken.append(f"тело изменения, {name}: ожидалось "
                           f"{'отказ' if must_reject else 'пропуск'}, вышло {said!r}")
@@ -299,6 +317,8 @@ def main() -> int:
     # писать хвостовой блок. Пусто — судим по телу, то есть строже.
     body_author = next((a.removeprefix("--author=") for a in argv
                         if a.startswith("--author=")), "")
+    body_branch = next((a.removeprefix("--branch=") for a in argv
+                        if a.startswith("--branch=")), "")
     if body_file:
         try:
             body = pathlib.Path(body_file).read_text(encoding="utf-8")
@@ -306,7 +326,7 @@ def main() -> int:
             print(checks.annotate("error", f"проверка не отработала: тело изменения "
                                   f"не прочитано ({body_file}) — {e}"), file=sys.stderr)
             return 2
-        said = body_attribution(body, body_author)
+        said = body_attribution(body, body_author, body_branch)
         if said:
             print(checks.annotate("error", f"атрибуция в теле изменения: {said}"),
                   file=sys.stderr)
@@ -317,8 +337,10 @@ def main() -> int:
                   file=sys.stderr)
             return 1
         print("тело изменения несёт атрибуцию: соавтор и след сессии на месте"
-              if not (body_author and checks.machine_made(body_author))
-              else f"тело написала машина ({body_author}) — хвостового блока с неё не спрашивают")
+              if not (body_author and checks.machine_made(body_author)
+                      or body_branch and any(body_branch.startswith(n)
+                                             for n in checks.MACHINE_BRANCHES))
+              else "тело составила машина — хвостового блока с неё не спрашивают")
         return 0
 
     rng = next((a for a in argv if not a.startswith("-")), "origin/main..HEAD")

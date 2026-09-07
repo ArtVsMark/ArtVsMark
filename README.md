@@ -110,6 +110,36 @@ pipx install stepik-python-grader && stepik-grader
 </picture>
 </div>
 
+## GitHub engineering stats
+
+<div align="center">
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/engineering-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/engineering-light.svg">
+  <img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/engineering-dark.svg" alt="GitHub engineering stats" width="92%">
+</picture>
+
+<br><br>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/activity-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/activity-light.svg">
+  <img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/activity-dark.svg" alt="contributions in the last year" width="92%">
+</picture>
+
+<sub>Measured from the GitHub API by <a href="./.github/workflows/metrics.yml">the same workflow</a> that rebuilds every other number here — no third-party stat services, no external cards.</sub>
+
+</div>
+
+<div align="center">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./assets/divider-dark.svg?v=1c137c57">
+  <source media="(prefers-color-scheme: light)" srcset="./assets/divider-light.svg?v=e01c573a">
+  <img src="./assets/divider-dark.svg?v=1c137c57" alt="" width="100%">
+</picture>
+</div>
+
 ## Stack
 
 <div align="center">
