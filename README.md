@@ -37,9 +37,9 @@
 <div align="center">
 <a href="https://github.com/ArtVsMark?tab=repositories">
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/featured-dark.svg?v=73becef4">
-  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/featured-light.svg?v=f63a5aea">
-  <img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/featured-dark.svg?v=73becef4" alt="Stepik-Python-Grader — Offline Python autograder: unlimited local checks, honest side-by-side comparison of solutions. release/pypi 1.11, CI success, coverage 91.3%, version 1.11.113. 3 stars, 1734 commits, 38 issues, 12 releases, 725 prs. CLI · web UI · GUI · pytest plugin · OS sandbox · Engineering-Incidents-Playbook — Rules for agent sessions and a GitHub pipeline — each one carrying the incident it grew from. release/pypi 1.2, CI success, coverage 65%, version 1.2.40. 1 stars, 386 commits, 8 issues, 4 releases, 276 prs. docs · RU/EN · Claude-Code_Usage-Token — Turns a three-step limit indicator into a number. Early: the spec is written, the tool is not. release/pypi v0.2.0, CI success, coverage 87.6%, version 0.2.0. 0 stars, 68 commits, 3 issues, 2 releases, 66 prs. Python · JSONL over git · Glossary-Python — The RU/EN glossary the grader links into when a run fails. release/pypi none, CI success, coverage 96.8%, version none. 2 stars, 92 commits, 1 issues, 0 releases, 38 prs. content · tooling" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/featured-dark.svg?v=d21afece">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/featured-light.svg?v=e6d3a09c">
+  <img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/featured-dark.svg?v=d21afece" alt="Stepik-Python-Grader — Offline Python autograder: unlimited local checks, honest side-by-side comparison of solutions. release/pypi 1.11, CI success, coverage 91.3%, version 1.11.111. 3 stars, 1732 commits, 38 issues, 12 releases, 723 prs. CLI · web UI · GUI · pytest plugin · OS sandbox · Engineering-Incidents-Playbook — Rules for agent sessions and a GitHub pipeline — each one carrying the incident it grew from. release/pypi 1.2, CI success, coverage 65%, version 1.2.40. 1 stars, 386 commits, 8 issues, 4 releases, 276 prs. docs · RU/EN · Claude-Code_Usage-Token — Turns a three-step limit indicator into a number. Early: the spec is written, the tool is not. release/pypi v0.2.0, CI success, coverage 87.6%, version 0.2.0. 0 stars, 68 commits, 3 issues, 2 releases, 65 prs. Python · JSONL over git · Glossary-Python — The RU/EN glossary the grader links into when a run fails. release/pypi none, CI success, coverage 96.8%, version none. 2 stars, 92 commits, 1 issues, 0 releases, 38 prs. content · tooling" width="100%">
 </picture>
 </a>
 </div>
@@ -115,22 +115,22 @@ pipx install stepik-python-grader && stepik-grader
 <div align="center">
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/engineering-dark.svg?v=9db9b736">
-  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/engineering-light.svg?v=4e723dbf">
-  <img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/engineering-dark.svg?v=9db9b736" alt="GitHub engineering stats: 5 public repos, 6 stars earned, 51 followers, 1 822 contributions · 365d, 1 day streak, 25 longest streak" width="48%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/engineering-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/engineering-light.svg">
+  <img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/engineering-dark.svg" alt="GitHub engineering stats" width="48%">
 </picture>
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/stack-dark.svg?v=11bc7f6b">
-  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/stack-light.svg?v=7927e351">
-  <img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/stack-dark.svg?v=11bc7f6b" alt="Technology footprint: Python in 5 of 5 repos, HTML in 3 of 5 repos, Batchfile in 1 of 5 repos, CSS in 1 of 5 repos, JavaScript in 1 of 5 repos; roles: CLI, web UI, GUI, pytest plugin, OS sandbox, docs, RU/EN, Python, JSONL over git, content, tooling" width="48%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/stack-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/stack-light.svg">
+  <img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/stack-dark.svg" alt="Technology footprint" width="48%">
 </picture>
 
 <br><br>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/activity-dark.svg?v=be932b8c">
-  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/activity-light.svg?v=d117d95f">
-  <img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/activity-dark.svg?v=be932b8c" alt="1822 contributions in the last year" width="92%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/activity-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/activity-light.svg">
+  <img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/activity-dark.svg" alt="contributions in the last year" width="92%">
 </picture>
 
 <sub>Measured from the GitHub API by <a href="./.github/workflows/metrics.yml">the same workflow</a> that rebuilds every other number here — no third-party stat services, no external cards. Languages are counted by <b>how many repositories use them</b>, not by bytes of code.</sub>
