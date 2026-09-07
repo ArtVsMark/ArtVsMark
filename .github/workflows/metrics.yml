@@ -238,7 +238,7 @@ jobs:
           # `if`, а не `[ -e ] && cp`: при `set -e` последний виток цикла с
           # ложным условием возвращает единицу и роняет шаг — тем же молчаливым
           # способом, каким ронял бы `cp` на несуществующем файле.
-          for card in assets/engineering-*.svg assets/activity-*.svg; do
+          for card in assets/engineering-*.svg assets/activity-*.svg assets/stack-*.svg; do
             if [ -e "$card" ]; then cp "$card" dist-assets/; fi
           done
           ls dist-assets | sed 's/^/  /'
