@@ -194,6 +194,50 @@ def _api(path: str) -> object:
         return json.loads(_get(f"{API}{path}"))
 
 
+#: Владелец витрины. Отсюда берутся профильные числа — те, что описывают не
+#: отдельный репозиторий, а инженерную работу целиком.
+OWNER = "ArtVsMark"
+
+#: Сколько дней календаря вкладов показывает витрина. Год — не круглое число, а
+#: то, что отдаёт сама площадка: `contributionsCollection` без дат возвращает
+#: последние 365 дней, и брать другой отрезок значило бы считать самим.
+CONTRIB_DAYS = 365
+
+
+def _graphql(query: str) -> dict:
+    """Ответ GraphQL-API площадки. Второй вход, и он назван (правило 001).
+
+    ЗАЧЕМ ВТОРОЙ, ЕСЛИ У REST ОДИН. Календарь вкладов REST не отдаёт вовсе:
+    ``contributionsCollection`` живёт только в GraphQL, и обойти это нечем —
+    считать вклады по событиям нельзя, `/users/*/events` хранит 90 дней и
+    урезан по числу записей. Это не вторая труба к тем же данным, а
+    единственная к другим: у REST и GraphQL здесь непересекающиеся предметы.
+
+    ОКНУ ЭТОТ ВХОД ЗАКРЫТ, и это названо, а не обойдено. Прокси сессии отвечает
+    «only the pinned set of PR-review operations is served» — то есть проверить
+    запрос отсюда нельзя, его проверит первый живой прогон. Поэтому разбор
+    ответа целиком покрыт набором на подделках, а отказ считается третьим
+    исходом: картинка не рисуется, прежняя остаётся (правило 039).
+    """
+    body = json.dumps({"query": query}).encode("utf-8")
+    request = urllib.request.Request(
+        f"{API}/graphql", data=body,
+        headers={"Accept": "application/vnd.github+json",
+                 "Content-Type": "application/json",
+                 "User-Agent": "artvsmark-profile"})
+    token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
+    if token:
+        request.add_header("Authorization", f"Bearer {token}")
+    with naming(f"{API}/graphql"), urllib.request.urlopen(request, timeout=30) as response:
+        answer = json.loads(response.read())
+    if "errors" in answer:
+        # Ошибка GraphQL приезжает с кодом 200 — молча принять её значило бы
+        # показать пустые числа как измеренные.
+        raise SystemExit(f"GraphQL ответил ошибкой: {answer['errors'][0].get('message', '?')}")
+    return answer["data"]
+
+
+
 @functools.lru_cache(maxsize=None)
 def repo_meta(repo: str) -> dict:
     """Карточка репозитория — один запрос на прогон, а не по одному на читателя.
@@ -333,6 +377,132 @@ def project_stats(repo: str) -> dict[str, int]:
         "issues": meta["open_issues_count"] - open_prs,
         "releases": _count(f"/repos/{repo}/releases?per_page=1"),
         "prs": _count(f"/repos/{repo}/pulls?state=all&per_page=1"),
+    }
+
+
+#: Запрос календаря вкладов. Без дат площадка отдаёт последние 365 дней сама —
+#: считать отрезок за неё значило бы завести второе определение года.
+#:
+#: Логин подставляется через json.dumps, а не форматированием: имя приезжает
+#: из данных, и склеивать запрос со строкой значит писать инъекцию собственными
+#: руками. Здесь оно наше, но образец копируют, а не читают.
+CONTRIB_QUERY = """
+query {
+  user(login: %s) {
+    contributionsCollection {
+      contributionCalendar {
+        totalContributions
+        weeks { contributionDays { date contributionCount } }
+      }
+    }
+  }
+}
+"""
+
+
+def contribution_days(login: str = OWNER) -> tuple[int, list[tuple[str, int]]]:
+    """Вклады за год: всего и по дням. Дни идут по возрастанию даты.
+
+    Число «всего» берётся у площадки, а не суммируется из дней: сумма — второе
+    определение той же величины, и разойтись они могут молча (правило 090).
+    """
+    data = _graphql(CONTRIB_QUERY % json.dumps(login))
+    calendar = data["user"]["contributionsCollection"]["contributionCalendar"]
+    days = [(day["date"], day["contributionCount"])
+            for week in calendar["weeks"] for day in week["contributionDays"]]
+    return calendar["totalContributions"], sorted(days)
+
+
+def streaks(days: list[tuple[str, int]], today: str = "") -> tuple[int, int]:
+    """Текущая и самая длинная серия дней с вкладами.
+
+    ЧТО СЧИТАЕТСЯ ТЕКУЩЕЙ СЕРИЕЙ. Дни идут подряд до СЕГОДНЯ; если сегодня
+    вкладов ещё нет, серия считается по вчерашний день и не обрывается. Это не
+    поблажка: календарь площадки заполняется с задержкой, и обрывать серию в
+    полдень значило бы показывать ноль там, где работа идёт.
+
+    ПУСТОЙ КАЛЕНДАРЬ — НОЛЬ, А НЕ ОШИБКА: у нового профиля вкладов может не
+    быть вовсе, и это состояние, а не сбой (правило 027).
+
+    Хвост календаря обрезается по `today`, потому что площадка отдаёт неделю
+    целиком — включая дни, которые ещё не наступили. Считать их нулями значило
+    бы обрывать серию будущим.
+    """
+    if not days:
+        return 0, 0
+    today = today or dt.date.today().isoformat()
+    past = [(date, count) for date, count in days if date <= today]
+    if not past:
+        return 0, 0
+
+    longest = run = 0
+    previous: dt.date | None = None
+    for date, count in past:
+        current = dt.date.fromisoformat(date)
+        run = run + 1 if count and previous and (current - previous).days == 1 else (1 if count else 0)
+        longest = max(longest, run)
+        previous = current
+
+    # Текущая серия: считаем назад от последнего дня. Ноль сегодня серию не
+    # рвёт — рвёт ноль вчера.
+    tail = list(reversed(past))
+    if tail and tail[0][1] == 0:
+        tail = tail[1:]
+    current_run = 0
+    expected: dt.date | None = None
+    for date, count in tail:
+        day = dt.date.fromisoformat(date)
+        if count == 0 or (expected is not None and day != expected):
+            break
+        current_run += 1
+        expected = day - dt.timedelta(days=1)
+    return current_run, longest
+
+
+def owned_stars(login: str = OWNER) -> tuple[int, int]:
+    """Звёзды и число публичных репозиториев ВЛАДЕЛЬЦА, без форков.
+
+    Форки исключены намеренно: их звёзды принадлежат исходному проекту, и
+    складывать их значило бы приписывать себе чужое. Постранично, потому что
+    страница по умолчанию — тридцать записей, а витрина не знает заранее,
+    сколько их будет завтра.
+    """
+    stars = repos = 0
+    page = 1
+    while True:
+        chunk = _api(f"/users/{login}/repos?per_page=100&type=owner&page={page}")
+        if not chunk:
+            break
+        for repo in chunk:
+            if repo.get("fork"):
+                continue
+            repos += 1
+            stars += repo.get("stargazers_count", 0)
+        if len(chunk) < 100:
+            break
+        page += 1
+    return stars, repos
+
+
+def profile_stats() -> dict[str, object]:
+    """Профильные числа витрины. Ключ отсутствует — значит источник промолчал.
+
+    СОБИРАЕТСЯ В ОДНОМ МЕСТЕ, ПОТОМУ ЧТО РИСУЕТСЯ ОДНОЙ КАРТИНКОЙ. Разложить
+    сбор по вызовам рисовальщика значило бы ходить в сеть из рисования — и
+    получить картинку, которая наполовину нарисована, наполовину упала.
+    """
+    profile = _api(f"/users/{OWNER}")
+    stars, owned = owned_stars()
+    total, days = contribution_days()
+    current, longest = streaks(days)
+    return {
+        "repos": profile.get("public_repos", owned),
+        "followers": profile.get("followers", 0),
+        "stars": stars,
+        "contributions": total,
+        "streak": current,
+        "longest": longest,
+        "days": days,
     }
 
 
@@ -1605,6 +1775,132 @@ def render(tiles: list[tuple[str, str]], dark: bool, owner: str = "") -> str:
     return "\n".join(out) + "\n</svg>\n"
 
 
+#: Что показывает карточка профиля и в каком порядке. Список — вход
+#: рисовальщика: подпись картинки собирается из него же, и разойтись им негде.
+ENGINEERING_TILES = (
+    ("repos", "public repos"),
+    ("stars", "stars earned"),
+    ("followers", "followers"),
+    ("contributions", "contributions · 365d"),
+    ("streak", "day streak"),
+    ("longest", "longest streak"),
+)
+
+
+def render_engineering(stats: dict[str, object], dark: bool) -> str:
+    """Карточка инженерного профиля: шесть чисел одной строкой в две полосы.
+
+    ПОЧЕМУ НЕ ЯРКАЯ КАРТОЧКА СО СТОРОННЕГО СЕРВИСА, ради которой заводилась
+    задача #139. Внешняя карточка — это чужая доступность и чужой отказ,
+    выглядящий как сломанная страница; проверить её из окна нельзя, потому что
+    прокси не пускает хост. Числа витрина и так измеряет сама, и рисует их той
+    же кистью, что остальные плитки.
+
+    ФОРМА ПОВТОРЯЕТ ``render``, А НЕ ИЗОБРЕТАЕТ СВОЮ: те же карточные цвета, тот
+    же шрифт, тот же радиус. Две полосы по три плитки — потому что шесть в ряд
+    на ширине профиля дают числа мельче подписи, а витрину читают с телефона.
+    """
+    width, gap, rows = 1000, 18, 2
+    per_row = len(ENGINEERING_TILES) // rows
+    tile_w = (width - gap * (per_row - 1)) // per_row
+    tile_h, head = 104, 28
+    height = head + tile_h * rows + gap * (rows - 1)
+    if dark:
+        card, stroke, num, lab = "#0D1117", "#30363D", "#F0F6FC", "#7D8590"
+    else:
+        card, stroke, num, lab = "#FFFFFF", "#D0D7DE", "#1F2328", "#636C76"
+
+    def shown(key: str) -> str:
+        """Число — с разделителем разрядов, всё остальное — как есть.
+
+        Разряды разделяются, иначе «1287» читается как год. Нечисловое значение
+        форматированию не поддаётся вовсе (`:,` на строке — отказ), и первая
+        редакция роняла на этом рисование целиком: набор подсунул `<&>`, и
+        сборка вышла третьим исходом вместо картинки. Источник чужой, приехать
+        оттуда может что угодно, и падать на этом рисовальщику незачем.
+        """
+        value = stats.get(key, 0)
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return str(value)
+        return f"{value:,}".replace(",", " ")
+
+    values = [(shown(key), name) for key, name in ENGINEERING_TILES]
+    label = "GitHub engineering stats: " + ", ".join(f"{v} {n}" for v, n in values)
+    out = [
+        f'<svg width="{width}" height="{height}" viewBox="0 0 {width} {height}" '
+        f'xmlns="http://www.w3.org/2000/svg" role="img" aria-label="{escape(label)}">',
+        '<defs><linearGradient id="e" x1="0" y1="0" x2="1" y2="0">'
+        '<stop offset="0%" stop-color="#58A6FF"/><stop offset="100%" stop-color="#7EE787"/>'
+        "</linearGradient></defs>",
+        f'<text x="{width / 2:.0f}" y="17" fill="{lab}" font-family="{FONT}" '
+        f'font-size="13" font-weight="700" text-anchor="middle" letter-spacing="0.4">'
+        f"GitHub engineering stats</text>",
+    ]
+    for index, (value, name) in enumerate(values):
+        row, column = divmod(index, per_row)
+        x = column * (tile_w + gap)
+        y = head + row * (tile_h + gap)
+        size = 40 if len(value) <= 4 else 32
+        out.append(
+            f"  <g>\n"
+            f'    <rect x="{x + 0.5}" y="{y + 0.5}" width="{tile_w - 1}" '
+            f'height="{tile_h - 1}" rx="14" fill="{card}" stroke="{stroke}"/>\n'
+            f'    <rect x="{x + 22}" y="{y + 20}" width="44" height="4" rx="2" fill="url(#e)"/>\n'
+            f'    <text x="{x + tile_w / 2:.0f}" y="{y + 66}" fill="{num}" '
+            f'font-family="{FONT}" font-size="{size}" font-weight="800" '
+            f'text-anchor="middle" letter-spacing="-1">{escape(value)}</text>\n'
+            f'    <text x="{x + tile_w / 2:.0f}" y="{y + 89}" fill="{lab}" '
+            f'font-family="{FONT}" font-size="14.5" font-weight="600" '
+            f'text-anchor="middle">{escape(name)}</text>\n'
+            f"  </g>"
+        )
+    return "\n".join(out) + "\n</svg>\n"
+
+
+def render_activity(days: list[tuple[str, int]], dark: bool) -> str:
+    """Календарь вкладов за год: 53 недели квадратиками, как у площадки.
+
+    ПОЧЕМУ ОН ЗДЕСЬ, А НЕ ССЫЛКОЙ НА ЧУЖУЮ КАРТИНКУ. Календарь на странице
+    профиля площадка рисует сама, но в README его нет: там он был бы внешним
+    изображением, то есть чужой доступностью. Свой рисуется из тех же данных,
+    которыми считаются серии, — второго определения активности не заводится.
+
+    Уровни те же пять, что у площадки, и порог берётся от МАКСИМУМА периода, а
+    не от абсолютного числа: у профиля с тремя вкладами в день и у профиля с
+    тридцатью картинка иначе была бы либо пустой, либо сплошной.
+    """
+    cell, gap, head = 11, 3, 26
+    weeks = (len(days) + 6) // 7
+    width = max(weeks * (cell + gap) - gap, 1)
+    height = head + 7 * (cell + gap) - gap
+    if dark:
+        empty, tones, lab = "#161B22", ("#0E4429", "#006D32", "#26A641", "#39D353"), "#7D8590"
+    else:
+        empty, tones, lab = "#EBEDF0", ("#9BE9A8", "#40C463", "#30A14E", "#216E39"), "#636C76"
+
+    peak = max((count for _, count in days), default=0)
+    total = sum(count for _, count in days)
+    out = [
+        f'<svg width="{width}" height="{height}" viewBox="0 0 {width} {height}" '
+        f'xmlns="http://www.w3.org/2000/svg" role="img" '
+        f'aria-label="{total} contributions in the last year">',
+        f'<text x="0" y="14" fill="{lab}" font-family="{FONT}" font-size="12" '
+        f'font-weight="600">{total} contributions in the last year</text>',
+    ]
+    for index, (date, count) in enumerate(days):
+        column, row = divmod(index, 7)
+        # Ноль — не уровень: пустой день красят фоном, иначе самый слабый тон
+        # означал бы «работа была», когда её не было.
+        fill = empty if not count else tones[min(int(count * len(tones) / max(peak, 1)),
+                                                 len(tones) - 1)]
+        out.append(
+            f'<rect x="{column * (cell + gap)}" y="{head + row * (cell + gap)}" '
+            f'width="{cell}" height="{cell}" rx="2" fill="{fill}"><title>{escape(date)}: '
+            f"{count}</title></rect>"
+        )
+    return "\n".join(out) + "\n</svg>\n"
+
+
 def aria_of(svg: str) -> str:
     """Подпись картинки, как её объявляет сама картинка — по её тексту.
 
@@ -1646,7 +1942,16 @@ def asset_version(name: str, drawn: dict[str, str] | None = None) -> str:
     """
     if drawn and name in drawn:
         return hashlib.sha256(drawn[name].encode("utf-8")).hexdigest()[:8]
-    return hashlib.sha256((ROOT / "assets" / f"{name}.svg").read_bytes()).hexdigest()[:8]
+    handmade = ROOT / "assets" / f"{name}.svg"
+    if not handmade.exists():
+        # НИ НАРИСОВАНО, НИ ЛЕЖИТ В ДЕРЕВЕ — отпечатка не существует, и это не
+        # поломка. Так бывает у картинки, чей источник в этот раз промолчал:
+        # профильные числа приходят из `/users/*` и GraphQL, окну они закрыты, и
+        # карточка не перерисовывается вовсе (задача #139). Ссылка остаётся без
+        # `?v=`, то есть ровно в том виде, в каком её написал человек: версия
+        # нужна против кэша, а кэшировать нечего, пока картинки нет.
+        return ""
+    return hashlib.sha256(handmade.read_bytes()).hexdigest()[:8]
 
 
 def stamp_assets(text: str, drawn: dict[str, str] | None = None) -> tuple[str, int]:
@@ -1672,6 +1977,12 @@ def stamp_assets(text: str, drawn: dict[str, str] | None = None) -> tuple[str, i
         version = asset_version(name, drawn)
         if drawn and name in drawn:
             return f"{ASSETS_BRANCH}/{name}.svg?v={version}"
+        if not version:
+            # Отпечатка нет: картинку эта сборка не рисовала и в дереве её нет.
+            # Ссылка остаётся там, куда её написали, — в ветке `assets`, если
+            # она уже была туда написана. Перевести её в дерево значило бы
+            # указать на файл, которого там не будет никогда (правило 160).
+            return match.group(0)
         return f"./assets/{name}.svg?v={version}"
 
     return re.subn(ASSET_LINK, replace, text)
@@ -1693,7 +2004,18 @@ def sync_alt(text: str, fresh: dict[str, str] | None = None) -> tuple[str, int]:
         # источниками и ничем из того, что сам записал. С диска берутся только
         # рукодельные SVG — шапка, печатающаяся строка, разделитель: для них
         # файл и есть источник.
-        label = fresh[name] if fresh and name in fresh else aria_label(ROOT / "assets" / f"{name}.svg")
+        if fresh and name in fresh:
+            label = fresh[name]
+        else:
+            handmade = ROOT / "assets" / f"{name}.svg"
+            if not handmade.exists():
+                # Картинку эта сборка не рисовала, и в дереве её нет: подпись
+                # взять неоткуда. Оставляем ту, что написал человек, — она
+                # относится к картинке, лежащей в ветке `assets` от прошлого
+                # прогона. Затереть её пустой значило бы отнять у скринридера
+                # единственное, что он читает (задача #139).
+                return match.group(0)
+            label = aria_label(handmade)
         return f"{match.group('head')}{label.replace(chr(34), chr(39))}{match.group('tail')}"
 
     return re.subn(
@@ -2034,6 +2356,91 @@ def selftest() -> int:
             broken.append("находка по покрытию не называет найденный значок")
     finally:
         globals()["_api"] = saved_api
+
+    # ── серии дней с вкладами (задача #139) ───────────────────────────────
+    # Считается по календарю площадки, и цена ошибки — неверное число на
+    # витрине, которое выглядит измеренным. Случаи взяты по границам, а не по
+    # «типичному профилю»: обрыв, ноль сегодня, дыра посередине, пустой год.
+    def day(offset: int, count: int, base: str = "2026-09-07") -> tuple[str, int]:
+        return ((dt.date.fromisoformat(base) - dt.timedelta(days=offset)).isoformat(), count)
+
+    streak_cases = [
+        ("пустой календарь", [], (0, 0)),
+        ("вкладов нет вовсе", [day(i, 0) for i in range(5)], (0, 0)),
+        ("три дня подряд до сегодня", [day(2, 1), day(1, 2), day(0, 3)], (3, 3)),
+        # Календарь площадки заполняется с задержкой: ноль сегодня серию не
+        # рвёт, иначе витрина показывала бы ноль в полдень рабочего дня.
+        ("ноль сегодня — серия по вчера", [day(3, 1), day(2, 1), day(1, 1), day(0, 0)], (3, 3)),
+        ("два нуля подряд рвут серию", [day(4, 1), day(3, 1), day(2, 0), day(1, 0), day(0, 1)], (1, 2)),
+        ("дыра посередине", [day(5, 1), day(4, 1), day(3, 1), day(2, 0), day(1, 1), day(0, 1)], (2, 3)),
+        ("самая длинная в прошлом, текущей нет",
+         [day(9, 1), day(8, 1), day(7, 1), day(6, 1), day(5, 0), day(4, 0), day(3, 0),
+          day(2, 0), day(1, 0), day(0, 0)], (0, 4)),
+        ("один день", [day(0, 7)], (1, 1)),
+    ]
+    for name, days, expected in streak_cases:
+        got = streaks(days, "2026-09-07")
+        if got != expected:
+            broken.append(f"серии, {name}: ожидалось {expected}, вышло {got}")
+        print(f"  {str(got):<8} — серии: {name}")
+
+    # Хвост недели площадка отдаёт целиком, включая ненаступившие дни. Считать
+    # их нулями значило бы обрывать серию будущим.
+    future = [day(1, 1), day(0, 2), day(-1, 0), day(-2, 0)]
+    if streaks(future, "2026-09-07") != (2, 2):
+        broken.append(f"серии: будущие дни оборвали текущую — {streaks(future, '2026-09-07')}")
+    print(f"  {str(streaks(future, '2026-09-07')):<8} — серии: ненаступившие дни не рвут серию")
+
+    # ── карточка профиля рисуется и называет себя ─────────────────────────
+    eng_stats = {"repos": 12, "stars": 6, "followers": 4,
+                 "contributions": 1287, "streak": 12, "longest": 41}
+    for dark in (True, False):
+        card = render_engineering(eng_stats, dark)
+        theme = "тёмная" if dark else "светлая"
+        checks_card = [
+            ("плиток ровно шесть", card.count('rx="14"') == len(ENGINEERING_TILES)),
+            ("подпись несёт числа", "1 287" in card and "41" in card),
+            ("подпись картинки не пуста", len(aria_of(card)) > 30),
+            ("тема разная", ("#0D1117" in card) is dark),
+        ]
+        for name, ok in checks_card:
+            if not ok:
+                broken.append(f"карточка профиля ({theme}): {name} — нет")
+            print(f"  {'да ' if ok else 'НЕТ'} — карточка профиля ({theme}): {name}")
+
+    # Разряды разделяются, иначе «1287» читается как год. Пробел неразрывный не
+    # нужен: это текст SVG, переносов в нём нет.
+    if "1 287" not in render_engineering(eng_stats, True):
+        broken.append("карточка профиля: тысячи не разделены — число читается хуже")
+
+    # Текст в подписи ЭКРАНИРУЕТСЯ: имя подписи приходит из данных, и амперсанд
+    # в нём порвал бы XML молча.
+    tricky = render_engineering({**eng_stats, "repos": "<&>"}, True)
+    if "<&>" in tricky or "&lt;&amp;&gt;" not in tricky:
+        broken.append("карточка профиля: значение не экранировано — XML порвётся молча")
+    print("  да  — карточка профиля: значение экранируется")
+
+    # ── календарь активности ──────────────────────────────────────────────
+    year = [day(i, i % 5) for i in range(364, -1, -1)]
+    grid = render_activity(year, True)
+    grid_checks = [
+        ("квадрат на каждый день", grid.count("<rect") == len(year)),
+        ("подпись несёт сумму", str(sum(c for _, c in year)) in grid),
+        ("у каждого дня своя подсказка", grid.count("<title>") == len(year)),
+        ("пустой день не красится тоном", grid.count("#161B22") > 0),
+    ]
+    for name, ok in grid_checks:
+        if not ok:
+            broken.append(f"календарь: {name} — нет")
+        print(f"  {'да ' if ok else 'НЕТ'} — календарь: {name}")
+
+    # Пустой календарь не роняет рисование: у нового профиля вкладов нет, и это
+    # состояние, а не сбой.
+    try:
+        render_activity([], True)
+    except Exception as e:
+        broken.append(f"календарь: пустой год уронил рисование — {e!r}")
+    print("  да  — календарь: пустой год рисуется")
 
     # ── витрина спрашивает источники, а не помнит их форму ────────────────
     # Ради этого набора и переписана вся ветка: чужая правка не должна ронять
@@ -2515,7 +2922,32 @@ def main() -> int:
     # осталась только в том, записывается ли результат.
     fresh: dict[str, str] = {}
     drawn: dict[str, str] = {}
+
+    # ПРОФИЛЬНЫЕ ЧИСЛА — ОТДЕЛЬНЫЙ ИСТОЧНИК, И ЕГО ОТКАЗ НЕ РОНЯЕТ ВИТРИНУ
+    # (задача #139, правило 039). Они приходят из `/users/*` и GraphQL, а те
+    # закрыты окну прокси сессии: проверить запрос отсюда нельзя, его проверяет
+    # первый живой прогон. Поэтому отказ здесь — третий исход: карточка не
+    # рисуется, прежняя остаётся лежать в ветке `assets`, остальные тридцать
+    # чисел досчитываются.
+    #
+    # Пустыми прежние картинки не перезаписываются — этого прямо требует
+    # задача, и механизм тут простой: не нарисовали, значит не положили в
+    # `drawn`, а публикуется только то, что в нём.
+    try:
+        profile = profile_stats()
+    except (urllib.error.URLError, OSError, ValueError, KeyError, SystemExit) as refusal:
+        profile = {}
+        print(checks.annotate("warning", f"профильные числа не собраны ({refusal}) — "
+                              f"карточка не перерисовывается, прежняя остаётся"))
+
     for theme, dark in (("dark", True), ("light", False)):
+        if profile:
+            card = render_engineering(profile, dark)
+            drawn[f"engineering-{theme}"] = card
+            fresh[f"engineering-{theme}"] = aria_of(card)
+            grid = render_activity(profile.get("days", []), dark)
+            drawn[f"activity-{theme}"] = grid
+            fresh[f"activity-{theme}"] = aria_of(grid)
         drawn[f"metrics-{theme}"] = render(plate, dark, owner=flagship)
         fresh[f"metrics-{theme}"] = f"{flagship}: " + ", ".join(
             f"{value} {name}" for value, name in plate)
