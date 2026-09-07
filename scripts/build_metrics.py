@@ -194,6 +194,10 @@ def _api(path: str) -> object:
         return json.loads(_get(f"{API}{path}"))
 
 
+#: Сама витрина. В списке проектов её нет — она их показывает, — но её код
+#: тоже написан, и в следе технологий он считается наравне с остальными.
+SHOWCASE = "ArtVsMark/ArtVsMark"
+
 #: Владелец витрины. Отсюда берутся профильные числа — те, что описывают не
 #: отдельный репозиторий, а инженерную работу целиком.
 OWNER = "ArtVsMark"
@@ -482,6 +486,27 @@ def owned_stars(login: str = OWNER) -> tuple[int, int]:
             break
         page += 1
     return stars, repos
+
+
+def language_reach(repos: list[str]) -> list[tuple[str, int]]:
+    """Языки по ЧИСЛУ репозиториев, а не по объёму кода. Наибольший охват первым.
+
+    ПОЧЕМУ НЕ ПО БАЙТАМ, КАК ДЕЛАЮТ ТИПОВЫЕ КАРТОЧКИ. Замер по нашим пяти
+    репозиториям: Python — 10 313 K, JavaScript — 259 K, HTML и CSS вместе —
+    172 K, остальное 8 K. Круговая диаграмма из этого выходит на 96% одним
+    сектором и не сообщает ничего, кроме языка, на котором пишут. Задача #139
+    исключила top-languages из первой версии ровно по этой причине: объём кода
+    не отражает инженерную работу.
+
+    ОХВАТ ОТВЕЧАЕТ НА ДРУГОЙ ВОПРОС — в скольких проектах язык вообще
+    встречается. У него нет ложной точности процентов: «Python в 5 из 5, HTML в
+    3 из 5» — утверждение, которое читатель может проверить, открыв проекты.
+    """
+    reach: dict[str, int] = {}
+    for repo in repos:
+        for language in _api(f"/repos/{repo}/languages"):
+            reach[language] = reach.get(language, 0) + 1
+    return sorted(reach.items(), key=lambda pair: (-pair[1], pair[0]))
 
 
 def profile_stats() -> dict[str, object]:
@@ -1800,10 +1825,14 @@ def render_engineering(stats: dict[str, object], dark: bool) -> str:
     же шрифт, тот же радиус. Две полосы по три плитки — потому что шесть в ряд
     на ширине профиля дают числа мельче подписи, а витрину читают с телефона.
     """
-    width, gap, rows = 1000, 18, 2
-    per_row = len(ENGINEERING_TILES) // rows
+    # ПОЛОВИНА ШИРИНЫ, А НЕ ВСЯ: карточка встаёт в ряд со следом технологий,
+    # как это сделано у профилей, где два блока стоят по 49%. Шесть чисел в
+    # две колонки по три строки — при трёх в ряд на узкой карточке число
+    # становится мельче подписи, а витрину читают с телефона.
+    width, gap, per_row = 492, 14, 2
+    rows = len(ENGINEERING_TILES) // per_row
     tile_w = (width - gap * (per_row - 1)) // per_row
-    tile_h, head = 104, 28
+    tile_h, head = 84, 28
     height = head + tile_h * rows + gap * (rows - 1)
     if dark:
         card, stroke, num, lab = "#0D1117", "#30363D", "#F0F6FC", "#7D8590"
@@ -1840,20 +1869,94 @@ def render_engineering(stats: dict[str, object], dark: bool) -> str:
         row, column = divmod(index, per_row)
         x = column * (tile_w + gap)
         y = head + row * (tile_h + gap)
-        size = 40 if len(value) <= 4 else 32
+        size = 32 if len(value) <= 4 else 26
         out.append(
             f"  <g>\n"
             f'    <rect x="{x + 0.5}" y="{y + 0.5}" width="{tile_w - 1}" '
             f'height="{tile_h - 1}" rx="14" fill="{card}" stroke="{stroke}"/>\n'
-            f'    <rect x="{x + 22}" y="{y + 20}" width="44" height="4" rx="2" fill="url(#e)"/>\n'
-            f'    <text x="{x + tile_w / 2:.0f}" y="{y + 66}" fill="{num}" '
+            f'    <rect x="{x + 18}" y="{y + 16}" width="36" height="4" rx="2" fill="url(#e)"/>\n'
+            f'    <text x="{x + tile_w / 2:.0f}" y="{y + 54}" fill="{num}" '
             f'font-family="{FONT}" font-size="{size}" font-weight="800" '
             f'text-anchor="middle" letter-spacing="-1">{escape(value)}</text>\n'
-            f'    <text x="{x + tile_w / 2:.0f}" y="{y + 89}" fill="{lab}" '
-            f'font-family="{FONT}" font-size="14.5" font-weight="600" '
+            f'    <text x="{x + tile_w / 2:.0f}" y="{y + 73}" fill="{lab}" '
+            f'font-family="{FONT}" font-size="12.5" font-weight="600" '
             f'text-anchor="middle">{escape(name)}</text>\n'
             f"  </g>"
         )
+    return "\n".join(out) + "\n</svg>\n"
+
+
+def render_stack(reach: list[tuple[str, int]], roles: list[str], total: int,
+                 dark: bool, height: int = 308) -> str:
+    """След технологий: языки по охвату проектов и роли, которые они играют.
+
+    ЗАМЕНЯЕТ «TOP LANGUAGES», А НЕ ПОВТОРЯЕТ ЕГО. Типовая карточка считает доли
+    по объёму кода; у нас это 96% одним сектором и ноль сведений. Здесь два
+    ответа на вопрос «из чего сделаны проекты»: язык — по числу репозиториев,
+    где он встречается, и роли — строкой `stack` из projects.json, то есть
+    словами автора о предмете, а не выводом из размера файлов.
+
+    Высота равна карточке чисел: они стоят в одном ряду, и разъехавшийся низ
+    читается как недоделанная вёрстка.
+    """
+    width, pad = 492, 22
+    if dark:
+        card, stroke, num, lab, bar = "#0D1117", "#30363D", "#F0F6FC", "#7D8590", "#21262D"
+    else:
+        card, stroke, num, lab, bar = "#FFFFFF", "#D0D7DE", "#1F2328", "#636C76", "#EAEEF2"
+
+    shown = reach[:5]
+    label = ("Technology footprint: "
+             + ", ".join(f"{name} in {count} of {total} repos" for name, count in shown)
+             + (f"; roles: {', '.join(roles)}" if roles else ""))
+    out = [
+        f'<svg width="{width}" height="{height}" viewBox="0 0 {width} {height}" '
+        f'xmlns="http://www.w3.org/2000/svg" role="img" aria-label="{escape(label)}">',
+        '<defs><linearGradient id="s" x1="0" y1="0" x2="1" y2="0">'
+        '<stop offset="0%" stop-color="#58A6FF"/><stop offset="100%" stop-color="#7EE787"/>'
+        "</linearGradient></defs>",
+        f'<text x="{width / 2:.0f}" y="17" fill="{lab}" font-family="{FONT}" '
+        f'font-size="13" font-weight="700" text-anchor="middle" letter-spacing="0.4">'
+        f"Technology footprint</text>",
+        f'<rect x="0.5" y="28.5" width="{width - 1}" height="{height - 29}" rx="14" '
+        f'fill="{card}" stroke="{stroke}"/>',
+    ]
+    y = 62
+    for name, count in shown:
+        # Полоса — доля ПРОЕКТОВ, а не байтов: длина читается как «в скольких из
+        # пяти», и подпись рядом говорит это словами.
+        full = width - pad * 2
+        filled = max(int(full * count / max(total, 1)), 6)
+        out += [
+            f'<text x="{pad}" y="{y}" fill="{num}" font-family="{FONT}" font-size="13.5" '
+            f'font-weight="700">{escape(name)}</text>',
+            f'<text x="{width - pad}" y="{y}" fill="{lab}" font-family="{FONT}" '
+            f'font-size="12.5" font-weight="600" text-anchor="end">{count} / {total}</text>',
+            f'<rect x="{pad}" y="{y + 8}" width="{full}" height="6" rx="3" fill="{bar}"/>',
+            f'<rect x="{pad}" y="{y + 8}" width="{filled}" height="6" rx="3" fill="url(#s)"/>',
+        ]
+        y += 34
+
+    if roles:
+        y += 4
+        out.append(f'<text x="{pad}" y="{y}" fill="{lab}" font-family="{FONT}" '
+                   f'font-size="12" font-weight="700" letter-spacing="0.4">WHAT THEY DO</text>')
+        y += 20
+        # Роли переносятся по ширине карточки: строка `stack` длиннее её у
+        # флагмана, и обрезать её значило бы молча потерять половину предмета.
+        line = ""
+        for role in roles:
+            candidate = f"{line} · {role}" if line else role
+            if len(candidate) * 6.4 > width - pad * 2:
+                out.append(f'<text x="{pad}" y="{y}" fill="{num}" font-family="{FONT}" '
+                           f'font-size="12.5" font-weight="600">{escape(line)}</text>')
+                y += 18
+                line = role
+            else:
+                line = candidate
+        if line:
+            out.append(f'<text x="{pad}" y="{y}" fill="{num}" font-family="{FONT}" '
+                       f'font-size="12.5" font-weight="600">{escape(line)}</text>')
     return "\n".join(out) + "\n</svg>\n"
 
 
@@ -1870,13 +1973,21 @@ def render_activity(days: list[tuple[str, int]], dark: bool) -> str:
     тридцатью картинка иначе была бы либо пустой, либо сплошной.
     """
     cell, gap, head = 11, 3, 26
+    # Под календарём — линия недельных сумм. Она отвечает на другой вопрос:
+    # квадратики показывают ДНИ, линия — куда идёт год. У профилей, где такой
+    # график берут с внешнего сервиса, он стоит отдельной картинкой; здесь это
+    # тот же файл и те же данные — второго определения активности не заводится.
+    trend_h, trend_gap = 64, 14
     weeks = (len(days) + 6) // 7
     width = max(weeks * (cell + gap) - gap, 1)
-    height = head + 7 * (cell + gap) - gap
+    grid_h = 7 * (cell + gap) - gap
+    height = head + grid_h + (trend_gap + trend_h if len(days) > 7 else 0)
     if dark:
         empty, tones, lab = "#161B22", ("#0E4429", "#006D32", "#26A641", "#39D353"), "#7D8590"
+        line, area, axis = "#58A6FF", "#58A6FF22", "#21262D"
     else:
         empty, tones, lab = "#EBEDF0", ("#9BE9A8", "#40C463", "#30A14E", "#216E39"), "#636C76"
+        line, area, axis = "#0969DA", "#0969DA1A", "#EAEEF2"
 
     peak = max((count for _, count in days), default=0)
     total = sum(count for _, count in days)
@@ -1898,6 +2009,30 @@ def render_activity(days: list[tuple[str, int]], dark: bool) -> str:
             f'width="{cell}" height="{cell}" rx="2" fill="{fill}"><title>{escape(date)}: '
             f"{count}</title></rect>"
         )
+
+    if len(days) > 7:
+        # Недельные суммы, а не сглаживание по дням: неделя — естественный
+        # период работы, и линия по ней читается без объяснений, чем окно
+        # усреднения. Точек ровно столько же, сколько столбцов календаря, и
+        # они стоят под своими столбцами — иначе два вида одних данных
+        # разъезжались бы по горизонтали.
+        sums = [sum(count for _, count in days[i:i + 7]) for i in range(0, len(days), 7)]
+        top = max(sums) or 1
+        base = head + grid_h + trend_gap + trend_h
+        step = cell + gap
+        points = [(index * step + cell / 2, base - value / top * (trend_h - 10))
+                  for index, value in enumerate(sums)]
+        path = " ".join(f"{'M' if i == 0 else 'L'}{x:.1f},{y:.1f}"
+                        for i, (x, y) in enumerate(points))
+        out += [
+            f'<line x1="0" y1="{base}" x2="{width}" y2="{base}" stroke="{axis}" stroke-width="1"/>',
+            f'<path d="{path} L{points[-1][0]:.1f},{base} L{points[0][0]:.1f},{base} Z" '
+            f'fill="{area}"/>',
+            f'<path d="{path}" fill="none" stroke="{line}" stroke-width="2" '
+            f'stroke-linejoin="round" stroke-linecap="round"/>',
+            f'<text x="0" y="{base + 15}" fill="{lab}" font-family="{FONT}" font-size="11" '
+            f'font-weight="600">weekly · peak {top}</text>',
+        ]
     return "\n".join(out) + "\n</svg>\n"
 
 
@@ -2391,6 +2526,43 @@ def selftest() -> int:
         broken.append(f"серии: будущие дни оборвали текущую — {streaks(future, '2026-09-07')}")
     print(f"  {str(streaks(future, '2026-09-07')):<8} — серии: ненаступившие дни не рвут серию")
 
+    # ── след технологий: охват, а не байты ────────────────────────────────
+    # Замер, из-за которого карточка считает иначе типовой: по нашим пяти
+    # репозиториям Python даёт 96% объёма, и круговая диаграмма из этого
+    # сообщает только язык. Охват отвечает на другой вопрос — в скольких
+    # проектах язык встречается вообще.
+    reach_sample = [("Python", 5), ("HTML", 3), ("JavaScript", 1), ("CSS", 1), ("Shell", 1)]
+    roles_sample = ["CLI", "web UI", "GUI", "pytest plugin", "OS sandbox", "docs", "RU/EN"]
+    for dark in (True, False):
+        stack = render_stack(reach_sample, roles_sample, 5, dark)
+        theme = "тёмная" if dark else "светлая"
+        stack_checks = [
+            ("полос столько же, сколько языков", stack.count("url(#s)") == len(reach_sample)),
+            ("подпись несёт охват", "Python in 5 of 5 repos" in aria_of(stack)),
+            ("подпись несёт роли", "roles:" in aria_of(stack)),
+            ("роли попали в картинку", "pytest plugin" in stack),
+            ("высота равна карточке чисел", 'height="308"' in stack),
+        ]
+        for name, ok in stack_checks:
+            if not ok:
+                broken.append(f"след технологий ({theme}): {name} — нет")
+            print(f"  {'да ' if ok else 'НЕТ'} — след технологий ({theme}): {name}")
+
+    # Пустой ответ источника не роняет рисование: у нового профиля языков может
+    # не быть вовсе, и это состояние, а не сбой.
+    try:
+        render_stack([], [], 0, True)
+    except Exception as e:
+        broken.append(f"след технологий: пустой охват уронил рисование — {e!r}")
+    print("  да  — след технологий: пустой охват рисуется")
+
+    # Длинный список ролей ПЕРЕНОСИТСЯ, а не обрезается: у флагмана строка
+    # длиннее карточки, и молча потерять половину предмета нельзя.
+    many = render_stack(reach_sample, ["роль-" + str(i) for i in range(20)], 5, True)
+    if many.count("font-size=\"12.5\"") < 3:
+        broken.append("след технологий: длинный список ролей не перенесён по строкам")
+    print("  да  — след технологий: длинные роли переносятся")
+
     # ── карточка профиля рисуется и называет себя ─────────────────────────
     eng_stats = {"repos": 12, "stars": 6, "followers": 4,
                  "contributions": 1287, "streak": 12, "longest": 41}
@@ -2433,6 +2605,18 @@ def selftest() -> int:
         if not ok:
             broken.append(f"календарь: {name} — нет")
         print(f"  {'да ' if ok else 'НЕТ'} — календарь: {name}")
+
+    # Линия недельного тренда — второй взгляд на те же данные, и она обязана
+    # стоять ПОД своими столбцами: два вида одних данных, разъехавшиеся по
+    # горизонтали, читаются как два разных периода.
+    trend = render_activity(year, True)
+    if "stroke-linejoin" not in trend or "weekly · peak" not in trend:
+        broken.append("календарь: линия недельного тренда не нарисована")
+    print("  да  — календарь: линия недельного тренда на месте")
+    short = render_activity(year[:5], True)
+    if "stroke-linejoin" in short:
+        broken.append("календарь: линия рисуется там, где недели ещё нет")
+    print("  да  — календарь: на неполной неделе линии нет")
 
     # Пустой календарь не роняет рисование: у нового профиля вкладов нет, и это
     # состояние, а не сбой.
@@ -2940,6 +3124,18 @@ def main() -> int:
         print(checks.annotate("warning", f"профильные числа не собраны ({refusal}) — "
                               f"карточка не перерисовывается, прежняя остаётся"))
 
+    # След технологий читается по РЕПОЗИТОРНЫМ эндпоинтам, и потому доступен
+    # даже там, где профильные закрыты: у него свой отказ и своя судьба.
+    project_repos = [project["repo"] for project in config["projects"]] + [SHOWCASE]
+    try:
+        reach = language_reach(project_repos)
+        roles = [role.strip() for project in config["projects"]
+                 for role in project["stack"].split("·")]
+    except (urllib.error.URLError, OSError, ValueError, KeyError) as refusal:
+        reach, roles = [], []
+        print(checks.annotate("warning", f"след технологий не собран ({refusal}) — "
+                              f"карточка не перерисовывается, прежняя остаётся"))
+
     for theme, dark in (("dark", True), ("light", False)):
         if profile:
             card = render_engineering(profile, dark)
@@ -2948,6 +3144,10 @@ def main() -> int:
             grid = render_activity(profile.get("days", []), dark)
             drawn[f"activity-{theme}"] = grid
             fresh[f"activity-{theme}"] = aria_of(grid)
+        if reach:
+            stack = render_stack(reach, roles, len(project_repos), dark)
+            drawn[f"stack-{theme}"] = stack
+            fresh[f"stack-{theme}"] = aria_of(stack)
         drawn[f"metrics-{theme}"] = render(plate, dark, owner=flagship)
         fresh[f"metrics-{theme}"] = f"{flagship}: " + ", ".join(
             f"{value} {name}" for value, name in plate)
