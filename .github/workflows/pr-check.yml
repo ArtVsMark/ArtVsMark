@@ -235,13 +235,13 @@ jobs:
       # ссылкой на версию. Своей копии не заводим (правило 090); подключение
       # закреплено по SHA, и почему — сказано в rules-inbox.yml.
       - name: Сверить трейлеры со списком согласованных имён
-        uses: ArtVsMark/Engineering-Incidents-Playbook/.github/actions/attribution@96a90ffeb312fbcf40b7097ed7c9ce8ddfc1f2eb # main, 2026-08-22
+        uses: ArtVsMark/Engineering-Incidents-Playbook/.github/actions/attribution@03c2ee7c6ba21fafb4eca634fc363d159eb3d6ee # main, 2026-09-04
         with:
           authors: .github/authors.txt
           # Пусто: подрезать нечего, диапазон и так только коммиты изменения.
           baseline: ""
           mode: branch
-          catalogue-ref: 96a90ffeb312fbcf40b7097ed7c9ce8ddfc1f2eb
+          catalogue-ref: 03c2ee7c6ba21fafb4eca634fc363d159eb3d6ee
 
       # Чем правило держится у соседей — до того, как строить своё (162).
       # Шаг неблокирующий намеренно: «приём переносится» решает человек, стеки
