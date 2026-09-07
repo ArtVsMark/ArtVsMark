@@ -55,7 +55,8 @@ def touched(paths: list[str]) -> list[str]:
     return [p for p in paths if any(rx.match(p) for rx in BEHAVIOUR)]
 
 
-def audit(paths: list[str], messages: str, authors: list[str] | None = None) -> tuple[list[str], str]:
+def audit(paths: list[str], messages: str,
+          commits: list[tuple[str, int]] | None = None) -> tuple[list[str], str]:
     """Претензия к заходу и причина осознанного отказа, если она названа.
 
     ЧТО ДЕЛАЕТ ТРЕТИЙ ДОВОД. Гейт требует запись о РЕШЕНИИ, а машина решений не
@@ -73,6 +74,14 @@ def audit(paths: list[str], messages: str, authors: list[str] | None = None) -> 
     Довод односторонний: хоть один живой автор в диапазоне — журнал требуется
     со всех. Иначе бот, подмешавшийся в человеческий заход, освободил бы его.
 
+    КОММИТЫ СЛИЯНИЯ НЕ СЧИТАЮТСЯ АВТОРСТВОМ, и это оплачено: обновление ветки
+    #134 создало merge-коммит с автором `claude[bot]` — кнопку нажало окно, —
+    и односторонний довод потребовал журнал у изменения, где правку сделал
+    dependabot, а человек только подтянул main. Слияние НЕ ПРИВНОСИТ правки:
+    всё, что в нём есть, уже лежит в базовой ветке; привносят обычные коммиты,
+    по ним и судим. Число родителей приходит вместе с автором, чтобы граница
+    проверялась набором, а не жила флагом в вызове git (правило 150).
+
     Вынесено из ``main``, чтобы проверять на подставных наборах, не ходя в git.
     """
     waiver = WAIVER.search(messages)
@@ -83,7 +92,8 @@ def audit(paths: list[str], messages: str, authors: list[str] | None = None) -> 
         return [], ""
     if waiver:
         return [], waiver.group("why").strip()
-    if authors and all(checks.machine_made(a) for a in authors):
+    made = [author for author, parents in (commits or []) if parents < 2]
+    if made and all(checks.machine_made(author) for author in made):
         return [], "правку сделала машина: решения она не принимает, записывать нечего"
     return [f"поведение правится без записи в журнале: "
             f"{checks.tail(behaviour, 5)}"], ""
@@ -130,15 +140,22 @@ def selftest() -> int:
     # Обратная сторона важнее: один живой автор в заходе возвращает требование
     # всем, иначе подмешавшийся бот освободил бы человека.
     machine_cases = [
-        ("правка бота без записи", ["scripts/a.py"], ["dependabot[bot]"], False),
-        ("прогон площадки", [".github/workflows/a.yml"], ["github-actions[bot]"], False),
+        ("правка бота без записи", ["scripts/a.py"], [("dependabot[bot]", 1)], False),
+        ("прогон площадки", [".github/workflows/a.yml"], [("github-actions[bot]", 1)], False),
         ("человек в том же заходе — журнал нужен",
-         ["scripts/a.py"], ["dependabot[bot]", "ArtVsMark"], True),
-        ("живой автор", ["scripts/a.py"], ["ArtVsMark"], True),
-        ("авторов не прочитали — судим как раньше", ["scripts/a.py"], [], True),
+         ["scripts/a.py"], [("dependabot[bot]", 1), ("ArtVsMark", 1)], True),
+        ("живой автор", ["scripts/a.py"], [("ArtVsMark", 1)], True),
+        ("коммитов не прочитали — судим как раньше", ["scripts/a.py"], [], True),
+        # Слияние подтягивает базу и правки не привносит: автором его ставит
+        # тот, кто нажал кнопку, и считать это авторством значит требовать
+        # журнал у чужого изменения за собственное нажатие.
+        ("слияние человека поверх правки бота — не авторство",
+         ["scripts/a.py"], [("claude[bot]", 2), ("dependabot[bot]", 1)], False),
+        ("одно лишь слияние — судить не о чем",
+         ["scripts/a.py"], [("ArtVsMark", 2)], True),
     ]
-    for name, paths, authors, must_reject in machine_cases:
-        found, why = audit(paths, "", authors)
+    for name, paths, commits, must_reject in machine_cases:
+        found, why = audit(paths, "", commits)
         if bool(found) is not must_reject:
             broken.append(f"машинный заход, {name}: ожидалось "
                           f"{'отказ' if must_reject else 'пропуск'}, вышло {found}")
@@ -186,8 +203,11 @@ def main() -> int:
         # пробелом надвое, а git ещё и экранирует не-ASCII имена (правило 165).
         paths = checks.git_paths("diff", "--name-only", f"{base}...{head}")
         messages = _git("log", "--format=%B", rng)
-        # Авторы диапазона: по ним решается, есть ли кому писать журнал.
-        authors = [line for line in _git("log", "--format=%an", rng).splitlines() if line.strip()]
+        # Автор и число родителей у каждого коммита: слияние узнаётся по
+        # второму родителю, а решает это ``audit`` — здесь только чтение.
+        commits = [(line.split("\t", 1)[0], len(line.split("\t", 1)[1].split()))
+                   for line in _git("log", "--format=%an\t%P", rng).splitlines()
+                   if "\t" in line]
     except (subprocess.CalledProcessError, OSError, ValueError) as e:
         # Третий исход: диапазон не разобран — чинит это тот, кто запускает, а
         # не автор изменения (правило 039).
@@ -195,7 +215,7 @@ def main() -> int:
                               f"не разобран — {e}"), file=sys.stderr)
         return 2
 
-    found, why = audit(paths, messages, authors)
+    found, why = audit(paths, messages, commits)
     if found:
         print(checks.annotate("error", f"журнал отстал от правки: {found[0]}"),
               file=sys.stderr)
