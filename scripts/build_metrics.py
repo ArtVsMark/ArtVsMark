@@ -544,8 +544,20 @@ def _badge_files(repo: str, kind: str) -> list[str]:
     return sorted(set(found))
 
 
-def verify_absence(repo: str, kind: str, why: str) -> None:
-    """Проверяет, что «предмета нет» — правда, а не память автора.
+def verify_absence(repo: str, kind: str, why: str) -> str:
+    """Находка, если «предмета нет» — неправда. Пусто — ответ верен.
+
+    ВОЗВРАЩАЕТ, А НЕ ПАДАЕТ, И ЭТО ГЛАВНАЯ ПРАВКА. Прежде отказ здесь ронял
+    сборку целиком: 5–7 сентября витрина трое суток не пересчитывалась, потому
+    что глоссарий вернул значок покрытия на место и наш ответ «значка нет»
+    устарел. Правка на той стороне была ВЕРНОЙ — а встали пересчёт всех
+    тридцати чисел, публикация картинок и сторож свежести.
+
+    Цена несоразмерна предмету: неверная плашка одного проекта не делает
+    неверными остальные числа и не мешает их пересчитать. Находка красит
+    проверку изменения, где её чинит окно; суточная сборка её печатает и
+    досчитывает (правило 039 — исходов три, и «данные разошлись» не равно
+    «сборка сломалась»).
 
     Отказ по показателю — такое же утверждение о чужом репозитории, как число,
     вписанное руками, и устаревает он так же молча. Так и вышло: у каталога
@@ -562,7 +574,7 @@ def verify_absence(repo: str, kind: str, why: str) -> None:
         if _api(f"/repos/{repo}/releases?per_page=1"):
             found = "выпуски есть, хотя бы один — возможно, предварительный"
         else:
-            return
+            return ""
     elif kind == "ci":
         # НАЗВАННОЕ ИСКЛЮЧЕНИЕ, А НЕ ЛЮБОЕ. «Прогонов нет вовсе» перестало быть
         # верным у Claude-Code_Usage-Token 28 августа: сосед подключился к каталогу
@@ -580,7 +592,7 @@ def verify_absence(repo: str, kind: str, why: str) -> None:
         if unnamed:
             found = f"прогоны в репозитории есть и в причине не названы: {', '.join(sorted(unnamed))}"
         else:
-            return
+            return ""
     elif kind in BADGE_MARKERS:
         # ЗНАЧОК, А НЕ ВЕТКА. Прежде отказ выносился по существованию ветки
         # `badges`: раз она есть — «показатель публикуется». Ветка общая на все
@@ -602,17 +614,14 @@ def verify_absence(repo: str, kind: str, why: str) -> None:
         if published:
             found = f"значок публикуется: {', '.join(published)}"
         else:
-            return
+            return ""
     else:
-        return
+        return ""
 
-    raise SystemExit(
-        f"{repo}: ответ по показателю «{kind}» неверен.\n"
-        f"  Записано: {why}\n"
-        f"  На деле:  {found}\n\n"
-        "  Отказ — утверждение о чужом репозитории, и устаревает он молча.\n"
-        "  Замените «none» на источник значения либо исправьте причину."
-    )
+    return (f"{repo}: ответ по показателю «{kind}» неверен. Записано: {why}. "
+            f"На деле: {found}. Отказ — утверждение о чужом репозитории, и "
+            f"устаревает он молча; замените «none» на источник значения либо "
+            f"исправьте причину")
 
 
 def latest_tag(repo: str) -> str | None:
@@ -694,6 +703,42 @@ def pypi_version(repo: str, package: str) -> str:
     return info["version"]
 
 
+#: Поле контракта фактов, отвечающее за показатель. Читается, когда значка у
+#: соседа нет: контракт `.rules/facts-contract.md` объявил `coverage_percent`
+#: ровно для этого. У «version» и «release» полей нет — их публикуют значком
+#: или выпуском площадки, и выдумывать им поле значило бы просить у соседей
+#: работу, которой контракт не предусматривал.
+FACTS_FIELD = {"coverage": "coverage_percent"}
+
+
+def neighbour_facts(repo: str) -> tuple[dict, str]:
+    """Факты соседа и находка о них. Оба пустые — фактов нет, и это законно.
+
+    ОТЛИЧАЕТСЯ ОТ ``grader_facts`` ПРЕДМЕТОМ, А НЕ ВЕЖЛИВОСТЬЮ. Грейдер —
+    ИЗДАТЕЛЬ чисел витрины: без его фактов страницу собирать не из чего, и
+    отказ там законный. Сосед — участник таблицы: его факты дополняют показ, и
+    их отсутствие — состояние проекта, а не поломка сборки (правило 039).
+
+    Несовместимый мажор тоже находка, а не отказ: чужой проект вправе поднять
+    свой формат, не спросив нас, и ронять из-за этого ВСЮ витрину — цена,
+    несоразмерная предмету.
+    """
+    try:
+        payload = _api(f"/repos/{repo}/contents/{FACTS_PATH}?ref=badges")
+        facts = json.loads(base64.b64decode(payload["content"]))
+    except urllib.error.HTTPError as absent:
+        if absent.code != 404:
+            raise
+        return {}, ""
+    except (ValueError, KeyError) as broken:
+        return {}, f"{repo}: facts.json не разобран ({broken}) — показатели взяты без него"
+    schema = str(facts.get("schema", ""))
+    if schema.split(".")[0] != FACTS_SCHEMA:
+        return {}, (f"{repo}: facts.json объявляет схему {schema!r}, витрина умеет "
+                    f"{FACTS_SCHEMA}.x — файл не читается, показатели взяты без него")
+    return facts, ""
+
+
 def badge_value(repo: str, answer: dict) -> str:
     """Значение значка проекта. Две формы ответа, и обе законны:
 
@@ -735,7 +780,62 @@ def badge_value(repo: str, answer: dict) -> str:
     return body["message"]
 
 
-def project_badges(repo: str, answers: dict) -> list[tuple[str, str, str]]:
+def live_value(repo: str, kind: str, answer: dict, facts: dict,
+               findings: list[str]) -> str | None:
+    """Что источники говорят о показателе ПРЯМО СЕЙЧАС. ``None`` — не говорят ничего.
+
+    ВИТРИНА СПРАШИВАЕТ, А НЕ ПОМНИТ — В ЭТОМ ВЕСЬ СМЫСЛ ФУНКЦИИ. Раньше форма
+    ответа хранилась в projects.json: `{"endpoint": "coverage"}` против
+    `{"none": "причина"}`. Это КОПИЯ ЧУЖОГО ОПРЕДЕЛЕНИЯ — того самого, которое
+    витрина запретила держать у себя, когда писала соседям контракт фактов
+    (правило 174). Копия верна до первой правки на той стороне и расходится
+    молча; за трое суток сентября она разошлась ДВАЖДЫ, и оба раза уронила
+    сборку.
+
+    Порядок источников — от точного к общему, и каждый шаг проверяем:
+
+    1. **имя, названное в ответе** (`endpoint`/`badge`) — если сосед публикует
+       значок под нестандартным именем, как `coverage-combined` у грейдера;
+    2. **значок, найденный по слову показателя** — сосед завёл его сам, ответа
+       у витрины про это нет;
+    3. **поле контракта фактов** — `coverage_percent`, ровно то, ради чего
+       контракт и писался: издатель считает, потребитель читает;
+    4. ничего из этого — ``None``, и решение остаётся за записанным ответом.
+
+    ОШИБКА ЧТЕНИЯ НА ЛЮБОМ ШАГЕ — НЕ ИСКЛЮЧЕНИЕ, А СЛЕДУЮЩИЙ ШАГ. Чужой файл
+    вправе исчезнуть, переехать или сменить предмет; падать на этом значит
+    отдавать чужому проекту право останавливать нашу сборку.
+    """
+    named = answer.get("endpoint") or answer.get("badge")
+    if named:
+        try:
+            return badge_value(repo, answer)
+        except (urllib.error.HTTPError, ValueError, KeyError, SystemExit):
+            # Имя, объявленное витриной, больше не читается. Отступить молча
+            # нельзя: следующий шаг найдёт значение, показатель окажется на
+            # месте, и МЁРТВОЕ ИМЯ В projects.json переживёт этот прогон и все
+            # следующие — ровно тем способом, каким устаревают утверждения о
+            # чужих репозиториях (правило 151: молчаливый обход неотличим от
+            # исправного пути).
+            findings.append(
+                f"{repo}: значок «{named}», объявленный в projects.json, не читается. "
+                f"Витрина ищет показатель «{kind}» сама; уберите имя или поправьте его")
+    for name in _badge_files(repo, kind) if kind in BADGE_MARKERS else []:
+        try:
+            return badge_value(repo, {"endpoint": name.removesuffix(".json")})
+        except (urllib.error.HTTPError, ValueError, KeyError, SystemExit):
+            continue
+    field = FACTS_FIELD.get(kind)
+    if field and facts.get(field) is not None:
+        value = facts[field]
+        # Число из фактов — доля, а не готовая надпись: единицу дописывает
+        # витрина, потому что показывает её она.
+        return f"{value}%" if isinstance(value, (int, float)) else str(value)
+    return None
+
+
+def project_badges(repo: str, answers: dict,
+                   findings: list[str] | None = None) -> list[tuple[str, str, str]]:
     """Показатели проекта значениями, а не чужими картинками.
 
     Раньше здесь стояли бейджи ``img.shields.io`` — четыре внешние картинки на
@@ -752,20 +852,56 @@ def project_badges(repo: str, answers: dict) -> list[tuple[str, str, str]]:
 
     Тон значения — не украшение: он говорит то, чего не говорит само значение.
     Красный «CI failing» читается с расстояния, зелёный «passing» — тоже.
+
+    НАХОДКИ О СОСЕДЯХ СКЛАДЫВАЮТСЯ В ``findings``, А НЕ РОНЯЮТ СБОРКУ. Ответ
+    витрины о чужом репозитории устаревает от чужой правки, и цена отказа здесь
+    несоразмерна: неверная плашка одного проекта не делает неверными остальные
+    тридцать чисел и не мешает их пересчитать. Красным они становятся на
+    проверке изменения (``--check``), где чинит их окно.
     """
+    if findings is None:
+        findings = []
     badges: list[tuple[str, str, str]] = []
+    facts, facts_finding = neighbour_facts(repo)
+    if facts_finding:
+        findings.append(facts_finding)
     for kind in BADGE_KINDS:
         answer = answers.get(kind, {})
         if "none" in answer:
-            verify_absence(repo, kind, answer["none"])
-            # Плашка остаётся и говорит «none». Пропустить её значило бы
-            # показать четыре показателя у одного проекта и один у другого —
-            # читатель достроит недостающее сам, и достроит в сторону «просто
-            # не показали». «Предмета нет» и «не дошли руки» так снова
-            # склеиваются, а ради их различия ответ и заводился. Причина
-            # остаётся в projects.json: она по-русски и служебная, а витрину
-            # читает англоязычный посетитель.
-            badges.append((BADGE_LABELS[kind], "none", "muted"))
+            # ОТВЕТ «ПРЕДМЕТА НЕТ» БОЛЬШЕ НЕ ВЕРЯТ НА СЛОВО — И НЕ РОНЯЮТ ИМ
+            # СБОРКУ. Живой источник сильнее записанного ответа: если сосед
+            # начал публиковать показатель, витрина покажет ЕГО, а устаревшая
+            # причина станет находкой для проверки изменения.
+            #
+            # Прежде порядок был обратный: ответ считался истиной, расхождение
+            # — отказом сборки. Три дня простоя 5–7 сентября это и есть цена
+            # такого порядка: глоссарий вернул значок покрытия на место, наш
+            # ответ «значка нет» устарел, и встали пересчёт всех тридцати
+            # чисел, публикация картинок и сторож свежести — из-за правки,
+            # которая на той стороне была верной.
+            found = live_value(repo, kind, answer, facts, findings)
+            if found is None:
+                # Значка нет — но «предмета нет» могло устареть и по другому
+                # признаку: у выпусков это релиз площадки, у CI — заведшийся
+                # прогон, и значением они не отдаются. Плашка остаётся «none»,
+                # находка едет к проверке изменения.
+                stale = verify_absence(repo, kind, answer["none"])
+                if stale:
+                    findings.append(stale)
+                # Плашка остаётся и говорит «none». Пропустить её значило бы
+                # показать четыре показателя у одного проекта и один у другого
+                # — читатель достроит недостающее сам, и достроит в сторону
+                # «просто не показали». «Предмета нет» и «не дошли руки» так
+                # снова склеиваются, а ради их различия ответ и заводился.
+                # Причина остаётся в projects.json: она по-русски и служебная,
+                # а витрину читает англоязычный посетитель.
+                badges.append((BADGE_LABELS[kind], "none", "muted"))
+                continue
+            findings.append(
+                f"{repo}: ответ по показателю «{kind}» устарел — записано «предмета "
+                f"нет», а источник отдаёт {found!r}. Витрина показывает источник; "
+                f"уберите «none» из projects.json")
+            badges.append((BADGE_LABELS[kind], found, "info"))
             continue
         if kind == "release":
             # ВЫПУСК И ПАКЕТ — ОДНА ПЛАШКА, И ЭТО НЕ ЭКОНОМИЯ МЕСТА. Раньше их
@@ -800,7 +936,19 @@ def project_badges(repo: str, answers: dict) -> list[tuple[str, str, str]]:
             state = runs[0]["conclusion"] if runs else "unknown"
             badges.append((BADGE_LABELS["ci"], state, "ok" if state == "success" else "warn"))
         elif kind == "coverage":
-            badges.append((BADGE_LABELS["coverage"], badge_value(repo, answer), "ok"))
+            # Объявленный значок мог исчезнуть — сосед вправе переложить его или
+            # сменить предмет файла, и это его дело. Витрина отступает к фактам,
+            # потом к «none» с находкой, но НЕ падает: чужая перекладка не
+            # обязана останавливать пересчёт остальных чисел (039).
+            value = live_value(repo, kind, answer, facts, findings)
+            if value is None:
+                findings.append(
+                    f"{repo}: объявленный значок «{kind}» не читается, и в facts.json "
+                    f"поля {FACTS_FIELD.get(kind)!r} нет. Витрина показывает «none» — "
+                    f"поправьте ответ в projects.json либо спросите соседа")
+                badges.append((BADGE_LABELS[kind], "none", "muted"))
+            else:
+                badges.append((BADGE_LABELS["coverage"], value, "ok"))
         else:
             # Версия — не то же, что выпуск: у грейдера выпуск «1.11», а версия
             # «1.11.60». Первое — серия, которую видит пользователь пакета,
@@ -1867,25 +2015,62 @@ def selftest() -> int:
         for name, files, expected in absence_cases:
             globals()["_api"] = _fake(files)
             for kind, must_reject in expected.items():
-                try:
-                    verify_absence("o/r", kind, "предмета нет")
-                    rejected = False
-                except SystemExit:
-                    rejected = True
-                if rejected is not must_reject:
+                # ВОЗВРАЩАЕТ НАХОДКУ, А НЕ ПАДАЕТ: расхождение с чужим
+                # репозиторием красит проверку изменения, но не роняет
+                # пересчёт остальных чисел (039).
+                said = verify_absence("o/r", kind, "предмета нет")
+                if bool(said) is not must_reject:
                     broken.append(f"отказ по «{kind}», {name}: "
-                                  f"ожидалось {'отказ' if must_reject else 'пропуск'}")
-                print(f"  {'отвергнут' if rejected else 'пропущен '} — отказ «{kind}»: {name}")
+                                  f"ожидалось {'находка' if must_reject else 'молчание'}, "
+                                  f"вышло {said!r}")
+                print(f"  {'находка ' if said else 'молчание'} — отказ «{kind}»: {name}")
         # Отказ обязан НАЗЫВАТЬ найденное: «показатель публикуется» без имени
         # файла — это отказ, по которому нечего чинить (правило 083).
         globals()["_api"] = _fake({"coverage-combined.json": BADGE})
-        try:
-            verify_absence("o/r", "coverage", "тестов нет")
-        except SystemExit as refusal:
-            if "coverage-combined.json" not in str(refusal):
-                broken.append("отказ по покрытию не называет найденный значок")
-        else:
-            broken.append("отказ по покрытию не вынесен при живом значке")
+        said = verify_absence("o/r", "coverage", "тестов нет")
+        if not said:
+            broken.append("находки по покрытию нет при живом значке")
+        elif "coverage-combined.json" not in said:
+            broken.append("находка по покрытию не называет найденный значок")
+    finally:
+        globals()["_api"] = saved_api
+
+    # ── витрина спрашивает источники, а не помнит их форму ────────────────
+    # Ради этого набора и переписана вся ветка: чужая правка не должна ронять
+    # пересчёт, а устаревший ответ витрины не должен показываться читателю.
+    # Каждый случай ЗОВЁТ live_value на подставном дереве (правило 150).
+    BADGE_BODY = {"schemaVersion": 1, "message": "96.8%"}
+    live_cases = [
+        ("значок под названным именем",
+         {"endpoint": "coverage"}, {"coverage.json": BADGE_BODY}, {}, "96.8%", False),
+        # Имя умерло, показатель жив: значение находится само, а мёртвое имя
+        # называется находкой — иначе оно переживёт этот прогон и все следующие.
+        ("названное имя умерло, значок нашёлся сам",
+         {"endpoint": "coverage-old"}, {"coverage.json": BADGE_BODY}, {}, "96.8%", True),
+        # Ответа про имя нет вовсе — сосед завёл значок сам, витрина его видит.
+        ("значка витрина не объявляла, сосед его завёл",
+         {"none": "тестов нет"}, {"coverage.json": BADGE_BODY}, {}, "96.8%", False),
+        # Значка нет, но контракт фактов ровно для этого и писался.
+        ("значка нет, число есть в фактах",
+         {"none": "тестов нет"}, {}, {"coverage_percent": 91.2}, "91.2%", False),
+        ("ни значка, ни фактов — источники молчат",
+         {"none": "тестов нет"}, {}, {}, None, False),
+        # Строку из фактов не переделывают: единицу дописывают только числу.
+        ("строка из фактов остаётся строкой",
+         {"none": "тестов нет"}, {}, {"coverage_percent": "n/a"}, "n/a", False),
+    ]
+    saved_api = globals()["_api"]
+    try:
+        for name, answer, files, facts_body, expected, must_find in live_cases:
+            globals()["_api"] = _fake(files)
+            said: list[str] = []
+            got = live_value("o/r", "coverage", answer, facts_body, said)
+            if got != expected:
+                broken.append(f"живое значение, {name}: ожидалось {expected!r}, вышло {got!r}")
+            if bool(said) is not must_find:
+                broken.append(f"живое значение, {name}: находок {said}, ожидалось "
+                              f"{'хотя бы одна' if must_find else 'ни одной'}")
+            print(f"  {str(got):<8} — живое значение: {name}")
     finally:
         globals()["_api"] = saved_api
 
@@ -2296,13 +2481,16 @@ def main() -> int:
     titles = {project["repo"]: project["title"] for project in config["projects"]}
     by_repo = {project["repo"]: project for project in config["projects"]}
     accents = []
+    # Находки о соседях копятся, а не роняют пересчёт. Ронять его чужой правкой
+    # витрина перестала после трёх суток простоя 5–7 сентября (039).
+    neighbour_findings: list[str] = []
     for repo in rank_featured(stats)[:FEATURED_ACCENTS]:
         project = by_repo[repo]
         accents.append({
             "title": project["title"],
             "tagline": project["tagline"],
             "stack": project["stack"],
-            "badges": project_badges(repo, project["badges"]),
+            "badges": project_badges(repo, project["badges"], neighbour_findings),
             "stats": stats[repo],
         })
     print("акценты: " + " · ".join(
@@ -2344,6 +2532,22 @@ def main() -> int:
             for name, body in drawn.items():
                 (ROOT / f"assets/{name}.svg").write_text(body, encoding="utf-8")
     patch_readme(values, fresh, drawn, write=not check)
+
+    # НАХОДКИ О СОСЕДЯХ РАЗВЕДЕНЫ ПО МОМЕНТУ, А НЕ ПО ГРОМКОСТИ. На проверке
+    # изменения они красные: их чинит окно, здесь и сейчас, правкой
+    # projects.json. В суточной сборке они печатаются командой площадки и
+    # пересчёт продолжается: чужая правка не вправе останавливать наши числа,
+    # а молчать о ней нельзя — предупреждение видно в прогоне и в его сводке.
+    if neighbour_findings:
+        for line in neighbour_findings:
+            print(checks.annotate("error" if check else "warning", line),
+                  file=sys.stderr if check else sys.stdout)
+        if check:
+            print(f"\nответы витрины о соседях разошлись с источниками: "
+                  f"{len(neighbour_findings)}. Витрина показывает источник, а не "
+                  f"записанное; поправьте projects.json.", file=sys.stderr)
+            return 1
+
     print("проверка прошла: источники живы, маркеры на месте" if check
           else "assets/metrics-*.svg и README обновлены")
     return 0
