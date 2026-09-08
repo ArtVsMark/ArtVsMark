@@ -80,13 +80,17 @@ FIT_W, FIT_H = 0.90, 0.74
 BACKGROUND_SATURATION = 12
 EDGE_SOFTNESS = 40
 
-#: Сколько времени идёт раскрытие и когда оно начинается. Пауза в начале —
-#: чтобы появление было заметно, а не случилось до первого кадра; хвост после
-#: раскрытия — чтобы собранный знак постоял, а не сменился следующим циклом.
-#: Появление НАРОЧНО медленное: знак читается как последовательность шагов, и
-#: на быстром раскрытии порядок не успевает прочитаться.
-DURATION = 3.4
-LEAD, DONE = 0.06, 0.86
+#: Тайминги цикла, В СЕКУНДАХ: доли от длительности считает код. Держать их
+#: долями значило бы пересчитывать все пять чисел при каждой правке одного.
+#:
+#: Знак раскрывается, стоит собранным почти весь цикл, гаснет и начинается
+#: заново. Появление НАРОЧНО медленное: знак читается как последовательность
+#: шагов, и на быстром раскрытии порядок не успевает прочитаться.
+CYCLE = 30.0        #: весь цикл — столько знак живёт до следующего появления
+LEAD = 0.5          #: пауза до первого движения: иначе оно попадает на загрузку
+REVEAL = 6.0        #: само раскрытие слева направо
+FADE = 0.6          #: затухание перед повтором — чтобы стык не мигал
+RESET = 0.1         #: сброс клипа: происходит уже под нулевой прозрачностью
 
 
 def png_size(data: bytes) -> tuple[int, int]:
@@ -107,13 +111,23 @@ def banner_block(theme: str, image: bytes) -> str:
     fill = "#0D1117" if theme == "dark" else "#FFFFFF"
     edge = "#30363D" if theme == "dark" else "#D0D7DE"
     data = base64.b64encode(image).decode()
+    # Ключевые моменты цикла в долях: раскрытие, стояние, затухание, сброс.
+    # Последняя точка — ровно 1: keyTimes, не доходящий до единицы, площадка
+    # считает невалидным и выбрасывает анимацию ЦЕЛИКОМ, молча.
+    open_from = LEAD / CYCLE
+    open_to = (LEAD + REVEAL) / CYCLE
+    fade_from = (CYCLE - FADE - RESET) / CYCLE
+    fade_to = (CYCLE - RESET) / CYCLE
+    reset_to = min(fade_to + RESET / CYCLE, 1.0)
     return (
         f'  <!--logo-->\n'
         f'  <clipPath id="logo-reveal">\n'
         f'    <rect x="{x:.1f}" y="{y:.1f}" width="{width:.1f}" height="{height:.1f}">\n'
-        f'      <animate attributeName="width" values="0;0;{width:.1f};{width:.1f}" '
-        f'keyTimes="0;{LEAD};{DONE};1" dur="{DURATION}s" begin="0s" fill="freeze" '
-        f'calcMode="spline" keySplines="0 0 1 1;0.35 0 0.4 1;0 0 1 1"/>\n'
+        f'      <animate attributeName="width" '
+        f'values="0;0;{width:.1f};{width:.1f};0;0" '
+        f'keyTimes="0;{open_from:.4f};{open_to:.4f};{fade_to:.4f};{reset_to:.4f};1" '
+        f'dur="{CYCLE}s" begin="0s" repeatCount="indefinite" calcMode="spline" '
+        f'keySplines="0 0 1 1;0.35 0 0.4 1;0 0 1 1;0 0 1 1;0 0 1 1"/>\n'
         f'    </rect>\n'
         f'  </clipPath>\n'
         f'  <g opacity="0.97">\n'
@@ -121,7 +135,11 @@ def banner_block(theme: str, image: bytes) -> str:
         f'height="{CARD["h"]:g}" rx="14" fill="{fill}" stroke="{edge}"/>\n'
         f'    <image x="{x:.1f}" y="{y:.1f}" width="{width:.1f}" height="{height:.1f}" '
         f'clip-path="url(#logo-reveal)" preserveAspectRatio="xMidYMid meet" '
-        f'href="data:image/png;base64,{data}"/>\n'
+        f'href="data:image/png;base64,{data}">\n'
+        f'      <animate attributeName="opacity" values="1;1;0;0;1;1" '
+        f'keyTimes="0;{fade_from:.4f};{fade_to:.4f};{reset_to:.4f};{reset_to:.4f};1" '
+        f'dur="{CYCLE}s" begin="0s" repeatCount="indefinite"/>\n'
+        f'    </image>\n'
         f'  </g>\n'
         f'  <!--/logo-->')
 
