@@ -30,10 +30,20 @@
   <text x="72" y="226" fill="#636C76" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="18" font-weight="500">Grading · benchmarking · testing · CI automation</text>
   <rect x="72" y="250" width="76" height="30" rx="15" fill="#F6F8FA" stroke="#D0D7DE"/><text x="110" y="270" fill="#57606A" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="14" font-weight="600" text-anchor="middle">Python</text><rect x="158" y="250" width="76" height="30" rx="15" fill="#F6F8FA" stroke="#D0D7DE"/><text x="196" y="270" fill="#57606A" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="14" font-weight="600" text-anchor="middle">pytest</text><rect x="244" y="250" width="67" height="30" rx="15" fill="#F6F8FA" stroke="#D0D7DE"/><text x="278" y="270" fill="#57606A" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="14" font-weight="600" text-anchor="middle">CI/CD</text><rect x="321" y="250" width="130" height="30" rx="15" fill="#F6F8FA" stroke="#D0D7DE"/><text x="386" y="270" fill="#57606A" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="14" font-weight="600" text-anchor="middle">benchmarking</text><rect x="461" y="250" width="112" height="30" rx="15" fill="#F6F8FA" stroke="#D0D7DE"/><text x="517" y="270" fill="#57606A" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="14" font-weight="600" text-anchor="middle">sandboxing</text>
 
-  <g opacity="0.85">
+  <!--logo-->
+  <radialGradient id="logo-glow" cx="0.5" cy="0.5" r="0.5">
+    <stop offset="0%" stop-color="#0C7F6C" stop-opacity="0.18"/>
+    <stop offset="100%" stop-color="#0C7F6C" stop-opacity="0"/>
+  </radialGradient>
+  <g opacity="0.95">
     <rect x="880.5" y="72.5" width="329" height="195" rx="14" fill="#FFFFFF" stroke="#D0D7DE"/>
-    <text x="1045" y="184" fill="url(#repl)" font-family="SFMono-Regular,Consolas,Liberation Mono,Menlo,monospace" font-size="78" font-weight="700" text-anchor="middle" letter-spacing="-2">&gt;&gt;&gt;</text>
-    <rect x="998" y="204" width="94" height="6" rx="3" fill="#D0D7DE"/>
-    <text x="1045" y="236" fill="#57606A" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="13" font-weight="600" text-anchor="middle" letter-spacing="1.4">PYTHON</text>
+    <rect x="880.5" y="72.5" width="329" height="195" rx="14" fill="url(#logo-glow)"/>
+    <g fill="none" stroke-linecap="round" stroke-linejoin="round" transform="translate(925.24 107.33) scale(1.3926)">
+      <path d="M0 34L22 56L0 78" stroke="#0A4F5E" stroke-width="11" stroke-dasharray="73.2 73.2" stroke-dashoffset="0"><animate attributeName="stroke-dashoffset" dur="2.6s" begin="0s" fill="freeze" calcMode="spline" keySplines="0 0 1 1;0.25 0 0.15 1;0 0 1 1" values="73.2;73.2;0;0" keyTimes="0;0.0600;0.3575;1"/></path>
+      <path d="M30 34L52 56L30 78" stroke="#0B5F63" stroke-width="11" stroke-dasharray="73.2 73.2" stroke-dashoffset="0"><animate attributeName="stroke-dashoffset" dur="2.6s" begin="0s" fill="freeze" calcMode="spline" keySplines="0 0 1 1;0.25 0 0.15 1;0 0 1 1" values="73.2;73.2;0;0" keyTimes="0;0.2742;0.5716;1"/></path>
+      <path d="M60 34L82 56L60 78" stroke="#0B6F67" stroke-width="11" stroke-dasharray="73.2 73.2" stroke-dashoffset="0"><animate attributeName="stroke-dashoffset" dur="2.6s" begin="0s" fill="freeze" calcMode="spline" keySplines="0 0 1 1;0.25 0 0.15 1;0 0 1 1" values="73.2;73.2;0;0" keyTimes="0;0.4884;0.7858;1"/></path>
+      <path d="M106 34L128 56L172 12" stroke="#0C7F6C" stroke-width="11" stroke-dasharray="104.3 104.3" stroke-dashoffset="0"><animate attributeName="stroke-dashoffset" dur="2.6s" begin="0s" fill="freeze" calcMode="spline" keySplines="0 0 1 1;0.25 0 0.15 1;0 0 1 1" values="104.3;104.3;0;0" keyTimes="0;0.7025;1.0000;1"/></path>
+    </g>
   </g>
+  <!--/logo-->
 </svg>
