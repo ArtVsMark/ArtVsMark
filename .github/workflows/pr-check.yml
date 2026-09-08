@@ -148,6 +148,15 @@ jobs:
       - name: Проверить сверку журнала тем, что она обязана отвергнуть
         run: python scripts/check_journal.py --selftest
 
+      # Фрагменты журнала изменений: имя несёт секцию, внутри одна строка.
+      # Файл на изменение вместо строки в общем файле — два файла с разными
+      # именами не конфликтуют никогда.
+      - name: Проверить сборку фрагментов тем, что она обязана отвергнуть
+        run: python scripts/collect_changelog.py --selftest
+
+      - name: Фрагменты журнала изменений по формату
+        run: python scripts/collect_changelog.py --check
+
       - name: Журнал в ногу с правкой
         run: python scripts/check_journal.py
 
