@@ -61,11 +61,8 @@ import sys
 
 import checks
 
-#: Что считается правкой поведения. Список короткий намеренно: `.rules/` сюда не
-#: входит — ответ каталогу меняется и от чужой правки, а `README.md` собирается
-#: сборкой, и требовать журнал от машинной правки значило бы требовать его от
-#: расписания.
-BEHAVIOUR = (re.compile(r"^scripts/.*\.py$"), re.compile(r"^\.github/workflows/.*\.ya?ml$"))
+#: Что считается правкой поведения — общий признак, а не своя копия: его
+#: спрашивает ещё и гейт соседей (scripts/checks.py::BEHAVIOUR).
 JOURNAL = "HISTORY.md"
 
 #: Фрагмент журнала изменений. Он и есть запись «что изменилось»: файл на
@@ -197,18 +194,13 @@ def new_sections(diff: str, text: str) -> list[tuple[str, int]]:
     return [(title, sizes[title]) for title in added_titles(diff) if title in sizes]
 
 
-def touched(paths: list[str]) -> list[str]:
-    """Файлы поведения среди изменённых."""
-    return [p for p in paths if any(rx.match(p) for rx in BEHAVIOUR)]
-
-
 def audit(paths: list[str], messages: str,
           commits: list[tuple[str, int]] | None = None) -> tuple[list[str], str]:
     """Претензия к заходу и причина осознанного отказа, если она названа.
 
     ЧТО ДЕЛАЕТ ТРЕТИЙ ДОВОД. Гейт требует запись о РЕШЕНИИ, а машина решений не
     принимает: dependabot поднял SHA-пин чужого действия в pr-check.yml — по
-    списку BEHAVIOUR это правка поведения, и изменение #134 встало намертво.
+    списку checks.BEHAVIOUR это правка поведения, и изменение #134 встало намертво.
     Записать в журнал было нечего, а строку освобождения писать некому: бот её
     не напишет, человек в чужое изменение не допишет — оно перезаписывается
     следующим прогоном бота.
@@ -232,7 +224,7 @@ def audit(paths: list[str], messages: str,
     Вынесено из ``main``, чтобы проверять на подставных наборах, не ходя в git.
     """
     waiver = WAIVER.search(messages)
-    behaviour = touched(paths)
+    behaviour = checks.touched(paths)
     if not behaviour:
         return [], ""
     # ЗАПИСЬЮ СЧИТАЕТСЯ И ФРАГМЕНТ, И РАЗДЕЛ В ЖУРНАЛЕ РЕШЕНИЙ — они отвечают на
