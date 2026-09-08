@@ -55,6 +55,11 @@ import checks
 BEHAVIOUR = (re.compile(r"^scripts/.*\.py$"), re.compile(r"^\.github/workflows/.*\.ya?ml$"))
 JOURNAL = "HISTORY.md"
 
+#: Фрагмент журнала изменений. Он и есть запись «что изменилось»: файл на
+#: изменение, потому что строка в общем файле конфликтует всегда, если её пишут
+#: две ветки. Предмет живой — 8 сентября так встали две ветки подряд.
+FRAGMENTS = "changelog.d/"
+
 #: Осознанный отказ от записи — с причиной, которая остаётся в истории.
 WAIVER = re.compile(r"^Журнал:\s*не требуется\s*[—-]\s*(?P<why>\S.*)$", re.M)
 
@@ -157,15 +162,20 @@ def audit(paths: list[str], messages: str,
     behaviour = touched(paths)
     if not behaviour:
         return [], ""
-    if JOURNAL in paths:
+    # ЗАПИСЬЮ СЧИТАЕТСЯ И ФРАГМЕНТ, И РАЗДЕЛ В ЖУРНАЛЕ РЕШЕНИЙ — они отвечают на
+    # разные вопросы, и требовать оба значило бы требовать причину там, где её
+    # нет. «Что изменилось» есть у каждой правки; «почему так решили» — не у
+    # каждой, и выдуманное «почему» хуже отсутствующего (правило 046).
+    if JOURNAL in paths or any(path.startswith(FRAGMENTS) and not path.endswith("README.md")
+                               for path in paths):
         return [], ""
     if waiver:
         return [], waiver.group("why").strip()
     made = [author for author, parents in (commits or []) if parents < 2]
     if made and all(checks.machine_made(author) for author in made):
         return [], "правку сделала машина: решения она не принимает, записывать нечего"
-    return [f"поведение правится без записи в журнале: "
-            f"{checks.tail(behaviour, 5)}"], ""
+    return [f"поведение правится без записи: ни фрагмента в {FRAGMENTS}, ни "
+            f"раздела в {JOURNAL} — {checks.tail(behaviour, 5)}"], ""
 
 
 def _git(*args: str) -> str:
@@ -182,6 +192,9 @@ def selftest() -> int:
     как память.
     """
     cases = [
+        ("правка скрипта с фрагментом", ["scripts/a.py", "changelog.d/x.fixed.md"], "", False),
+        ("соглашение о фрагментах записью не считается",
+         ["scripts/a.py", "changelog.d/README.md"], "", True),
         ("правка скрипта с записью", ["scripts/a.py", "HISTORY.md"], "", False),
         ("правка прогона с записью", [".github/workflows/a.yml", "HISTORY.md"], "", False),
         ("правка скрипта без записи", ["scripts/a.py"], "", True),
