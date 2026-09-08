@@ -1,9 +1,9 @@
 <div align="center">
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./assets/header-dark.svg?v=4fc1fdaf">
-  <source media="(prefers-color-scheme: light)" srcset="./assets/header-light.svg?v=a4f0ba52">
-  <img src="./assets/header-dark.svg?v=4fc1fdaf" alt="Artem Markitanov — Python grading, benchmarking, testing and CI automation" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="./assets/header-dark.svg?v=df53e932">
+  <source media="(prefers-color-scheme: light)" srcset="./assets/header-light.svg?v=8156465a">
+  <img src="./assets/header-dark.svg?v=df53e932" alt="Artem Markitanov — Python grading, benchmarking, testing and CI automation" width="100%">
 </picture>
 
 <br>
@@ -29,9 +29,9 @@
 <div align="center">
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/engineering-dark.svg?v=986a77cf">
-  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/engineering-light.svg?v=fddc1ac3">
-  <img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/engineering-dark.svg?v=986a77cf" alt="GitHub engineering stats: 5 public repos, 8 stars earned, 56 followers, 3 842 contributions · 365d, 2 day streak, 25 longest streak" width="48%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/engineering-dark.svg?v=aab1761e">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/engineering-light.svg?v=f40846f2">
+  <img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/engineering-dark.svg?v=aab1761e" alt="GitHub engineering stats: 5 public repos, 10 stars earned, 55 followers, 3 900 contributions · 365d, 2 day streak, 25 longest streak" width="48%">
 </picture>
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/stack-dark.svg?v=11bc7f6b">
@@ -42,9 +42,9 @@
 <br><br>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/activity-dark.svg?v=3ec3ca34">
-  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/activity-light.svg?v=98e53c2e">
-  <img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/activity-dark.svg?v=3ec3ca34" alt="3842 contributions in the last year" width="92%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/activity-dark.svg?v=7ecc1b39">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/activity-light.svg?v=c3c03984">
+  <img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/activity-dark.svg?v=7ecc1b39" alt="3900 contributions in the last year; a snake crossing the contribution grid" width="92%">
 </picture>
 
 <sub>Measured from the GitHub API by <a href="./.github/workflows/metrics.yml">the same workflow</a> that rebuilds every other number here — no third-party stat services, no external cards. Languages are counted by <b>how many repositories use them</b>, not by bytes of code.</sub>
@@ -64,9 +64,9 @@
 <div align="center">
 <a href="https://github.com/ArtVsMark?tab=repositories">
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/featured-dark.svg?v=bbd9cda2">
-  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/featured-light.svg?v=647efb90">
-  <img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/featured-dark.svg?v=bbd9cda2" alt="Stepik-Python-Grader — Offline Python autograder: unlimited local checks, honest side-by-side comparison of solutions. release/pypi 1.11, CI success, coverage 91.3%, version 1.11.132. 3 stars, 1753 commits, 34 issues, 12 releases, 753 prs. CLI · web UI · GUI · pytest plugin · OS sandbox · Engineering-Incidents-Playbook — Rules for agent sessions and a GitHub pipeline — each one carrying the incident it grew from. release/pypi 1.2, CI success, coverage 66%, version 1.2.69. 3 stars, 415 commits, 8 issues, 4 releases, 305 prs. docs · RU/EN · Claude-Code_Usage-Token — Turns a three-step limit indicator into a number. Early: the spec is written, the tool is not. release/pypi v0.2.0, CI success, coverage 87.6%, version 0.2.0. 0 stars, 70 commits, 3 issues, 2 releases, 68 prs. Python · JSONL over git · Glossary-Python — The RU/EN glossary the grader links into when a run fails. release/pypi none, CI success, coverage 96.8%, version none. 2 stars, 94 commits, 1 issues, 0 releases, 39 prs. content · tooling" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/featured-dark.svg?v=59d66f8d">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/featured-light.svg?v=43ef225f">
+  <img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/featured-dark.svg?v=59d66f8d" alt="Stepik-Python-Grader — Offline Python autograder: unlimited local checks, honest side-by-side comparison of solutions. release/pypi 1.11, CI success, coverage 91.3%, version 1.11.135. 3 stars, 1756 commits, 39 issues, 12 releases, 761 prs. 5 337 tests, 269 test modules, 16 checks per PR. rules held by: gate 76, pipeline 37, document 65; 181 answered, 175 linked to issues. CLI · web UI · GUI · pytest plugin · OS sandbox · Engineering-Incidents-Playbook — Rules for agent sessions and a GitHub pipeline — each one carrying the incident it grew from. release/pypi 1.2, CI success, coverage 67%, version 1.2.80. 3 stars, 426 commits, 7 issues, 4 releases, 316 prs. 911 tests, 49 test modules, 3 checks per PR. rules held by: gate 119, pipeline 8, document 28, none 5; 193 answered, 43 linked to issues. docs · RU/EN · Claude-Code_Usage-Token — Turns a three-step limit indicator into a number. Early: the spec is written, the tool is not. release/pypi v0.2.0, CI success, coverage 87.6%, version 0.2.0. 1 stars, 71 commits, 12 issues, 2 releases, 68 prs. 557 tests, 34 test modules, 12 checks per PR. rules held by: gate 95, pipeline 9, document 46, none 2; 181 answered, 17 linked to issues. Python · JSONL over git · Glossary-Python — The RU/EN glossary the grader links into when a run fails. release/pypi none, CI success, coverage 96.8%, version none. 2 stars, 94 commits, 3 issues, 0 releases, 39 prs. rules held by: gate 60, pipeline 12, document 29, none 16; 181 answered. content · tooling" width="100%">
 </picture>
 </a>
 </div>
