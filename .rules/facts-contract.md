@@ -147,9 +147,29 @@
 
 ## Кто это уже делает
 
-| проект | файл | замечание |
-|---|---|---|
-| [Stepik-Python-Grader](https://github.com/ArtVsMark/Stepik-Python-Grader) | есть | эталонная форма: `schema` строкой, `generated_at`, `commit`, `names` рядом с `count` |
-| [Glossary-Python](https://github.com/ArtVsMark/Glossary-Python) | есть | `schema` числом вместо строки, нет `generated_at`; отдаёт `rules` и `content` — форма, которой не было у грейдера |
-| [Engineering-Incidents-Playbook](https://github.com/ArtVsMark/Engineering-Incidents-Playbook) | нет | |
-| [Claude-Code_Usage-Token](https://github.com/ArtVsMark/Claude-Code_Usage-Token) | нет | ветки `badges` тоже нет |
+Замер 8 сентября — читалось у каждого напрямую, а не вспоминалось:
+
+| проект | файл | tests | checks | coverage | rules |
+|---|:---:|:---:|:---:|:---:|:---:|
+| [Stepik-Python-Grader](https://github.com/ArtVsMark/Stepik-Python-Grader) | есть | ✅ | ✅ | — | — |
+| [Claude-Code_Usage-Token](https://github.com/ArtVsMark/Claude-Code_Usage-Token) | есть | ✅ | ✅ | ✅ | ✅ |
+| [Glossary-Python](https://github.com/ArtVsMark/Glossary-Python) | есть | — | — | ✅ | ✅ |
+| [Engineering-Incidents-Playbook](https://github.com/ArtVsMark/Engineering-Incidents-Playbook) | **нет** | — | — | — | — |
+
+Замечания по форме: у грейдера она эталонная — `schema` строкой, `generated_at`,
+`commit`, `names` рядом с `count`. Глоссарий отдаёт `rules` и свой раздел
+`glossary`, а версии Python называет `python_versions` вместо `python.supported`:
+поле есть, но под другим именем, и потому не читается — разные имена для одного
+предмета делают сравнение проектов невозможным.
+
+Пробелы заведены задачами у самих проектов, а не записаны здесь как жалоба:
+[каталог](https://github.com/ArtVsMark/Engineering-Incidents-Playbook/issues/407) —
+файла нет вовсе; [глоссарий](https://github.com/ArtVsMark/Glossary-Python/issues/47) —
+нет чисел набора и проверок; [грейдер](https://github.com/ArtVsMark/Stepik-Python-Grader/issues/1505) —
+нет `coverage_percent` и `rules`, хотя оба числа он уже считает.
+
+**Эта таблица устаревала молча, и дважды.** До 8 сентября здесь стояло, что у
+`Claude-Code_Usage-Token` нет ни файла, ни ветки `badges`, — а он отдаёт больше
+разделов, чем эталонный грейдер. Ответ о соседе, написанный однажды и не
+перечитанный, врёт тем же способом, что и число, вписанное руками: выглядит
+осмысленно и не отличается от верного, пока не сходишь к источнику.
