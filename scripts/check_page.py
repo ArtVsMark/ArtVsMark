@@ -173,7 +173,7 @@ def selftest() -> int:
         print(f"  {'отвергнут' if found else 'пропущен '} — {name}")
 
     # Отказ обязан НАЗЫВАТЬ предмет: находка без имени — это отказ, по которому
-    # нечего чинить (правило 083).
+    # нечего чинить (правило 158).
     named = audit_page(ok_page + '<img src="https://example.com/a.png" alt="a">')
     if not any("example.com/a.png" in line for line in named):
         broken.append("отказ на чужой картинке не называет её адрес")

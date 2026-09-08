@@ -780,7 +780,7 @@ def verify_absence(repo: str, kind: str, why: str) -> str:
         # Гейт не судит, ЧТО делает чужой прогон: это чтение смысла. Он требует
         # назвать исключения ПОИМЁННО в самой причине и сверяет, что других нет.
         # Появится у соседа настоящий CI — имени его в причине не окажется, и
-        # ответ покраснеет, как и должен (правило 083: отказ называет предмет).
+        # ответ покраснеет, как и должен (правило 158: отказ называет предмет).
         names = {w["path"].rsplit("/", 1)[-1]
                  for w in _api(f"/repos/{repo}/actions/workflows").get("workflows", [])}
         unnamed = {name for name in names if name not in why}
@@ -962,7 +962,7 @@ def badge_value(repo: str, answer: dict) -> str:
     payload = _api(f"/repos/{repo}/contents/{path}")
     body = json.loads(base64.b64decode(payload["content"]))
     if "message" not in body:
-        # ОТКАЗ НАЗЫВАЕТ ПРЕДМЕТ (правило 083). Голый KeyError печатался как
+        # ОТКАЗ НАЗЫВАЕТ ПРЕДМЕТ (правило 158). Голый KeyError печатался как
         # «источник не ответил — 'message'»: ни репозитория, ни файла, ни того,
         # что искали. Чинить по такому отказу нечего, а случай живой — сосед
         # переиспользовал имя `coverage.json` под другой предмет.
@@ -1716,7 +1716,15 @@ def sync_bindings(export: dict, write: bool = True) -> str:
     added = [rule["id"] for rule in export["rules"] if rule["id"] not in rules]
     for rule_id in added:
         rules[rule_id] = {"status": "unreviewed"}
-    if added and write:
+    # ВЫГРУЗКА, ПО КОТОРОЙ ПОСТРОЕНЫ ОТВЕТЫ, — поле контракта 1.2, и берётся
+    # оно ИЗ САМОЙ ВЫГРУЗКИ, а не переписывается по памяти. Номер, вписанный
+    # рукой, стареет молча и врёт ровно там, где должен предупреждать:
+    # каталог сверяет его со своим и печатает отставание (157, 164).
+    answered_to = str(export.get("contracts", {}).get("export", ""))
+    stale = bool(answered_to) and answer.get("answers_to") != answered_to
+    if (added or stale) and write:
+        if answered_to:
+            answer["answers_to"] = answered_to
         answer["rules"] = {key: rules[key] for key in sorted(rules)}
         BINDINGS.write_text(json.dumps(answer, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     unreviewed = sum(1 for binding in rules.values() if binding["status"] == "unreviewed")
@@ -1731,9 +1739,53 @@ def sync_bindings(export: dict, write: bool = True) -> str:
     tail = f", ответ без правила: {', '.join(left)}" if left else ""
     # Долг называется ПЕРВЫМ, до числа записей: незакрытая работа по правилам
     # идёт впереди новой, и увидеть её надо раньше, чем список нового (177).
+    # Отставание поля «по какой выгрузке отвечено» называется вслух и на
+    # сухом прогоне: сборка его чинит записью, а проверка — только видит.
+    behind = (f", выгрузка ответа {answer.get('answers_to', '—')} против {answered_to}"
+              if stale and not write else "")
     return (f"долг по правилам: без ответа {unanswered} · не рассмотрено {unreviewed} · "
             f"держится ничем {unheld}\n"
-            f"ответ каталогу: записей {len(rules)}, дописано {len(added)}{tail}")
+            f"ответ каталогу: записей {len(rules)}, дописано {len(added)}{tail}{behind}")
+
+
+def our_trails(export: dict, repo: str = SHOWCASE) -> list[str]:
+    """Следы каталога, ведущие в НАШИ документы, — разрешаются ли они (185).
+
+    СЛЕД — ЭТО АДРЕС В ЧУЖОМ ДЕРЕВЕ, и правит его владелец дерева: сторона,
+    которая переименовала файл или раздел, узнаёт о правке в тот же миг, а
+    сторона, которая на него сослалась, не узнает никогда — пока кто-нибудь не
+    пойдёт по следу. Отсюда обязанность лежит здесь, а не на каталоге.
+
+    ЦЕНА ИЗМЕРЕНА У СОСЕДА: в английском дереве каталога 68 следов из 71 не
+    разрешались — название раздела переводили вместе с текстом записи. У
+    русского было два, и оба медленные: раздел переименовали, след остался.
+
+    НАХОДКА, А НЕ ОТКАЗ, и причина не в мягкости. Починка живёт в ЧУЖОМ
+    репозитории: файл правила лежит у каталога, и отсюда его не поправить.
+    Красное, которое нечем закрыть в этом дереве, останавливает витрину за
+    чужую правку — а правило требует пойти и поправить, а не встать (051).
+
+    Проверяется только след-документ: у следа-задачи предмет в трекере, и
+    спрашивать о нём здесь значило бы звать площадку ради каждой записи.
+    Раздел после ``§`` ищется в тексте как есть, буква в букву: перевод и
+    пересказ адреса — ровно та поломка, ради которой правило заведено.
+    """
+    found = []
+    for rule in export.get("rules", []):
+        for trail in rule.get("trails", []):
+            if trail.get("repo") != repo or not trail.get("doc"):
+                continue
+            path, _, section = str(trail["doc"]).partition("§")
+            file = ROOT / path.strip()
+            if not file.is_file():
+                found.append(f"след правила {rule['id']} ведёт в наш документ "
+                             f"{path.strip()!r}, которого нет. Поправить след обязана "
+                             f"сторона, чей документ, — то есть мы (185)")
+            elif section.strip() and section.strip() not in file.read_text(encoding="utf-8"):
+                found.append(f"след правила {rule['id']} называет раздел "
+                             f"{section.strip()!r} в {path.strip()}, а такого раздела "
+                             f"там нет: заголовок переименовали, след остался (185)")
+    return found
 
 
 def orphaned(export: dict, rules: dict) -> list[str]:
@@ -2482,7 +2534,7 @@ def selftest() -> int:
                                   f"вышло {said!r}")
                 print(f"  {'находка ' if said else 'молчание'} — отказ «{kind}»: {name}")
         # Отказ обязан НАЗЫВАТЬ найденное: «показатель публикуется» без имени
-        # файла — это отказ, по которому нечего чинить (правило 083).
+        # файла — это отказ, по которому нечего чинить (правило 158).
         globals()["_api"] = _fake({"coverage-combined.json": BADGE})
         said = verify_absence("o/r", "coverage", "тестов нет")
         if not said:
@@ -2909,6 +2961,30 @@ def selftest() -> int:
             broken.append(f"третий исход без адреса, {name}: нет")
         print(f"  {'да ' if ok else 'НЕТ'} — третий исход без адреса: {name}")
 
+    # ── следы каталога в наши документы (правило 185) ─────────────────
+    # Оба исхода, а не один: ложный отказ здесь отправляет чинить живой след
+    # в чужом репозитории — то есть просить владельца каталога о правке,
+    # которой не нужно.
+    trail_cases = [
+        ("документ на месте", "CLAUDE.md", False),
+        ("документа нет", "scripts/нет-такого.py", True),
+        ("раздел на месте", "CLAUDE.md § Ветки", False),
+        ("раздел переименован", "CLAUDE.md § Такого раздела нет", True),
+    ]
+    for name, doc, must_find in trail_cases:
+        export = {"rules": [{"id": "185", "trails": [{"repo": SHOWCASE, "doc": doc}]}]}
+        got = bool(our_trails(export))
+        if got is not must_find:
+            broken.append(f"следы, {name}: ожидалось "
+                          f"{'находка' if must_find else 'пропуск'}, вышло {got}")
+        print(f"  {'найден  ' if got else 'пропущен'} — след: {name}")
+    # След в ЧУЖОЕ дерево — не наш предмет: там владелец другой, и правит его он.
+    foreign = {"rules": [{"id": "185", "trails": [
+        {"repo": "ArtVsMark/Stepik-Python-Grader", "doc": "нет-такого.md"}]}]}
+    if our_trails(foreign):
+        broken.append("следы: чужой документ принят за свой — владелец дерева другой")
+    print(f"  {'НЕТ' if our_trails(foreign) else 'да '} — след: чужое дерево не наш предмет")
+
     if broken:
         print("\nсамопроверка провалена:", file=sys.stderr)
         for line in broken:
@@ -3002,6 +3078,12 @@ def main() -> int:
     # не сообщит: редирект площадки отключить нельзя (172). Находка, а не отказ:
     # старый адрес работает, страница не ломается, чинится это спокойно.
     for line in renamed_repos(mentioned_repos(ROOT)):
+        print(checks.annotate("warning", line), file=sys.stderr)
+
+    # Следы каталога, ведущие в наши документы: адрес правит владелец дерева,
+    # и узнать о разрыве может только он (185). Находка, а не отказ — починка
+    # живёт в чужом репозитории, и краснеть здесь значило бы вставать за неё.
+    for line in our_trails(export):
         print(checks.annotate("warning", line), file=sys.stderr)
 
     if unmet:
