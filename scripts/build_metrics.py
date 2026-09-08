@@ -652,13 +652,21 @@ def rules_strip(accent: dict, width: int, dark: bool, label_colour: str) -> list
     ноль» — разные состояния, и пустая полоса читалась бы вторым. Поэтому у
     неподключённого стоит строка словами, а не пустота (правило 046).
     """
-    top, left = 210, 36
+    top, left = 250, 36
     right = width - 36
     rules = accent.get("rules")
+    # ЗАГОЛОВОК БЛОКА ОБЯЗАТЕЛЕН. Полоса из цветных долей без подписи не
+    # объясняет свой предмет: читателю видно, что доли разные, и непонятно,
+    # чего именно. Первая редакция ушла на витрину без него — и первым это
+    # заметил владелец, а не проверка.
+    caption = (f'    <text x="{left}" y="{top - 12}" fill="{label_colour}" '
+               f'font-family="{FONT}" font-size="11" font-weight="700" '
+               f'letter-spacing="1.2">HOW ITS RULES ARE HELD</text>')
     if not rules:
-        return [f'    <text x="{left}" y="{top + 14}" fill="{label_colour}" '
-                f'font-family="{FONT}" font-size="12.5" font-weight="600">'
-                f'rules: not connected to the catalogue yet</text>']
+        return [caption,
+                f'    <text x="{left}" y="{top + 16}" fill="{label_colour}" '
+                f'font-family="{FONT}" font-size="13" font-weight="600">'
+                f'not connected to the rules catalogue yet</text>']
 
     tones = MECHANISM_TONES["dark" if dark else "light"]
     shares = ordered_mechanisms(rules["mechanisms"])
@@ -672,22 +680,23 @@ def rules_strip(accent: dict, width: int, dark: bool, label_colour: str) -> list
         # значило бы показать, что его нет.
         span = max(track * value / total, 3.0)
         out.append(
-            f'    <rect x="{offset:.1f}" y="{top}" width="{span:.1f}" height="7" '
-            f'rx="3.5" fill="{tones.get(name, tones["_"])}"/>'
+            f'    <rect x="{offset:.1f}" y="{top}" width="{span:.1f}" height="11" '
+            f'rx="5.5" fill="{tones.get(name, tones["_"])}"/>'
         )
         offset += span + 2
     legend = " · ".join(f"{name} {value}" for name, value in shares)
     tail = [f"{rules['answered']} rules answered"] if rules.get("answered") else []
     if rules.get("trails"):
         tail.append(f"{rules['trails']} linked to issues")
+    out.insert(0, caption)
     out.append(
-        f'    <text x="{left}" y="{top + 30}" fill="{label_colour}" font-family="{FONT}" '
-        f'font-size="12.5" font-weight="600">{escape(legend)}</text>'
+        f'    <text x="{left}" y="{top + 32}" fill="{label_colour}" font-family="{FONT}" '
+        f'font-size="13" font-weight="600">{escape(legend)}</text>'
     )
     if tail:
         out.append(
-            f'    <text x="{right}" y="{top + 30}" fill="{label_colour}" font-family="{FONT}" '
-            f'font-size="12.5" font-weight="600" text-anchor="end">'
+            f'    <text x="{right}" y="{top + 32}" fill="{label_colour}" font-family="{FONT}" '
+            f'font-size="13" font-weight="600" text-anchor="end">'
             f'{escape(" · ".join(tail))}</text>'
         )
     return out
@@ -724,7 +733,7 @@ def render_featured(accents: list[dict], dark: bool) -> str:
             "  обязана говорить, что она урезана, а описание — не то место, где это уместно."
         )
 
-    width, height = 1000, 248
+    width, height = 1000, 312
     cycle = ACCENT_SECONDS * len(accents)
     if dark:
         card, stroke, name_c, num_c, lab_c = "#0D1117", "#30363D", "#F0F6FC", "#58A6FF", "#7D8590"
@@ -768,16 +777,16 @@ def render_featured(accents: list[dict], dark: bool) -> str:
         # рисовать пустую плашку значило бы врать плашкой.
         offset = 36
         for label, value, tone in accent["badges"]:
-            markup, badge_width = pill(offset, 110, label, value, tone, dark)
+            markup, badge_width = pill(offset, 112, label, value, tone, dark)
             lines.append(f"    {markup}")
             offset += badge_width + 8
         lines.append(
-            f'    <text x="{width - 36}" y="127" fill="{lab_c}" font-family="{FONT}" '
+            f'    <text x="{width - 36}" y="129" fill="{lab_c}" font-family="{FONT}" '
             f'font-size="12.5" font-weight="600" text-anchor="end">'
             f'{escape(accent["stack"])}</text>'
         )
         numbers = "".join(
-            f'<text x="{36 + column * 194}" y="166" fill="{num_c}" font-family="{FONT}" '
+            f'<text x="{36 + column * 194}" y="172" fill="{num_c}" font-family="{FONT}" '
             f'font-size="25" font-weight="800">{accent["stats"][field]}'
             f'<tspan fill="{lab_c}" font-size="13.5" font-weight="600" dx="7">{field}</tspan>'
             "</text>"
@@ -790,11 +799,14 @@ def render_featured(accents: list[dict], dark: bool) -> str:
         # вторым рядом и тише. Раздела нет — строки нет вовсе: «не рассказывает»
         # и «намерил ноль» показываются по-разному.
         if accent.get("made"):
-            made = " · ".join(f"{value} {label}" for value, label in accent["made"])
-            lines.append(
-                f'    <text x="36" y="192" fill="{lab_c}" font-family="{FONT}" '
-                f'font-size="13" font-weight="600">{escape(made)}</text>'
+            made = "".join(
+                f'<text x="{36 + column * 194}" y="206" fill="{num_c}" font-family="{FONT}" '
+                f'font-size="17" font-weight="700">{escape(value)}'
+                f'<tspan fill="{lab_c}" font-size="12" font-weight="600" dx="6">'
+                f'{escape(label)}</tspan></text>'
+                for column, (value, label) in enumerate(accent["made"])
             )
+            lines.append(f"    {made}")
 
         # ТРЕТИЙ БЛОК — ЧЕМ ДЕРЖАТСЯ ПРАВИЛА. Ответ каталога о проекте, а не наша
         # оценка его. Доля «ничем» показывается наравне с остальными и не
@@ -2171,7 +2183,42 @@ def render_stack(reach: list[tuple[str, int]], roles: list[str], total: int,
     return "\n".join(out) + "\n</svg>\n"
 
 
-def render_activity(days: list[tuple[str, int]], dark: bool) -> str:
+#: Ветка, куда змейку кладёт её собственный прогон. Она чужая по авторству
+#: (Platane/snk), но своя по данным: рисуется по нашему календарю вкладов.
+SNAKE_BRANCH = "output"
+
+
+def snake_layer(theme: str) -> dict | None:
+    """Змейка из ветки ``output``: тело картинки и её габарит. Нет — ``None``.
+
+    ПОЧЕМУ ИНЛАЙНОМ, А НЕ ВЛОЖЕННОЙ КАРТИНКОЙ. Змейка анимирована классами и
+    ``@keyframes``; вложенная через ``<image>``, она встала бы неподвижным
+    кадром — площадка не проигрывает анимацию внутри картинки в картинке.
+    Инлайн переносит её стили в наш документ, где они и работают.
+
+    МОЛЧАНИЕ ИСТОЧНИКА — ТРЕТИЙ ИСХОД, А НЕ ПОЛОМКА. Прогон змейки идёт своим
+    расписанием, и его ветки может не быть вовсе. Тогда полотно рисует
+    собственный календарь: показать пустоту там, где обычно движение, значило
+    бы соврать о том, что работы не было.
+    """
+    try:
+        payload = _api(f"/repos/{SHOWCASE}/contents/snake-{theme}.svg?ref={SNAKE_BRANCH}")
+        svg = base64.b64decode(payload["content"]).decode("utf-8")
+    except (urllib.error.URLError, OSError, ValueError, KeyError, UnicodeDecodeError):
+        return None
+    head = re.match(r"<svg[^>]*>", svg)
+    box = re.search(r'viewBox="\s*([-\d.]+)\s+([-\d.]+)\s+([\d.]+)\s+([\d.]+)"', svg)
+    if not head or not box:
+        return None
+    left, top, width, height = (float(v) for v in box.groups())
+    body = svg[head.end():].rsplit("</svg>", 1)[0]
+    if "<style" not in body:
+        return None
+    return {"body": body, "left": left, "top": top, "width": width, "height": height}
+
+
+def render_activity(days: list[tuple[str, int]], dark: bool,
+                    snake: dict | None = None) -> str:
     """Календарь вкладов за год: 53 недели квадратиками, как у площадки.
 
     ПОЧЕМУ ОН ЗДЕСЬ, А НЕ ССЫЛКОЙ НА ЧУЖУЮ КАРТИНКУ. Календарь на странице
@@ -2188,11 +2235,13 @@ def render_activity(days: list[tuple[str, int]], dark: bool) -> str:
     # квадратики показывают ДНИ, линия — куда идёт год. У профилей, где такой
     # график берут с внешнего сервиса, он стоит отдельной картинкой; здесь это
     # тот же файл и те же данные — второго определения активности не заводится.
-    trend_h, trend_gap = 64, 14
+    # Хвост под трендом — под подпись «weekly · peak»: без него она выходит за
+    # нижний край полотна и обрезается ровно там, где объясняет, что за линия.
+    trend_h, trend_gap, trend_tail = 64, 14, 20
     weeks = (len(days) + 6) // 7
     width = max(weeks * (cell + gap) - gap, 1)
     grid_h = 7 * (cell + gap) - gap
-    height = head + grid_h + (trend_gap + trend_h if len(days) > 7 else 0)
+    height = head + grid_h + (trend_gap + trend_h + trend_tail if len(days) > 7 else 0)
     if dark:
         empty, tones, lab = "#161B22", ("#0E4429", "#006D32", "#26A641", "#39D353"), "#7D8590"
         line, area, axis = "#58A6FF", "#58A6FF22", "#21262D"
@@ -2202,24 +2251,51 @@ def render_activity(days: list[tuple[str, int]], dark: bool) -> str:
 
     peak = max((count for _, count in days), default=0)
     total = sum(count for _, count in days)
+
+    # ЦЕНТР ПОЛОТНА — ОДИН СЛОЙ, А НЕ ДВА. Календарь вкладов рисуется либо
+    # змейкой, либо своими квадратиками, но никогда обоими: одна и та же сетка,
+    # показанная дважды, — это два места, где она может разойтись.
+    if snake:
+        width = int(snake["width"])
+        grid_h = int(snake["height"])
+    height = head + grid_h + (trend_gap + trend_h + trend_tail if len(days) > 7 else 0)
+
+    label = f"{total} contributions in the last year"
+    if snake:
+        label += "; a snake crossing the contribution grid"
     out = [
         f'<svg width="{width}" height="{height}" viewBox="0 0 {width} {height}" '
         f'xmlns="http://www.w3.org/2000/svg" role="img" '
-        f'aria-label="{total} contributions in the last year">',
-        f'<text x="0" y="14" fill="{lab}" font-family="{FONT}" font-size="12" '
-        f'font-weight="600">{total} contributions in the last year</text>',
+        f'aria-label="{escape(label)}">',
     ]
-    for index, (date, count) in enumerate(days):
-        column, row = divmod(index, 7)
-        # Ноль — не уровень: пустой день красят фоном, иначе самый слабый тон
-        # означал бы «работа была», когда её не было.
-        fill = empty if not count else tones[min(int(count * len(tones) / max(peak, 1)),
-                                                 len(tones) - 1)]
-        out.append(
-            f'<rect x="{column * (cell + gap)}" y="{head + row * (cell + gap)}" '
-            f'width="{cell}" height="{cell}" rx="2" fill="{fill}"><title>{escape(date)}: '
-            f"{count}</title></rect>"
-        )
+    if snake:
+        # Движение отключаемо. Погашенная анимация оставляет клетки в их
+        # собственных цветах и змейку на месте — кадр остаётся читаемым, а не
+        # пустым (правило доступности здесь важнее эффекта).
+        out.append("<style>@media (prefers-reduced-motion: reduce) "
+                   "{ * { animation: none !important } }</style>")
+    out.append(
+        f'<text x="0" y="14" fill="{lab}" font-family="{FONT}" font-size="12" '
+        f'font-weight="600">{escape(label.split(";")[0])}</text>'
+    )
+
+    if snake:
+        # Змейка нарисована в своих координатах с полями: сдвигаем её под нашу
+        # подпись, а не подгоняем полотно под чужой viewBox.
+        out.append(f'<g transform="translate({-snake["left"]:.0f} '
+                   f'{head - snake["top"]:.0f})">{snake["body"]}</g>')
+    else:
+        for index, (date, count) in enumerate(days):
+            column, row = divmod(index, 7)
+            # Ноль — не уровень: пустой день красят фоном, иначе самый слабый
+            # тон означал бы «работа была», когда её не было.
+            fill = empty if not count else tones[min(int(count * len(tones) / max(peak, 1)),
+                                                     len(tones) - 1)]
+            out.append(
+                f'<rect x="{column * (cell + gap)}" y="{head + row * (cell + gap)}" '
+                f'width="{cell}" height="{cell}" rx="2" fill="{fill}"><title>{escape(date)}: '
+                f"{count}</title></rect>"
+            )
 
     if len(days) > 7:
         # Недельные суммы, а не сглаживание по дням: неделя — естественный
@@ -2230,7 +2306,7 @@ def render_activity(days: list[tuple[str, int]], dark: bool) -> str:
         sums = [sum(count for _, count in days[i:i + 7]) for i in range(0, len(days), 7)]
         top = max(sums) or 1
         base = head + grid_h + trend_gap + trend_h
-        step = cell + gap
+        step = (width - cell) / max(len(sums) - 1, 1) if snake else cell + gap
         points = [(index * step + cell / 2, base - value / top * (trend_h - 10))
                   for index, value in enumerate(sums)]
         path = " ".join(f"{'M' if i == 0 else 'L'}{x:.1f},{y:.1f}"
@@ -3178,10 +3254,15 @@ def selftest() -> int:
     # Неподключённый проект НАЗЫВАЕТСЯ словами, а не пустой полосой: пустота
     # читалась бы как «правил ноль» (правило 046).
     silent = rules_strip({"rules": None}, 1000, True, "#8B949E")
-    if not silent or "not connected" not in silent[0]:
+    # Ищется во ВСЁМ блоке, а не в первой строке: над полосой стоит заголовок,
+    # и привязка к позиции ломала бы набор при каждой правке раскладки.
+    named = any("not connected" in line for line in silent)
+    if not named:
         broken.append("правила: неподключённый проект показан пустотой, а не словами")
-    print(f"  {'назван' if silent and 'not connected' in silent[0] else 'НЕТ'}   "
-          f"— правила: неподключённый назван")
+    # Заголовок блока обязателен и там: полоса без подписи не объясняет предмет.
+    if not any("HOW ITS RULES ARE HELD" in line for line in silent):
+        broken.append("правила: блок без заголовка — читателю не сказано, что за доли")
+    print(f"  {'назван' if named else 'НЕТ'}   — правила: неподключённый назван")
 
     if broken:
         print("\nсамопроверка провалена:", file=sys.stderr)
@@ -3414,7 +3495,7 @@ def main() -> int:
             card = render_engineering(profile, dark)
             drawn[f"engineering-{theme}"] = card
             fresh[f"engineering-{theme}"] = aria_of(card)
-            grid = render_activity(profile.get("days", []), dark)
+            grid = render_activity(profile.get("days", []), dark, snake_layer(theme))
             drawn[f"activity-{theme}"] = grid
             fresh[f"activity-{theme}"] = aria_of(grid)
         if reach:
