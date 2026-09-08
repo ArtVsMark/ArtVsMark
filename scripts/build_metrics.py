@@ -1663,6 +1663,47 @@ def release_count() -> int:
     return len(_api(f"/repos/{REPO}/releases?per_page=100"))
 
 
+#: За сколько дней считается подпись работы. Скользящее окно, а не вся история:
+#: соглашение появилось не в первый день жизни витрины, и доля по всей истории
+#: говорила бы о прошлом, а не о том, как здесь работают сейчас.
+SIGNED_WINDOW_DAYS = 30
+
+#: Заголовок суточной пересборки. Её составляет прогон, а не человек: решения он
+#: не принимает и трейлера исполнителя нести не обязан (правило 051).
+MACHINE_SUBJECT = "chore(profile): пересобранные метрики"
+
+
+def signed_commits(days: int = SIGNED_WINDOW_DAYS) -> tuple[int, int]:
+    """Сколько рабочих коммитов общей ветки несут исполнителя и след сессии.
+
+    ЗАЧЕМ ЭТО ЧИСЛО НА ВИТРИНЕ. Страница утверждает, что работу ведут агентские
+    окна и что это видно в истории. Утверждение проверяемо — открой историю и
+    посмотри, — но пока его никто не измеряет, оно ничем не отличается от
+    обещания. Здесь оно измеряется тем же способом, что и остальные числа.
+
+    МАШИННЫЕ КОММИТЫ НЕ СЧИТАЮТСЯ НИ В ЧИСЛИТЕЛЕ, НИ В ЗНАМЕНАТЕЛЕ. Суточную
+    пересборку составляет прогон: решения он не принимает, исполнителя у него
+    нет, и требовать от него трейлер значило бы требовать невозможного. Считать
+    его в знаменателе — занижать долю за то, чего не бывает.
+
+    Молчание источника ловится сторожем пустых метрик: ноль рабочих коммитов за
+    месяц — это не «никто не подписывает», а «список не прочитан».
+    """
+    since = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=days)).isoformat()
+    commits = _api(f"/repos/{SHOWCASE}/commits?sha=main&since={since}&per_page=100")
+    signed = total = 0
+    for item in commits if isinstance(commits, list) else []:
+        commit = item.get("commit") or {}
+        message = str(commit.get("message", ""))
+        author = ((commit.get("author") or {}).get("name") or "")
+        if MACHINE_SUBJECT in message or checks.machine_made(author):
+            continue
+        total += 1
+        if "co-authored-by:" in message.lower():
+            signed += 1
+    return signed, total
+
+
 def rules_export() -> dict:
     """Экспорт каталога правил — источник и числа правил, и списка их номеров.
 
@@ -2555,6 +2596,7 @@ def selftest() -> int:
     live = {
         "projects": "|таблица|", "modules": 218, "required": 11, "os": 3, "py": 2,
         "exp": "3.14", "releases": 12, "rules": 140,
+        "signed": 80, "signed-total": 81,
         "tests": 4321, "coverage": "92.4%", "checks per PR": 17,
     }
     cases = [
@@ -3311,6 +3353,7 @@ def main() -> int:
     required, systems, versions = protection_facts()
     experimental = " · ".join(facts["python"]["experimental"])
     releases = release_count()
+    signed, signed_total = signed_commits()
     export = rules_export()
     rules = int(export["count"])
     bindings = sync_bindings(export, write=not check)
@@ -3392,6 +3435,8 @@ def main() -> int:
         "exp": experimental,
         "releases": releases,
         "rules": rules,
+        "signed": signed,
+        "signed-total": signed_total,
     }
     print(bindings)
     print(" · ".join(f"{key}: {value}" for key, value in values.items() if key != "projects"))
