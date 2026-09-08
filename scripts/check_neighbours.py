@@ -21,9 +21,11 @@
 попал в починку, — о нём не спросили. Ненаписанное неотличимо от неспрошенного
 (правило 026).
 
-ФОРМА ОТВЕТА взята у гейта журнала дословно: строка в сообщении любого коммита
-диапазона. Второе соглашение для того же жеста стоило бы дороже, чем польза от
-его отдельности (правило 090)::
+ФОРМА ОТВЕТА взята у гейта журнала дословно — строка в сообщении коммита; второе
+соглашение для того же жеста стоило бы дороже, чем польза от его отдельности
+(правило 090). А вот ОБЛАСТЬ спроса другая: журнал спрашивают с захода, соседей
+— с КОММИТА. «Почему так решили» — свойство изменения целиком; соседи — свойство
+конкретной правки признака, и переносить ответ между коммитами нельзя::
 
     Соседи: класс-слово против префикса, слово не первым — оба в наборе
     Соседи: нет — правка докстроки, признаков не менялось
@@ -59,46 +61,83 @@ ANSWER = re.compile(r"^[ \t]*Соседи:[ \t]*(?P<said>\S.*)$", re.M | re.I)
 NONE_GIVEN = re.compile(r"^нет\b\s*[—–-]\s*(?P<why>\S.+)$", re.I)
 
 
-def audit(paths: list[str], messages: str,
-          commits: list[tuple[str, int]] | None = None) -> tuple[list[str], str]:
-    """Претензия к заходу и сказанное о соседях, если оно сказано.
+def audit(commits: list[tuple[str, str, int, list[str]]]) -> tuple[list[str], list[str]]:
+    """Претензии к коммитам и сказанное о соседях в каждом ответившем.
 
-    Устройство повторяет scripts/check_journal.py::audit, и это осознанно: у
-    двух гейтов один предмет спроса — заход, — и расходиться в том, ЧЕЙ заход
-    судить, им нельзя. Отсюда общий признак поведения, общий список машинных
-    авторов и общее правило про коммиты слияния.
+    Коммит — ``(сообщение, автор, число родителей, файлы)``.
 
-    МАШИНА ОСВОБОЖДЕНА ПО АВТОРУ. У бота нет признака, который он менял бы
-    осознанно: он поднимает пин или пересобирает числа. Требовать от него
-    перечня соседей — требовать невозможного (правило 051).
+    СУДИТСЯ КОММИТ, А НЕ ЗАХОД, и это отличие от гейта журнала осознанное.
+    Первая редакция искала ответ во всём диапазоне — и держала не то: поздний
+    тривиальный коммит с «Соседи: нет — правится текст фрагмента» провёл бы
+    раннюю правку признака, о которой не спросили. Дефект нашёлся на СОБСТВЕННОМ
+    изменении гейта, где такой коммит и стоял вторым (правило 195: у признака
+    «ответ есть где-то в диапазоне» соседом был «ответ есть у той правки, о
+    которой спрашивают»).
+
+    Журналу диапазон подходит: «почему так решили» — свойство изменения целиком.
+    Соседи — свойство КОНКРЕТНОЙ правки признака, и переносить ответ между
+    коммитами нельзя. Общими остаются признак поведения, список машинных авторов
+    и правило про слияния — то, ЧЕЙ заход судить, у гейтов одно.
+
+    МАШИНА ОСВОБОЖДЕНА ПО АВТОРУ: у бота нет признака, который он менял бы
+    осознанно, — он поднимает пин или пересобирает числа. Требовать от него
+    перечня — требовать невозможного (правило 051). Довод здесь НЕ
+    односторонний, в отличие от журнала: коммиты судятся по одному, и машинный
+    среди человеческих освобождает только себя.
 
     КОММИТ СЛИЯНИЯ НЕ ПРИВНОСИТ ПРАВКИ: всё, что в нём есть, уже лежит в базовой
-    ветке. Судим по обычным коммитам, и число родителей приходит вместе с
-    автором, чтобы граница проверялась набором, а не жила флагом в вызове git.
+    ветке. Число родителей приходит вместе с автором, чтобы граница проверялась
+    набором, а не жила флагом в вызове git (правило 150).
     """
-    behaviour = checks.touched(paths)
-    if not behaviour:
-        return [], ""
-    said = ANSWER.search(messages)
-    if said:
-        answer = said.group("said").strip()
-        none = NONE_GIVEN.match(answer)
+    found: list[str] = []
+    said: list[str] = []
+    for message, author, parents, paths in commits:
+        behaviour = checks.touched(paths)
+        if parents >= 2 or checks.machine_made(author) or not behaviour:
+            continue
+        answer = ANSWER.search(message)
+        title = checks.clip(message.strip().splitlines()[0] if message.strip() else "?", 50)
+        if not answer:
+            found.append(f"{title}: правит поведение, о соседях не сказано ничего — "
+                         f"{checks.tail(behaviour, 3)}")
+            continue
+        text = answer.group("said").strip()
+        none = NONE_GIVEN.match(text)
         if none:
-            return [], f"соседей нет: {none.group('why').strip()}"
-        if answer.lower().startswith("нет"):
-            return [f"«Соседи: нет» без причины — это подписанное молчание, "
-                    f"а не ответ"], ""
-        return [], answer
-    made = [author for author, parents in (commits or []) if parents < 2]
-    if made and all(checks.machine_made(author) for author in made):
-        return [], "правку сделала машина: признаков она не выбирает"
-    return [f"поведение правится, а о соседях не сказано ничего — "
-            f"{checks.tail(behaviour, 5)}"], ""
+            said.append(f"{title}: соседей нет — {none.group('why').strip()}")
+        elif text.lower().startswith("нет"):
+            found.append(f"{title}: «Соседи: нет» без причины — это подписанное "
+                         f"молчание, а не ответ")
+        else:
+            said.append(f"{title}: {text}")
+    return found, said
 
 
 def _git(*args: str) -> str:
     return subprocess.run(["git", *args], capture_output=True, text=True, encoding="utf-8",
                           check=True).stdout
+
+
+#: Разделители записи и полей внутри неё. Взяты управляющие символы, а не
+#: печатные: сообщение коммита пишет человек, и любой печатный разделитель он
+#: рано или поздно наберёт сам — разбор развалился бы на своём же тексте.
+RECORD, FIELD = "\x1e", "\x1f"
+
+
+def walk(rng: str) -> list[tuple[str, str, int, list[str]]]:
+    """Коммиты диапазона: сообщение, автор, число родителей и его файлы.
+
+    Одним обращением к git, а не по вызову на коммит: список у изменения
+    короткий, но два прохода по одной истории — два места, где она может
+    разойтись.
+    """
+    raw = _git("log", f"--format={RECORD}%B{FIELD}%an{FIELD}%P{FIELD}", "--name-only", rng)
+    walked: list[tuple[str, str, int, list[str]]] = []
+    for chunk in raw.split(RECORD)[1:]:
+        message, author, parents, names = chunk.split(FIELD, 3)
+        walked.append((message, author.strip(), len(parents.split()),
+                       [n for n in names.splitlines() if n.strip()]))
+    return walked
 
 
 def selftest() -> int:
@@ -111,54 +150,75 @@ def selftest() -> int:
     """
     broken: list[str] = []
 
+    #: Один коммит: (сообщение, автор, родителей, файлы).
+    def one(message: str, paths: list[str], author: str = "ArtVsMark", parents: int = 1):
+        return [(message, author, parents, paths)]
+
     cases = [
-        ("перечень соседей", ["scripts/a.py"],
-         "fix: чинит\n\nСоседи: класс-слово против префикса — оба в наборе", False),
-        ("«нет» с причиной", ["scripts/a.py"],
-         "fix: чинит\n\nСоседи: нет — правка докстроки, признаков не менялось", False),
-        ("«нет» без причины", ["scripts/a.py"], "fix: чинит\n\nСоседи: нет", True),
-        ("«нет» без тире", ["scripts/a.py"], "fix: чинит\n\nСоседи: нет причин", True),
-        ("строка без содержания", ["scripts/a.py"], "fix: чинит\n\nСоседи:", True),
-        ("слово в прозе ответом не считается", ["scripts/a.py"],
-         "fix: чинит\n\nПодумал про соседи и решил, что их нет", True),
-        ("чужой регистр — тот же жест", ["scripts/a.py"],
-         "fix: чинит\n\nСОСЕДИ: перебраны все три", False),
-        ("отступ жесту не мешает", ["scripts/a.py"],
-         "fix: чинит\n\n  Соседи: перебраны все три", False),
-        ("правка прогона тоже поведение", [".github/workflows/a.yml"], "fix: чинит", True),
-        ("правка не поведения — не наш предмет", ["README.md", "HISTORY.md"], "", False),
-        ("ответ в другом коммите диапазона", ["scripts/a.py"],
-         "fix: раз\n\nfix: два\n\nСоседи: перебраны", False),
+        ("перечень соседей", one(
+            "fix: чинит\n\nСоседи: класс-слово против префикса — оба в наборе",
+            ["scripts/a.py"]), False),
+        ("«нет» с причиной", one(
+            "fix: чинит\n\nСоседи: нет — правка докстроки, признаков не менялось",
+            ["scripts/a.py"]), False),
+        ("«нет» без причины", one("fix: чинит\n\nСоседи: нет", ["scripts/a.py"]), True),
+        ("«нет» без тире", one("fix: чинит\n\nСоседи: нет причин", ["scripts/a.py"]), True),
+        ("строка без содержания", one("fix: чинит\n\nСоседи:", ["scripts/a.py"]), True),
+        ("слово в прозе ответом не считается", one(
+            "fix: чинит\n\nПодумал про соседи и решил, что их нет", ["scripts/a.py"]), True),
+        ("чужой регистр — тот же жест", one(
+            "fix: чинит\n\nСОСЕДИ: перебраны все три", ["scripts/a.py"]), False),
+        ("отступ жесту не мешает", one(
+            "fix: чинит\n\n  Соседи: перебраны все три", ["scripts/a.py"]), False),
+        ("правка прогона тоже поведение", one(
+            "fix: чинит", [".github/workflows/a.yml"]), True),
+        ("правка не поведения — не наш предмет", one(
+            "docs: правит", ["README.md", "HISTORY.md"]), False),
+        ("правку сделала машина", one(
+            "chore: пин", ["scripts/a.py"], author="dependabot[bot]"), False),
+        ("коммит слияния авторством не считается", one(
+            "Merge branch main", ["scripts/a.py"], parents=2), False),
     ]
-    for name, paths, messages, expected in cases:
-        found, _ = audit(paths, messages)
+    for name, commits, expected in cases:
+        found, _ = audit(commits)
         if bool(found) != expected:
             broken.append(f"{name}: ожидалось отказов {expected}, вышло {bool(found)}")
         print(f"  {'отвергнут' if found else 'пропущен '} — {name}")
 
-    # Машина освобождена по автору, и довод ОДНОСТОРОННИЙ: хоть один живой автор
-    # в диапазоне — спрос со всех. Иначе бот, подмешавшийся в человеческий заход,
-    # освободил бы его целиком.
-    machine = [("dependabot[bot]", 1)]
-    mixed = [("dependabot[bot]", 1), ("ArtVsMark", 1)]
-    merge_only = [("dependabot[bot]", 1), ("ArtVsMark", 2)]
-    author_cases = [
-        ("правку сделала машина", machine, False),
-        ("машина и человек вместе — спрос со всех", mixed, True),
-        ("коммит слияния авторством не считается", merge_only, False),
+    # СОСЕД ПРИЗНАКА «ГДЕ ИСКАТЬ ОТВЕТ», и он нашёлся на собственном изменении
+    # гейта. Первая редакция искала во всём диапазоне: поздний тривиальный
+    # коммит с «Соседи: нет — правится текст фрагмента» провёл бы раннюю правку
+    # признака, о которой никто не спросил. Оба порядка стоят в наборе.
+    early_silent = ("fix: правит признак", "ArtVsMark", 1, ["scripts/a.py"])
+    late_none = ("docs: номер изменения\n\nСоседи: нет — правится текст фрагмента",
+                 "ArtVsMark", 1, ["changelog.d/x.fixed.md"])
+    late_answered = ("docs: номер\n\nСоседи: нет — правится текст", "ArtVsMark", 1,
+                     ["changelog.d/x.fixed.md"])
+    early_answered = ("fix: правит признак\n\nСоседи: перебраны все три", "ArtVsMark",
+                      1, ["scripts/a.py"])
+    range_cases = [
+        ("поздний «нет» не отвечает за раннюю правку", [late_none, early_silent], True),
+        ("каждый ответил за себя", [late_answered, early_answered], False),
+        ("две правки, ответила одна", [early_answered, early_silent], True),
     ]
-    for name, commits, expected in author_cases:
-        found, _ = audit(["scripts/a.py"], "", commits)
+    for name, commits, expected in range_cases:
+        found, _ = audit(commits)
         if bool(found) != expected:
             broken.append(f"{name}: ожидалось отказов {expected}, вышло {bool(found)}")
         print(f"  {'отвергнут' if found else 'пропущен '} — {name}")
 
     # Сказанное ДОЕЗЖАЕТ до вывода: ответ, который гейт принял и не показал, —
-    # это зелёный прогон без следа, по которому нечего перечитать.
-    _, said = audit(["scripts/a.py"], "Соседи: нет — правка докстроки")
-    if "правка докстроки" not in said:
+    # это зелёный прогон без следа, по которому нечего перечитать. И коммит в
+    # претензии НАЗЫВАЕТСЯ: «где-то в заходе не сказано» чинить негде.
+    found, said = audit([("fix: чинит\n\nСоседи: нет — правка докстроки", "ArtVsMark",
+                          1, ["scripts/a.py"])])
+    if not said or "правка докстроки" not in said[0]:
         broken.append(f"причина не доехала: {said!r}")
-    print(f"  доехало   — сказанное: {said}")
+    print(f"  доехало   — сказанное: {said[0] if said else '—'}")
+    found, _ = audit([early_silent])
+    if not found or "fix: правит признак" not in found[0]:
+        broken.append(f"коммит в претензии не назван: {found!r}")
+    print(f"  назван    — коммит в претензии: {found[0].split(':')[0]}")
 
     if broken:
         print(checks.annotate("error", "самопроверка провалена"), file=sys.stderr)
@@ -177,11 +237,7 @@ def main() -> int:
     base, _, head = rng.partition("..")
     head = head or "HEAD"
     try:
-        paths = checks.git_paths("diff", "--name-only", f"{base}...{head}")
-        messages = _git("log", "--format=%B", rng)
-        commits = [(line.split("\t", 1)[0], len(line.split("\t", 1)[1].split()))
-                   for line in _git("log", "--format=%an\t%P", rng).splitlines()
-                   if "\t" in line]
+        commits = walk(rng)
     except (subprocess.CalledProcessError, OSError, ValueError) as e:
         # Третий исход: диапазон не разобран — чинит это тот, кто запускает, а
         # не автор изменения (правило 039).
@@ -189,14 +245,17 @@ def main() -> int:
                               f"не разобран — {e}"), file=sys.stderr)
         return 2
 
-    found, said = audit(paths, messages, commits)
+    found, said = audit(commits)
     if found:
-        print(checks.annotate("error", f"о соседях не сказано: {found[0]}"), file=sys.stderr)
+        print(checks.annotate("error", f"о соседях не сказано: {len(found)}"),
+              file=sys.stderr)
+        for line in found:
+            print(f"  • {line}", file=sys.stderr)
         print(
             "\n  Правка признака, решающего больше одного случая, называет"
             "\n  СОСЕДЕЙ — то, что этим же признаком решалось, — и отвечает по"
-            "\n  каждому: работал ли он прежде и работает ли теперь. Строкой в"
-            "\n  сообщении коммита:\n"
+            "\n  каждому: работал ли он прежде и работает ли теперь. Строкой"
+            "\n  в сообщении ТОГО ЖЕ коммита:\n"
             "\n      Соседи: <перечень, и что с каждым стало>"
             "\n      Соседи: нет — <почему их нет>\n"
             "\n  Сосед, сломанный ДО починки, тоже сосед: она либо закрывает"
@@ -205,8 +264,12 @@ def main() -> int:
         )
         return 1
 
-    print(f"о соседях сказано: {checks.clip(said, 90)}" if said
-          else f"правки поведения в заходе нет: файлов {len(paths)}")
+    if said:
+        print(f"о соседях сказано: {len(said)}")
+        for line in said:
+            print(f"  • {checks.clip(line, 100)}")
+    else:
+        print(f"правки поведения в заходе нет: коммитов {len(commits)}")
     return 0
 
 
