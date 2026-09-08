@@ -41,6 +41,7 @@
 
 from __future__ import annotations
 
+import pathlib
 import re
 import subprocess
 import sys
@@ -73,7 +74,13 @@ def added_sections(base: str, head: str) -> list[tuple[str, int]]:
     прошлое сжимается отдельной работой, а не отказом на каждом изменении.
     """
     diff = _git("diff", "--unified=0", f"{base}...{head}", "--", JOURNAL)
-    text = _git("show", f"{head}:{JOURNAL}")
+    # У HEAD источник — РАБОЧЕЕ ДЕРЕВО, а не последний коммит: иначе гейт судит
+    # то, чего автор уже не видит. Правка лежит в индексе, файл на диске сжат, а
+    # `git show HEAD:` отдаёт прежнюю длину — и отказ выглядит необъяснимым.
+    if head == "HEAD":
+        text = pathlib.Path(JOURNAL).read_text(encoding="utf-8")
+    else:
+        text = _git("show", f"{head}:{JOURNAL}")
     return new_sections(diff, text)
 
 
