@@ -702,6 +702,33 @@ def rules_strip(accent: dict, width: int, dark: bool, label_colour: str) -> list
     return out
 
 
+def svg_open(width: int, height: int, label: str) -> str:
+    """Открывающий тег картинки витрины: размер, роль и подпись.
+
+    ВЫНЕСЕНО ПО ТРЕТЬЕМУ СЛУЧАЮ, а их было ПЯТЬ (правило 093). Баннер акцентов,
+    плитка проекта, карточка профиля, след технологий и полотно активности
+    открывались одной и той же строкой, скопированной пять раз. Обобщение
+    заводится с появлением третьего случая — здесь его пропустили дважды.
+
+    ПОДПИСЬ ОБЯЗАТЕЛЬНА, И ЭТО НЕ ПЕДАНТИЗМ. ``alt`` на странице берётся из
+    ``aria-label`` самой картинки (::sync_alt), другого источника у него нет.
+    Картинка, нарисованная без подписи, оставила бы alt пустым — и молча:
+    разметка осталась бы верной, а читатель со скринридером получил бы
+    безымянное изображение. Отказ здесь дешевле такого молчания.
+
+    ЧЕГО ШОВ НЕ ДЕЛАЕТ. Он не трогает рукодельные картинки — шапку,
+    печатающуюся строку, разделитель: их пишет человек, и у разделителя
+    подписи нет НАМЕРЕННО, это декорация. Сборка их не рисует, и через этот
+    вход они не проходят.
+    """
+    if not label.strip():
+        raise ValueError("картинка витрины без aria-label: alt на странице "
+                         "взять неоткуда, и пустым он станет молча")
+    return (f'<svg width="{width}" height="{height}" viewBox="0 0 {width} {height}" '
+            f'xmlns="http://www.w3.org/2000/svg" role="img" '
+            f'aria-label="{escape(label)}">')
+
+
 def render_featured(accents: list[dict], dark: bool) -> str:
     """Баннер акцентов: по одному проекту за раз, переключение по таймеру.
 
@@ -742,8 +769,7 @@ def render_featured(accents: list[dict], dark: bool) -> str:
 
     step = 100 / len(accents)
     lines = [
-        f'<svg width="{width}" height="{height}" viewBox="0 0 {width} {height}" '
-        f'xmlns="http://www.w3.org/2000/svg" role="img" aria-label="{escape(accent_label(accents))}">',
+        svg_open(width, height, accent_label(accents)),
         "<style>",
         f"  .accent {{ animation: accent {cycle}s linear infinite; }}",
         "  @keyframes accent {",
@@ -1412,8 +1438,7 @@ def render_tile(project: dict, dark: bool) -> str:
     # экрана важно, куда она ведёт, а не как выглядит.
     label = f"Open {title} on GitHub"
     return "\n".join([
-        f'<svg width="{width}" height="{height}" viewBox="0 0 {width} {height}" '
-        f'xmlns="http://www.w3.org/2000/svg" role="img" aria-label="{escape(label)}">',
+        svg_open(width, height, label),
         f'<rect x="0.5" y="0.5" width="{width - 1}" height="{height - 1}" rx="12" '
         f'fill="{card}" stroke="{stroke}"/>',
         f'<rect x="18" y="20" width="26" height="3" rx="1.5" fill="{mark}"/>',
@@ -2190,8 +2215,7 @@ def render_engineering(stats: dict[str, object], dark: bool) -> str:
     values = [(shown(key), name) for key, name in ENGINEERING_TILES]
     label = "GitHub engineering stats: " + ", ".join(f"{v} {n}" for v, n in values)
     out = [
-        f'<svg width="{width}" height="{height}" viewBox="0 0 {width} {height}" '
-        f'xmlns="http://www.w3.org/2000/svg" role="img" aria-label="{escape(label)}">',
+        svg_open(width, height, label),
         '<defs><linearGradient id="e" x1="0" y1="0" x2="1" y2="0">'
         '<stop offset="0%" stop-color="#58A6FF"/><stop offset="100%" stop-color="#7EE787"/>'
         "</linearGradient></defs>",
@@ -2244,8 +2268,7 @@ def render_stack(reach: list[tuple[str, int]], roles: list[str], total: int,
              + ", ".join(f"{name} in {count} of {total} repos" for name, count in shown)
              + (f"; roles: {', '.join(roles)}" if roles else ""))
     out = [
-        f'<svg width="{width}" height="{height}" viewBox="0 0 {width} {height}" '
-        f'xmlns="http://www.w3.org/2000/svg" role="img" aria-label="{escape(label)}">',
+        svg_open(width, height, label),
         '<defs><linearGradient id="s" x1="0" y1="0" x2="1" y2="0">'
         '<stop offset="0%" stop-color="#58A6FF"/><stop offset="100%" stop-color="#7EE787"/>'
         "</linearGradient></defs>",
@@ -2441,9 +2464,7 @@ def render_activity(days: list[tuple[str, int]], dark: bool,
     if snake:
         label += "; a snake crossing the contribution grid"
     out = [
-        f'<svg width="{width}" height="{height}" viewBox="0 0 {width} {height}" '
-        f'xmlns="http://www.w3.org/2000/svg" role="img" '
-        f'aria-label="{escape(label)}">',
+        svg_open(width, height, label),
     ]
     if snake:
         # Движение отключаемо. Погашенная анимация оставляет клетки в их
@@ -3138,6 +3159,43 @@ def selftest() -> int:
     if 'width="92%"' not in render_profile_cards(both):
         broken.append("карточки: ширина полотна активности потеряна")
     print("  да  — карточки: ширина и порядок берутся из одного места")
+
+    # ── шов открывающего тега картинки ───────────────────────────────────
+    # Вынесен по третьему случаю, а их было пять (правило 093). Соседи признака
+    # «что открывает картинку» перебраны: экранирование подписи, пустая подпись
+    # и подпись из одних пробелов, и — главное — что ВСЕ пятеро действительно
+    # зовут шов, а не осталась шестая копия строки.
+    opened = svg_open(10, 20, "подпись & <тест>")
+    seam_checks = [
+        ("размер попадает в тег", 'width="10" height="20" viewBox="0 0 10 20"' in opened),
+        ("роль объявлена", 'role="img"' in opened),
+        ("подпись экранируется", "&amp;" in opened and "&lt;тест&gt;" in opened),
+    ]
+    for name, ok in seam_checks:
+        if not ok:
+            broken.append(f"шов: {name} — нет")
+        print(f"  {'да ' if ok else 'НЕТ'} — шов: {name}")
+
+    for name, label in (("пустая подпись", ""), ("одни пробелы", "  \t ")):
+        try:
+            svg_open(10, 20, label)
+        except ValueError:
+            print(f"  отвергнут — шов: {name}")
+        else:
+            broken.append(f"шов: {name} принята — alt на странице стал бы пустым молча")
+
+    # КОПИЙ БОЛЬШЕ НЕТ, и это проверяется по самому файлу: обобщение, из-под
+    # которого уцелела шестая копия строки, не обобщение, а ещё одно место.
+    #
+    # СЧИТАЕТСЯ ТОЛЬКО РИСУЮЩАЯ ЧАСТЬ, до этой самой функции: первая редакция
+    # проверки нашла ДВЕ копии и была права — второй оказался её собственный
+    # образец. Тот же случай, что у гейта обращений к площадке, который поймал
+    # сам себя: искать текстом можно только там, где текст и есть предмет.
+    source = pathlib.Path(__file__).read_text(encoding="utf-8").split("def selftest")[0]
+    copies = source.count('xmlns="http://www.w3.org/2000/svg"')
+    if copies != 1:
+        broken.append(f"шов: открывающий тег написан {copies} раз, а должен один")
+    print(f"  {copies} раз     — шов: открывающий тег написан в одном месте")
 
     # ── фикстура: область не уезжает пустой ──────────────────────────────
     # Гейты витрины проверяют НАМЕРЕНИЕ, эта проверка — ФАКТ (правило 072).
