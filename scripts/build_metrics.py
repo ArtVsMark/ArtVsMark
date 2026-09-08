@@ -2228,9 +2228,46 @@ def render_stack(reach: list[tuple[str, int]], roles: list[str], total: int,
 #: (Platane/snk), но своя по данным: рисуется по нашему календарю вкладов.
 SNAKE_BRANCH = "output"
 
+#: Клетка календаря у змейки помечена классом ``c``, а её размер задан СТИЛЕМ, а
+#: не атрибутом: `Platane/snk` рисует ``<rect class="c" x=… y=…>`` без ширины и
+#: высоты и красит их правилом ``.c{…;stroke-width:1px;…;width:12px;height:12px}``.
+#: Читать размер приходится оттуда же, откуда его читает браузер.
+#:
+#: Взгляд назад обязателен: без него ``width:`` находится внутри
+#: ``stroke-width:1px``, стоящего в том же правиле РАНЬШЕ, и клетка выходит
+#: шириной в единицу. Сетка и тренд при этом сходятся друг с другом и оба
+#: съезжают на полклетки — расхождение, которое набор не заметит, если считать
+#: их одной величиной.
+SNAKE_CELL_RULE = re.compile(r"\.c\{[^}]*?(?<![-\w])width:\s*([\d.]+)px")
+SNAKE_CELL_TAG = re.compile(r'<rect\b[^>]*class="c[^"]*"[^>]*>')
+SNAKE_CELL_X = re.compile(r'\bx="([-\d.]+)"')
+
+
+def snake_grid(body: str) -> tuple[list[float], float]:
+    """Колонки календаря змейки и размер клетки — в её собственных координатах.
+
+    ЗАЧЕМ ЭТО ЧИТАТЬ. Змейка нарисована С ПОЛЯМИ: её ``viewBox`` шире сетки на
+    те 16–18 единиц, где змея входит в кадр и выходит из него. Тренд под сеткой
+    отвечает на тот же вопрос теми же данными, и растянуть его на всю ширину
+    картинки значит поставить неделю не под её столбцом. Расхождение вышло
+    ровно таким: сетка занимала ``x ∈ [18, 862]``, линия шла от 5 до 875.
+
+    ПОЛЯ У ЧУЖОЙ КАРТИНКИ НЕ УГАДЫВАЮТСЯ. Их задаёт чужой рисовальщик и вправе
+    менять; вычесть «примерно 16» значило бы завести второе определение сетки,
+    которое разойдётся с первым молча. Здесь спрашивается сама картинка.
+
+    Пустой ответ — сетку прочесть не удалось. Это третий исход, а не поломка
+    (правило 039): решает по нему тот, кто рисует.
+    """
+    xs = sorted({float(found.group(1))
+                 for cell in SNAKE_CELL_TAG.finditer(body)
+                 if (found := SNAKE_CELL_X.search(cell.group(0)))})
+    size = SNAKE_CELL_RULE.search(body)
+    return (xs, float(size.group(1))) if xs and size else ([], 0.0)
+
 
 def snake_layer(theme: str) -> dict | None:
-    """Змейка из ветки ``output``: тело картинки и её габарит. Нет — ``None``.
+    """Змейка из ветки ``output``: тело, габарит и сетка. Нет — ``None``.
 
     ПОЧЕМУ ИНЛАЙНОМ, А НЕ ВЛОЖЕННОЙ КАРТИНКОЙ. Змейка анимирована классами и
     ``@keyframes``; вложенная через ``<image>``, она встала бы неподвижным
@@ -2255,7 +2292,9 @@ def snake_layer(theme: str) -> dict | None:
     body = svg[head.end():].rsplit("</svg>", 1)[0]
     if "<style" not in body:
         return None
-    return {"body": body, "left": left, "top": top, "width": width, "height": height}
+    columns, cell = snake_grid(body)
+    return {"body": body, "left": left, "top": top, "width": width, "height": height,
+            "columns": columns, "cell": cell}
 
 
 def render_activity(days: list[tuple[str, int]], dark: bool,
@@ -2291,7 +2330,6 @@ def render_activity(days: list[tuple[str, int]], dark: bool,
         line, area, axis = "#0969DA", "#0969DA1A", "#EAEEF2"
 
     peak = max((count for _, count in days), default=0)
-    total = sum(count for _, count in days)
 
     # ЦЕНТР ПОЛОТНА — ОДИН СЛОЙ, А НЕ ДВА. Календарь вкладов рисуется либо
     # змейкой, либо своими квадратиками, но никогда обоими: одна и та же сетка,
@@ -2301,7 +2339,27 @@ def render_activity(days: list[tuple[str, int]], dark: bool,
         grid_h = int(snake["height"])
     height = head + grid_h + (trend_gap + trend_h + trend_tail if len(days) > 7 else 0)
 
-    label = f"{total} contributions in the last year"
+    # ГДЕ У ПОЛОТНА СЕТКА. Своя начинается в нуле и кончается на краю картинки;
+    # у змейки поля вокруг сетки принадлежат ЗМЕЕ, а не календарю. Столбцы
+    # считаются один раз и здесь — по ним равняются и квадратики, и тренд, и
+    # обе подписи: разойтись им негде, потому что источник один.
+    if not snake:
+        columns, grid_cell = [index * (cell + gap) for index in range(weeks)], cell
+    else:
+        columns = [x - snake["left"] for x in snake["columns"]]
+        grid_cell = snake["cell"] or cell
+    # Сетку у змейки прочесть не удалось — равняемся по всей ширине картинки,
+    # как до этой правки. Хуже, но честно: третий исход, а не поломка.
+    edge = (columns[0], columns[-1] + grid_cell) if columns else (0.0, float(width))
+
+    # ПОДПИСЬ НЕ ПОВТОРЯЕТ СОСЕДА. Сумма вкладов за год стоит строкой выше — в
+    # карточке профиля, и второй раз она здесь не добавляет ничего, зато заводит
+    # второе место, где то же число может устареть (правило 090). Полотно
+    # отвечает на свой вопрос: слева вверху дневной максимум, слева внизу
+    # недельный, и вместе они читаются как легенда к двум видам одних данных.
+    caption = f"daily · peak {peak}"
+    label = (f"A year of contributions day by day, peak {peak} in a day, "
+             f"weekly trend below")
     if snake:
         label += "; a snake crossing the contribution grid"
     out = [
@@ -2316,8 +2374,8 @@ def render_activity(days: list[tuple[str, int]], dark: bool,
         out.append("<style>@media (prefers-reduced-motion: reduce) "
                    "{ * { animation: none !important } }</style>")
     out.append(
-        f'<text x="0" y="14" fill="{lab}" font-family="{FONT}" font-size="12" '
-        f'font-weight="600">{escape(label.split(";")[0])}</text>'
+        f'<text x="{edge[0]:.1f}" y="14" fill="{lab}" font-family="{FONT}" '
+        f'font-size="12" font-weight="600">{escape(caption)}</text>'
     )
 
     if snake:
@@ -2333,7 +2391,7 @@ def render_activity(days: list[tuple[str, int]], dark: bool,
             fill = empty if not count else tones[min(int(count * len(tones) / max(peak, 1)),
                                                      len(tones) - 1)]
             out.append(
-                f'<rect x="{column * (cell + gap)}" y="{head + row * (cell + gap)}" '
+                f'<rect x="{columns[column]:.0f}" y="{head + row * (cell + gap)}" '
                 f'width="{cell}" height="{cell}" rx="2" fill="{fill}"><title>{escape(date)}: '
                 f"{count}</title></rect>"
             )
@@ -2347,19 +2405,31 @@ def render_activity(days: list[tuple[str, int]], dark: bool,
         sums = [sum(count for _, count in days[i:i + 7]) for i in range(0, len(days), 7)]
         top = max(sums) or 1
         base = head + grid_h + trend_gap + trend_h
-        step = (width - cell) / max(len(sums) - 1, 1) if snake else cell + gap
-        points = [(index * step + cell / 2, base - value / top * (trend_h - 10))
-                  for index, value in enumerate(sums)]
+        # ТОЧКА НЕДЕЛИ СТОИТ ПО ЦЕНТРУ СВОЕГО СТОЛБЦА, а не по доле ширины.
+        # Столбцы известны поимённо — свои по построению, чужие прочитаны у
+        # змейки. Если их оказалось не столько, сколько недель, точки
+        # раскладываются ровно по ширине сетки: разойтись на одну неделю лучше,
+        # чем на поля всей картинки.
+        if len(columns) == len(sums):
+            xs = [x + grid_cell / 2 for x in columns]
+        else:
+            span = edge[1] - edge[0] - grid_cell
+            xs = [edge[0] + grid_cell / 2 + index * span / max(len(sums) - 1, 1)
+                  for index in range(len(sums))]
+        points = [(x, base - value / top * (trend_h - 10))
+                  for x, value in zip(xs, sums)]
         path = " ".join(f"{'M' if i == 0 else 'L'}{x:.1f},{y:.1f}"
                         for i, (x, y) in enumerate(points))
         out += [
-            f'<line x1="0" y1="{base}" x2="{width}" y2="{base}" stroke="{axis}" stroke-width="1"/>',
+            f'<line x1="{edge[0]:.1f}" y1="{base}" x2="{edge[1]:.1f}" y2="{base}" '
+            f'stroke="{axis}" stroke-width="1"/>',
             f'<path d="{path} L{points[-1][0]:.1f},{base} L{points[0][0]:.1f},{base} Z" '
             f'fill="{area}"/>',
             f'<path d="{path}" fill="none" stroke="{line}" stroke-width="2" '
             f'stroke-linejoin="round" stroke-linecap="round"/>',
-            f'<text x="0" y="{base + 15}" fill="{lab}" font-family="{FONT}" font-size="11" '
-            f'font-weight="600">weekly · peak {top}</text>',
+            f'<text x="{edge[0]:.1f}" y="{base + 15}" fill="{lab}" '
+            f'font-family="{FONT}" font-size="11" font-weight="600">'
+            f'weekly · peak {top}</text>',
         ]
     return "\n".join(out) + "\n</svg>\n"
 
@@ -2910,7 +2980,11 @@ def selftest() -> int:
     grid = render_activity(year, True)
     grid_checks = [
         ("квадрат на каждый день", grid.count("<rect") == len(year)),
-        ("подпись несёт сумму", str(sum(c for _, c in year)) in grid),
+        # Сумма вкладов за год стоит в СОСЕДНЕЙ карточке, и здесь её быть не
+        # должно: одно число в двух местах расходится молча (правило 090).
+        ("подпись не повторяет сумму соседа", str(sum(c for _, c in year)) not in grid),
+        ("подпись несёт дневной максимум",
+         f"daily · peak {max(c for _, c in year)}" in grid),
         ("у каждого дня своя подсказка", grid.count("<title>") == len(year)),
         ("пустой день не красится тоном", grid.count("#161B22") > 0),
     ]
@@ -2930,6 +3004,35 @@ def selftest() -> int:
     if "stroke-linejoin" in short:
         broken.append("календарь: линия рисуется там, где недели ещё нет")
     print("  да  — календарь: на неполной неделе линии нет")
+
+    # ЗМЕЙКА НАРИСОВАНА С ПОЛЯМИ, И ТРЕНД РАВНЯЕТСЯ ПО СЕТКЕ, А НЕ ПО КАРТИНКЕ.
+    # Подставная змейка повторяет геометрию живой: `viewBox` шире сетки слева на
+    # 16 единиц, столбцы идут с шагом 16, клетка — 12. Первая точка обязана
+    # встать в центр первого столбца (2 + 16 + 6 = 24), последняя — в центр
+    # последнего (834 + 16 + 6 = 856). До этой правки они стояли на 5.5 и 874.5:
+    # расхождение видел глаз, а набор — нет.
+    fake = {"body": '<style>.c{width:12px;height:12px}</style>',
+            "left": -16.0, "top": -32.0, "width": 880.0, "height": 192.0,
+            "columns": [2.0 + 16 * i for i in range(53)], "cell": 12.0}
+    crawled = render_activity(year, True, fake)
+    drawn_path = re.search(r'<path d="M([\d.]+),[\d.]+((?: L[\d.]+,[\d.]+)+)"', crawled)
+    ends = (drawn_path.group(1),
+            drawn_path.group(2).rsplit(" L", 1)[1].split(",")[0]) if drawn_path else ()
+    if ends != ("24.0", "856.0"):
+        broken.append(f"календарь: тренд не встал под столбцами змейки — концы {ends}")
+    print("  да  — календарь: тренд равняется по сетке змейки, а не по её полям")
+
+    # Сетка читается у самой картинки, а поля не угадываются числом.
+    # `stroke-width:1px` стоит в том же правиле РАНЬШЕ `width:12px` — ровно так
+    # его пишет живая змейка, и ровно на нём клетка вышла шириной в единицу.
+    body = ('<style>.c{shape-rendering:geometricPrecision;stroke-width:1px;'
+            'width:12px;height:12px}</style>'
+            '<rect class="c cx" x="2" y="2"/><rect class="c" x="18" y="2"/>')
+    if snake_grid(body) != ([2.0, 18.0], 12.0):
+        broken.append(f"змейка: сетка прочитана неверно — {snake_grid(body)}")
+    if snake_grid('<rect class="c" x="2"/>') != ([], 0.0):
+        broken.append("змейка: сетка без размера клетки принята за прочитанную")
+    print("  да  — змейка: столбцы и клетка читаются у картинки, молчание названо")
 
     # Пустой календарь не роняет рисование: у нового профиля вкладов нет, и это
     # состояние, а не сбой.
