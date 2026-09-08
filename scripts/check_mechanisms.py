@@ -161,6 +161,7 @@ def audit_workflows(sources: dict[str, str]) -> list[str]:
                      "Переключатель по имени отменяет операцию МОЛЧА — ни прогона, "
                      "ни красного, ни строки на вкладке (147)")
     found += cancellation_groups(sources)
+    found += pinned_actions(sources)
     return found
 
 
@@ -220,6 +221,48 @@ TOP_KEY = re.compile(r"^(\w[\w-]*):", re.M)
 JOB_KEY = re.compile(r"^  (\w[\w-]*):\s*$", re.M)
 JOB_TIMEOUT = re.compile(r"^    timeout-minutes:", re.M)
 PY_VERSION = re.compile(r"^\s*python-version:\s*[\"']?([\d.]+)", re.M)
+
+
+#: Ссылка на чужое действие в шаге. Берётся вся строка `uses:`, включая форму
+#: без дефиса: шаг может начинаться и с `- uses:`, и с `uses:` после имени.
+ACTION_USES = re.compile(r"^[ \t]*(?:-[ \t]+)?uses:[ \t]*(?P<ref>[^\s#]+)", re.M)
+
+#: Прибитая версия — сорок шестнадцатеричных знаков. Ни `v7`, ни `main`, ни
+#: `v7.0.1` таковой не являются, как бы точно они ни выглядели.
+COMMIT_SHA = re.compile(r"^[0-9a-f]{40}$")
+
+
+def pinned_actions(flows: dict[str, str]) -> list[str]:
+    """Чужое действие взято по SHA, а не по метке (правило 073).
+
+    ЧЕМ ПЛАТИТ МЕТКА. Она переезжает на другой код молча и у чужого владельца:
+    `v7` сегодня и `v7` завтра — разные коммиты, а прогон об этом не скажет
+    ничем. Обновление при этом никуда не девается — его приносит dependabot
+    отдельным изменением, то есть переезд становится видимым и обратимым.
+
+    ЗАЧЕМ ГЕЙТ, ЕСЛИ ВСЁ И ТАК ПРИБИТО. Критерий «действия прибиты по SHA»
+    объявлен профилем «зависимости и внешний артефакт» в .rules/roles.md и до
+    8 сентября держался ЧТЕНИЕМ: двадцать пять ссылок сверены разово и вручную,
+    а двадцать шестая пришла бы с новым прогоном.
+
+    ЧТО ПРЕДМЕТОМ НЕ ЯВЛЯЕТСЯ: локальное действие (`./.github/actions/...`) —
+    оно живёт в этом же дереве и переезжать ему некуда.
+    """
+    found: list[str] = []
+    for name, source in sorted(flows.items()):
+        for match in ACTION_USES.finditer(source):
+            ref = match.group("ref")
+            if ref.startswith("./"):
+                continue
+            action, _, version = ref.partition("@")
+            if not version:
+                found.append(f"{name}: действие {action} взято без версии вовсе — "
+                             f"прогон побежит тем, что окажется в ветке по умолчанию (073)")
+            elif not COMMIT_SHA.fullmatch(version):
+                found.append(f"{name}: действие {action} прибито меткой {version}, "
+                             f"а не SHA — метка переезжает на другой код молча "
+                             f"и у чужого владельца (073)")
+    return found
 
 
 def _section(text: str, name: str) -> str:
@@ -1469,6 +1512,22 @@ def selftest() -> int:
          {"a.yml": "on:\n  schedule:\n    - cron: '0 4 * * *'\nconcurrency:\n  group: a\n  cancel-in-progress: true\n"}, False),
         ("голова из шагов группой не считается", cancellation_groups,
          {"a.yml": "on:\n  pull_request:\nconcurrency:\n  group: a-${{ github.event.pull_request.number }}\n  cancel-in-progress: true\njobs:\n  x:\n    steps:\n      - run: echo ${{ github.event.pull_request.head.sha }}\n"}, True),
+
+        # ── чужое действие прибито по SHA (правило 021) ──────────────────
+        ("действие прибито по SHA", pinned_actions,
+         {"a.yml": "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1\n"}, False),
+        ("действие взято по метке", pinned_actions,
+         {"a.yml": "      - uses: actions/checkout@v7\n"}, True),
+        ("метка похожа на точную версию — всё равно метка", pinned_actions,
+         {"a.yml": "      - uses: actions/checkout@v7.0.1\n"}, True),
+        ("версии нет вовсе", pinned_actions,
+         {"a.yml": "      - uses: actions/checkout\n"}, True),
+        ("действие с путём внутри репозитория", pinned_actions,
+         {"a.yml": "        uses: Owner/Repo/.github/actions/x@03c2ee7c6ba21fafb4eca634fc363d159eb3d6ee\n"}, False),
+        ("местное действие переезжать некуда", pinned_actions,
+         {"a.yml": "      - uses: ./.github/actions/local\n"}, False),
+        ("хвост комментарием версией не считается", pinned_actions,
+         {"a.yml": "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n"}, False),
 
         ("прогон полон", audit_runners, {"a.yml": GOOD_FLOW}, False),
         ("нет ручной кнопки", audit_runners,

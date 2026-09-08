@@ -70,6 +70,16 @@ NUMBERED_TRACKER = re.compile(r"github\.com/[\w.-]+/[\w.-]+/(?:issues|pull)/\d+"
 #: приезжает через него ровно так же.
 IMAGE_SRC = re.compile(r'(?:src|srcset)="([^"]+)"')
 
+#: Картинка на странице и её атрибуты. Разбирается тег целиком, а не отдельные
+#: атрибуты по всему тексту: у соседних картинок они перепутались бы местами.
+IMAGE_TAG = re.compile(r"<img\b[^>]*>")
+ATTR_SRC = re.compile(r'\bsrc="([^"]*)"')
+ATTR_ALT = re.compile(r'\balt="([^"]*)"')
+
+#: Подпись ВНУТРИ картинки. Она же — источник alt для собранных картинок, и
+#: другого у него нет.
+ARIA_LABEL = re.compile(r'\baria-label="([^"]*)"')
+
 #: Порог доли кириллицы. Обоснование — в докстроке: замер развёл языки на 6% и
 #: 70–94%, и порог стоит между ними, а не «на глаз».
 CYRILLIC_SHARE = 50
@@ -114,6 +124,76 @@ def audit_page(page: str) -> list[str]:
     elif cyrillic_share(page) >= CYRILLIC_SHARE:
         found.append(f"витрина написана по-русски ({cyrillic_share(page)}% кириллицы): "
                      "её читает англоязычный посетитель профиля")
+
+    return found
+
+
+def audit_alt(page: str, assets: dict[str, str]) -> list[str]:
+    """Подпись картинки на странице сходится с подписью внутри картинки.
+
+    ЗАЧЕМ ЭТО ГЕЙТ. У собранных картинок ``alt`` проставляет сама сборка из их
+    ``aria-label`` (build_metrics.py::sync_alt) — разъехаться там нечему.
+    Рукодельные — шапка, печатающаяся строка, разделитель — правятся человеком,
+    и их подписи сверялись РАЗОВО И ВРУЧНУЮ: критерий профиля «изображения и
+    доступность» в .rules/roles.md был объявлен, а спрашивать его было некому.
+
+    ЧТО ИМЕННО СВЕРЯЕТСЯ, И ПОЧЕМУ ИМЕННО ЭТО:
+
+    * ``alt`` есть у каждой картинки. Без атрибута читатель со скринридером
+      получает имя файла, и это не «почти подпись», а другой текст;
+
+    * подписи совпадают дословно. Две подписи об одном предмете — два места,
+      где одно и то же расходится молча (правило 022);
+
+    * подпись пустая ТОЛЬКО у декоративной. Картинка без ``aria-label``
+      объявлена декорацией — тогда и на странице у неё пустой ``alt``. Обратное
+      тоже находка: подписанная картинка с пустым ``alt`` теряет подпись;
+
+    * у пары тем подпись одна. Страница показывает светлый вариант через
+      ``<source>``, а ``alt`` берёт у тёмного: разъехавшись, они дали бы
+      светлому читателю подпись от чужой картинки.
+    """
+    found: list[str] = []
+
+    for tag in IMAGE_TAG.findall(page):
+        src = ATTR_SRC.search(tag)
+        if src is None:
+            continue
+        name = src.group(1).split("?")[0].rsplit("/", 1)[-1]
+        if not src.group(1).split("?")[0].startswith(("./assets/", "assets/")):
+            continue
+        if name not in assets:
+            found.append(f"на витрине картинка {name}, которой нет в assets/")
+            continue
+        alt = ATTR_ALT.search(tag)
+        if alt is None:
+            found.append(f"{name}: у картинки нет alt — читатель со скринридером "
+                         "получит имя файла, а не подпись")
+            continue
+        inside = ARIA_LABEL.search(assets[name])
+        if inside is None:
+            if alt.group(1):
+                found.append(f"{name}: на странице подпись есть, внутри картинки "
+                             "aria-label нет — либо она декоративная и alt пустой, "
+                             "либо подпись переезжает внутрь")
+        elif alt.group(1) != inside.group(1):
+            found.append(f"{name}: подпись на странице разошлась с aria-label "
+                         f"внутри картинки — {alt.group(1)!r} против "
+                         f"{inside.group(1)!r}")
+
+    for name, body in sorted(assets.items()):
+        if not name.endswith("-dark.svg"):
+            continue
+        pair = name.replace("-dark.svg", "-light.svg")
+        if pair not in assets:
+            continue
+        here, there = ARIA_LABEL.search(body), ARIA_LABEL.search(assets[pair])
+        if (here is None) != (there is None):
+            found.append(f"{name} и {pair}: подпись есть только у одной из тем — "
+                         "страница берёт alt у тёмной, а показать может светлую")
+        elif here is not None and here.group(1) != there.group(1):
+            found.append(f"{name} и {pair}: подписи тем разошлись — "
+                         f"{here.group(1)!r} против {there.group(1)!r}")
 
     return found
 
@@ -172,6 +252,51 @@ def selftest() -> int:
             broken.append(f"{name}: ожидалось {'отказ' if must_reject else 'пропуск'}, вышло наоборот")
         print(f"  {'отвергнут' if found else 'пропущен '} — {name}")
 
+    # ── подписи картинок ───────────────────────────────────────────────────
+    # Набор двусторонний (правило 140). Живая половина здесь не формальность:
+    # гейт, ругающийся на исправную страницу, краснит каждое изменение подряд —
+    # а красное фоном обесценивает настоящее.
+    said = "Шапка витрины"
+    art = {"header-dark.svg": f'<svg aria-label="{said}"><text>x</text></svg>',
+           "header-light.svg": f'<svg aria-label="{said}"><text>x</text></svg>',
+           "divider-dark.svg": "<svg><path d=\"M0 0\"/></svg>",
+           "divider-light.svg": "<svg><path d=\"M0 0\"/></svg>"}
+    ok_alt = (f'<img src="./assets/header-dark.svg?v=1" alt="{said}">\n'
+              '<img src="./assets/divider-dark.svg?v=1" alt="">\n')
+    alt_cases = [
+        ("подписи сходятся, декоративный без подписи", ok_alt, art, False),
+        ("подпись на странице разошлась с картинкой",
+         ok_alt.replace(said, "Другая шапка", 1), art, True),
+        ("alt пропал вовсе",
+         '<img src="./assets/header-dark.svg?v=1" width="100%">', art, True),
+        ("декоративный вдруг подписан",
+         '<img src="./assets/divider-dark.svg?v=1" alt="разделитель">', art, True),
+        ("подписанная картинка с пустым alt",
+         '<img src="./assets/header-dark.svg?v=1" alt="">', art, True),
+        ("подписи тем разошлись", ok_alt,
+         {**art, "header-light.svg": '<svg aria-label="Header"><text>x</text></svg>'}, True),
+        ("подпись есть только у одной темы", ok_alt,
+         {**art, "header-light.svg": "<svg><text>x</text></svg>"}, True),
+        ("на витрине картинка, которой нет в дереве",
+         '<img src="./assets/missing-dark.svg" alt="нет такой">', art, True),
+        # Чужая картинка сюда не относится: её подпись проставляет сборка, а
+        # источник судит audit_page. Ложный отказ здесь стоил бы дороже.
+        ("значок с чужого хоста не судится подписью",
+         '<img src="https://img.shields.io/badge/x-y-1F6FEB" alt="значок">', art, False),
+    ]
+    for name, page, assets, must_reject in alt_cases:
+        found = audit_alt(page, assets)
+        if bool(found) is not must_reject:
+            broken.append(f"подписи, {name}: ожидалось "
+                          f"{'отказ' if must_reject else 'пропуск'}, вышло — {found}")
+        print(f"  {'отвергнут' if found else 'пропущен '} — подписи: {name}")
+
+    # Отказ обязан называть картинку: находка без имени — отказ, по которому
+    # нечего чинить (правило 158).
+    if not any("header-dark.svg" in line
+               for line in audit_alt(ok_alt.replace(said, "Другая", 1), art)):
+        broken.append("отказ на разошедшейся подписи не называет картинку")
+
     # Отказ обязан НАЗЫВАТЬ предмет: находка без имени — это отказ, по которому
     # нечего чинить (правило 158).
     named = audit_page(ok_page + '<img src="https://example.com/a.png" alt="a">')
@@ -192,7 +317,13 @@ def main() -> int:
         return selftest()
 
     try:
-        found = audit_page((ROOT / PAGE).read_text(encoding="utf-8"))
+        page = (ROOT / PAGE).read_text(encoding="utf-8")
+        # Рукодельные картинки — те, что лежат в дереве: собранные с переездом
+        # в ветку `assets` (правило 160) здесь больше не хранятся, и списка
+        # имён для них не нужно.
+        assets = {path.name: path.read_text(encoding="utf-8")
+                  for path in sorted((ROOT / "assets").glob("*.svg"))}
+        found = audit_page(page) + audit_alt(page, assets)
         for name in SERVICE:
             found += audit_service(name, (ROOT / name).read_text(encoding="utf-8"))
     except OSError as e:
@@ -208,7 +339,8 @@ def main() -> int:
               file=sys.stderr)
         return 1
 
-    print(f"запреты витрины соблюдены: {PAGE} и {len(SERVICE)} служебных документа")
+    print(f"запреты витрины соблюдены: {PAGE}, {len(assets)} рукодельных картинки "
+          f"и {len(SERVICE)} служебных документа")
     return 0
 
 
