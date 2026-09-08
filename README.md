@@ -164,12 +164,3 @@ Four things I do the same way in every repository, and the artefacts you can che
 
 Подробности о каждом проекте — в его собственном README: страница-навигатор их не заменяет.
 
-<div align="center">
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/output/snake-dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/output/snake-light.svg">
-  <img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/output/snake-dark.svg" alt="Contribution graph consumed by a snake" width="100%">
-</picture>
-
-</div>
