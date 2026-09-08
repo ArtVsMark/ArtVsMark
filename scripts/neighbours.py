@@ -16,7 +16,9 @@
 есть ровно ту копию, которую запрещает 090. Поэтому исход у скрипта один —
 показать; красное он даёт только когда сводка не прочитана.
 
-Исходы: 0 — показано; 1 — предмет не разобран; 2 — источник не ответил.
+Исходы: 0 — показано (в том числе «спрашивать не о чем»: сводка при этом
+ВСЁ РАВНО прочитана — адрес, который не ходят, устаревает молча);
+1 — предмет не разобран; 2 — источник не ответил.
 """
 
 from __future__ import annotations
@@ -32,8 +34,6 @@ import checks  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 BINDINGS = ROOT / ".rules/bindings.json"
-WHERE = ("https://raw.githubusercontent.com/ArtVsMark/"
-         "Engineering-Incidents-Playbook/main/export/where.json")
 #: Наш собственный адрес в сводке: себя в советчики не берут.
 SELF = "ArtVsMark/ArtVsMark"
 
@@ -145,19 +145,31 @@ def main() -> int:
               file=sys.stderr)
         return 1
 
+    # ИСТОЧНИК ЧИТАЕТСЯ ДО ТОГО, КАК ВЫЯСНЯЕТСЯ, ЕСТЬ ЛИ О ЧЁМ СПРАШИВАТЬ.
+    # Прежде порядок был обратный, и это скрыло УСТАРЕВШИЙ адрес: 4 сентября
+    # каталог перенёс сводку на ветку `badges`, а здесь остался `main`. Четверо
+    # суток прогон печатал «спрашивать не о чем» и в сеть не ходил — долг по
+    # правилам был нулевой, — то есть зеленел, ничего не проверив (правило 146).
+    # Адрес, по которому не ходят, устаревает молча: первый же настоящий вопрос
+    # получил бы 404 вместо совета.
+    try:
+        with urllib.request.urlopen(checks.CATALOGUE_WHERE, timeout=30) as answer:
+            where = json.loads(answer.read())
+    except (urllib.error.URLError, OSError, ValueError) as refusal:
+        print(checks.annotate(
+            "warning", f"сводка соседей не прочитана "
+            f"({checks.CATALOGUE_WHERE}): {refusal}"),
+            file=sys.stderr)
+        return 2
+
+    consumers = where.get("consumers") or []
+    print(f"сводка каталога прочитана: потребителей {len(consumers)}, "
+          f"собрана {where.get('generated_at', 'без отметки времени')}")
+
     gaps = unmechanized(rules)
     if not gaps:
         print("правил без механизма нет — спрашивать не о чем")
         return 0
-
-    try:
-        with urllib.request.urlopen(WHERE, timeout=30) as answer:
-            where = json.loads(answer.read())
-    except (urllib.error.URLError, OSError, ValueError) as refusal:
-        print(checks.annotate(
-            "warning", f"сводка соседей не прочитана ({WHERE}): {refusal}"),
-            file=sys.stderr)
-        return 2
 
     helped = advice(where, gaps)
     print(f"правил без механизма: {len(gaps)}; у соседей решено: {len(helped)}")

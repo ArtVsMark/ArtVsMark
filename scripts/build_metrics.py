@@ -1777,13 +1777,6 @@ def grader_facts() -> dict:
     return facts
 
 
-#: Сводка каталога о своих потребителях: чем у каждого держится каждое правило.
-#: Лежит на ветке ``badges``, а не в ``main`` — искать её там значит получить 404
-#: и решить, что предмета нет; окно витрины на этом уже ошиблось.
-WHERE_EXPORT = ("https://raw.githubusercontent.com/ArtVsMark/"
-                "Engineering-Incidents-Playbook/badges/export/where.json")
-
-
 def project_facts(repo: str) -> dict:
     """Факты проекта — из файла, который он публикует о себе сам. Нет — пусто.
 
@@ -1822,9 +1815,10 @@ def catalogue_where() -> dict[str, dict]:
     увидел бы читатель картинки.
     """
     try:
-        payload = json.loads(_get(WHERE_EXPORT, authenticated=False))
+        payload = json.loads(_get(checks.CATALOGUE_WHERE, authenticated=False))
     except (urllib.error.URLError, OSError, ValueError) as error:
-        print(checks.annotate("warning", f"ответ каталога о потребителях не прочитан: {error}"),
+        print(checks.annotate("warning", f"ответ каталога о потребителях не прочитан "
+                              f"({checks.CATALOGUE_WHERE}): {error}"),
               file=sys.stdout)
         return {}
     consumers = payload.get("consumers")

@@ -1312,6 +1312,53 @@ def audit_calls(sources: dict[str, str]) -> list[str]:
     return found
 
 
+#: Имя файла сводки каталога. Проверяется имя, а не адрес целиком: адрес
+#: собирается из соседних литералов и переносится по строкам как удобно, а имя
+#: файла в нём остаётся целым куском.
+CATALOGUE_FILE = "where.json"
+
+#: Где адресу сводки жить положено — общий помощник и никто больше.
+ADDRESS_HOME = "checks.py"
+
+
+def single_catalogue_address(sources: dict[str, str]) -> list[str]:
+    """Адрес сводки каталога записан ОДИН раз (правило 090).
+
+    ИНЦИДЕНТ ЗДЕСЬ, И ОН СВЕЖИЙ. Копий было две, и разъехались они на ЧУЖОЙ
+    правке: 4 сентября каталог перенёс сводку на ветку `badges`. Сборка метрик
+    узнала об этом 8 сентября и завела свою копию адреса уже верной, а вторая —
+    подсказка соседей — осталась с `main`, где сводки больше нет. Одна правка,
+    два места, и второе никто не назвал (правило 195).
+
+    ПРОВЕРЯЕТСЯ ПРИСВОЕННЫЙ АДРЕС, А НЕ ВХОЖДЕНИЕ ИМЕНИ В ТЕКСТ. Имя файла
+    законно стоит в докстроках, комментариях и в образце самого гейта — там оно
+    называет предмет. Предмет опознаётся двумя признаками сразу: строка
+    ПРИСВОЕНА имени и несёт схему (``://``), то есть является адресом. Соседние
+    литералы Python склеивает при разборе, поэтому перенос адреса по строкам от
+    гейта не прячет.
+
+    ГРАНИЦА НАЗВАНА: адрес, собранный в выражении из чужой переменной и хвоста
+    (``HOST + "/export/where.json"``), сюда не попадает — схемы в этой строке
+    нет. Случившаяся копия была литеральной, и гейт держит её; обещать больше
+    значило бы обещать разбор значений переменных.
+    """
+    found: list[str] = []
+    for name, source in sorted(sources.items()):
+        if name == ADDRESS_HOME:
+            continue
+        for node in ast.walk(ast.parse(source)):
+            if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+                continue
+            value = node.value
+            if (isinstance(value, ast.Constant) and isinstance(value.value, str)
+                    and CATALOGUE_FILE in value.value and "://" in value.value):
+                found.append(f"{name}: адрес сводки каталога записан своей строкой — "
+                             f"вторая копия расходится с первой молча, и однажды уже "
+                             f"разошлась веткой. Адрес живёт в "
+                             f"{ADDRESS_HOME}::CATALOGUE_WHERE (090)")
+    return found
+
+
 #: Образцы для отрицательного набора. Прогон-образец полон намеренно: каждый
 #: случай ломает в нём РОВНО ОДНО, и видно, на что именно гейт отвечает.
 GOOD_FLOW = (
@@ -1768,6 +1815,32 @@ def selftest() -> int:
     if not (returned and "metrics-dark.svg" in returned[0]):
         broken.append("производное: отказ не называет файл, вернувшийся в дерево")
 
+    # ── адрес сводки каталога — одно место (правило 090) ──────────────────
+    # Ложный отказ здесь дороже пропуска ровно в одну сторону: имя файла стоит
+    # в докстроках обоих потребителей и называет там предмет, а не адрес.
+    address_cases = [
+        ("адрес присвоен своей строкой",
+         {"a.py": 'WHERE = "https://host/export/where.json"\n'}, True),
+        ("адрес собран из соседних литералов — Python склеит, гейт увидит",
+         {"a.py": 'WHERE = ("https://host/"\n         "export/where.json")\n'}, True),
+        ("имя файла в докстроке называет предмет, а не адрес",
+         {"a.py": '"""Сводка каталога — export/where.json, раздел о соседях."""\n'}, False),
+        ("имя файла в комментарии",
+         {"a.py": "# сводка лежит в export/where.json\nx = 1\n"}, False),
+        ("общий помощник — законное место адреса",
+         {"checks.py": 'CATALOGUE_WHERE = "https://host/export/where.json"\n'}, False),
+        ("чужая строка без предмета",
+         {"a.py": 'PATH = "export/rules.json"\n'}, False),
+        ("имя файла образцом самого гейта — не адрес",
+         {"a.py": 'CATALOGUE_FILE = "where.json"\n'}, False),
+    ]
+    for name, sources_case, must_reject in address_cases:
+        found = single_catalogue_address(sources_case)
+        if bool(found) is not must_reject:
+            broken.append(f"адрес сводки, {name}: ожидалось "
+                          f"{'отказ' if must_reject else 'пропуск'}, вышло {found}")
+        print(f"  {'отвергнут' if found else 'пропущен '} — адрес сводки: {name}")
+
     # ── имена переменных оболочки ─────────────────────────────────────────
     # Обе стороны, и вторая важнее: присваивание с не-ASCII именем роняет прогон
     # заметно, а ОБРАЩЕНИЕ к такой переменной выходит пустым и оставляет гейт
@@ -1856,6 +1929,7 @@ def main() -> int:
              if (ROOT / name).exists()}
 
     found = (audit_scripts(sources) + audit_calls(sources) + audit_voice(sources)
+             + single_catalogue_address(sources)
              + audit_gaps(rules) + audit_workflows(flows) + audit_runners(flows)
              + audit_harness(sources, flows) + audit_charter(ROOT)
              + audit_sparse(sources, flows) + audit_verdicts(sources)
