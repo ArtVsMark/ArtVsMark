@@ -28,6 +28,26 @@
 
 <div align="center">
 <!--m:profile-cards-->
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/engineering-dark.svg?v=4fa51413">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/engineering-light.svg?v=23137ea5">
+  <img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/engineering-dark.svg?v=4fa51413" alt="GitHub engineering stats: 5 public repos, 10 stars earned, 58 followers, 3 950 contributions · 365d, 2 day streak, 25 longest streak" width="48%">
+</picture>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/stack-dark.svg?v=11bc7f6b">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/stack-light.svg?v=7927e351">
+  <img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/stack-dark.svg?v=11bc7f6b" alt="Technology footprint: Python in 5 of 5 repos, HTML in 3 of 5 repos, Batchfile in 1 of 5 repos, CSS in 1 of 5 repos, JavaScript in 1 of 5 repos; roles: CLI, web UI, GUI, pytest plugin, OS sandbox, docs, RU/EN, Python, JSONL over git, content, tooling" width="48%">
+</picture>
+
+<br><br>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/activity-dark.svg?v=6bb5d12e">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/activity-light.svg?v=ae88a81a">
+  <img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/activity-dark.svg?v=6bb5d12e" alt="A year of contributions day by day, peak 190 in a day, weekly trend below; a snake crossing the contribution grid" width="92%">
+</picture>
+
 <!--/m:profile-cards-->
 
 <sub>Measured from the GitHub API by <a href="./.github/workflows/metrics.yml">the same workflow</a> that rebuilds every other number here — no third-party stat services, no external cards. Languages are counted by <b>how many repositories use them</b>, not by bytes of code.</sub>
