@@ -1312,6 +1312,75 @@ def audit_calls(sources: dict[str, str]) -> list[str]:
     return found
 
 
+#: Прогоны, которые ОТКАЗЫВАЮТ изменению, а не сообщают о нём. `pr-check` —
+#: обязательная проверка защиты ветки; `automerge` не сливает, пока условие не
+#: сошлось; `release-hold` держит стоп-кран меткой. Названный в вердикте прогон
+#: из этого списка сам по себе и есть отказ — искать под ним скрипт незачем.
+BLOCKING_FLOWS = ("pr-check.yml", "automerge.yml", "release-hold.yml")
+
+#: Вызов скрипта витрины в шаге прогона. Разбирается вместе с хвостом команды:
+#: `--selftest` отличает проверку САМОГО механизма от его работы, и первая
+#: изменение не гейтит — она гейтит набор.
+SCRIPT_CALL = re.compile(r"python3?\s+(?:-\S+\s+)*scripts/(?P<script>[\w]+\.py)(?P<args>[^\n]*)")
+
+#: Разрез разметки по элементам списка. Шаги прогона — единственные списки, где
+#: встречаются вызовы; остальные (расписания, ветки) режутся тоже и остаются
+#: пустыми для этого разбора.
+LIST_ITEM = re.compile(r"\n(?=\s{4,}- )")
+
+
+def gate_really_blocks(rules: dict[str, dict], flows: dict[str, str]) -> list[str]:
+    """Слово `gate` в вердикте означает отказ изменению, а не просто прогон.
+
+    ПРЕДМЕТ ОПЛАЧЕН ЗАМЕРОМ 27 АВГУСТА, и он крупный: из 72 действующих
+    вердиктов «прогон падает при нарушении» было 11, а «механизм бежит, но не
+    упадёт» — 37. Под одним словом жили две разные силы, и разница видна только
+    тому, кто пойдёт читать прогон. Словарь потом раскололи на `gate` и
+    `pipeline` руками — а держать раскол осталось нечему.
+
+    РАЗЛОЖЕНО НАДВОЕ (правило 182). Здесь стояло «различить их машине нечем:
+    чтобы знать, упадёт ли прогон, надо знать, что именно проверяет шаг». Это
+    верно про ОДНУ половину — падает ли скрипт именно на нарушении, — и ложно
+    про вторую: доедет ли его отказ до изменения, видно из разметки. Вторую
+    половину и держит эта проверка.
+
+    ЧТО СЧИТАЕТСЯ ОТКАЗОМ: живой вызов скрипта в `pr-check.yml` шагом без
+    `continue-on-error`, либо прямое имя прогона, который сам решает судьбу
+    изменения (``BLOCKING_FLOWS``). Вызов с `--selftest` не считается: он
+    отказывает НАБОРУ механизма, а не тому, ради чего механизм написан.
+
+    ОТКАЗ ОДНОСТОРОННИЙ. Ругается только завышение — `gate` там, где ничто не
+    отказывает. Занижение (`pipeline` у механизма, который на самом деле
+    блокирует) молчит: вердикт при этом говорит о себе МЕНЬШЕ, чем правда, и
+    красное на нём стоило бы дороже пропуска (правило 051).
+    """
+    steps = LIST_ITEM.split(flows.get("pr-check.yml", ""))
+    live: dict[str, bool] = {}
+    for step in steps:
+        blocked = "continue-on-error: true" not in step
+        for call in SCRIPT_CALL.finditer(step):
+            if "--selftest" in call.group("args"):
+                continue
+            live[call.group("script")] = live.get(call.group("script"), False) or blocked
+
+    found: list[str] = []
+    for key, binding in sorted(rules.items()):
+        if binding.get("mechanism") != "gate":
+            continue
+        said = " ".join(str(binding.get(field, "")) for field in ("where", "why"))
+        if any(flow in said for flow in BLOCKING_FLOWS):
+            continue
+        named = sorted(set(re.findall(r"scripts/([\w]+\.py)", said)))
+        if any(live.get(script) for script in named):
+            continue
+        seen = ", ".join(f"{s} ({'зовётся неблокирующим шагом' if s in live else 'на проверке изменения не зовётся'})"
+                         for s in named) or "ни одного скрипта и ни одного решающего прогона"
+        found.append(f"вердикт {key}: механизм объявлен `gate` — «нарушение отказывает "
+                     f"изменению», — но названо {seen}. По словарю .rules/README.md это "
+                     f"`pipeline`: машина сработает, изменение не остановится")
+    return found
+
+
 #: Имя файла сводки каталога. Проверяется имя, а не адрес целиком: адрес
 #: собирается из соседних литералов и переносится по строкам как удобно, а имя
 #: файла в нём остаётся целым куском.
@@ -1815,6 +1884,63 @@ def selftest() -> int:
     if not (returned and "metrics-dark.svg" in returned[0]):
         broken.append("производное: отказ не называет файл, вернувшийся в дерево")
 
+    # ── слово `gate` означает отказ изменению (правило 182, вторая половина) ─
+    # Набор двусторонний, но отказ односторонний, и это разные вещи: случаи
+    # занижения здесь ОБЯЗАНЫ проходить — вердикт, говорящий о себе меньше
+    # правды, красным не становится.
+    LIVE = ("      - name: гейт\n        run: python scripts/gate.py\n")
+    SELF_ONLY = ("      - name: набор\n        run: python scripts/gate.py --selftest\n")
+    SOFT = ("      - name: подсказка\n        continue-on-error: true\n"
+            "        run: python scripts/gate.py\n")
+    gate_cases = [
+        ("гейт зовётся живьём и блокирующим шагом",
+         {"1": {"mechanism": "gate", "where": "scripts/gate.py — проверяет"}},
+         {"pr-check.yml": LIVE}, False),
+        ("на проверке бежит только набор механизма",
+         {"1": {"mechanism": "gate", "where": "scripts/gate.py — проверяет"}},
+         {"pr-check.yml": SELF_ONLY}, True),
+        ("шаг неблокирующий — это конвейер, а не гейт",
+         {"1": {"mechanism": "gate", "where": "scripts/gate.py — проверяет"}},
+         {"pr-check.yml": SOFT}, True),
+        ("скрипт живёт в прогоне, который изменение не судит",
+         {"1": {"mechanism": "gate", "where": "scripts/gate.py — проверяет"}},
+         {"pr-check.yml": "      - run: echo\n", "metrics.yml": LIVE}, True),
+        ("назван решающий прогон, а не скрипт — отказ там его собственный",
+         {"1": {"mechanism": "gate", "where": ".github/workflows/release-hold.yml держит метку"}},
+         {"pr-check.yml": "      - run: echo\n"}, False),
+        ("не названо ни скрипта, ни решающего прогона",
+         {"1": {"mechanism": "gate", "where": "держится абзацем в CLAUDE.md"}},
+         {"pr-check.yml": LIVE}, True),
+        # Занижение молчит: обе стороны проверены, ругается одна.
+        ("конвейер и правда не блокирует",
+         {"1": {"mechanism": "pipeline", "where": "scripts/gate.py в metrics.yml"}},
+         {"pr-check.yml": "      - run: echo\n"}, False),
+        ("конвейер назван у блокирующего механизма — занижение, но не отказ",
+         {"1": {"mechanism": "pipeline", "where": "scripts/gate.py — проверяет"}},
+         {"pr-check.yml": LIVE}, False),
+        ("документ гейтом не объявлялся — не предмет",
+         {"1": {"mechanism": "document", "where": "CLAUDE.md § Ветки"}},
+         {"pr-check.yml": LIVE}, False),
+        # Разметки проверки нет вовсе: подтвердить отказ нечем, и молчать об
+        # этом нельзя — зелёное здесь означало бы «проверено», а проверять было
+        # не по чему.
+        ("разметки проверки нет вовсе",
+         {"1": {"mechanism": "gate", "where": "scripts/gate.py — проверяет"}}, {}, True),
+    ]
+    for name, rules_case, flows_case, must_reject in gate_cases:
+        found = gate_really_blocks(rules_case, flows_case)
+        if bool(found) is not must_reject:
+            broken.append(f"сила гейта, {name}: ожидалось "
+                          f"{'отказ' if must_reject else 'пропуск'}, вышло {found}")
+        print(f"  {'отвергнут' if found else 'пропущен '} — сила гейта: {name}")
+
+    # Отказ обязан называть и правило, и слово, которым его чинят (158).
+    said = gate_really_blocks(
+        {"077": {"mechanism": "gate", "where": "scripts/gate.py"}},
+        {"pr-check.yml": SOFT})
+    if not (said and "077" in said[0] and "pipeline" in said[0]):
+        broken.append(f"сила гейта: отказ не называет правило или слово починки: {said}")
+
     # ── адрес сводки каталога — одно место (правило 090) ──────────────────
     # Ложный отказ здесь дороже пропуска ровно в одну сторону: имя файла стоит
     # в докстроках обоих потребителей и называет там предмет, а не адрес.
@@ -1931,6 +2057,7 @@ def main() -> int:
     found = (audit_scripts(sources) + audit_calls(sources) + audit_voice(sources)
              + single_catalogue_address(sources)
              + audit_gaps(rules) + audit_workflows(flows) + audit_runners(flows)
+             + gate_really_blocks(rules, flows)
              + audit_harness(sources, flows) + audit_charter(ROOT)
              + audit_sparse(sources, flows) + audit_verdicts(sources)
              + audit_pipeline_labels(sources, flows) + shell_names(flows) + env_defaults(sources)
