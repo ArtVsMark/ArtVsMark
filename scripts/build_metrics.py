@@ -1722,9 +1722,11 @@ def sync_bindings(export: dict, write: bool = True) -> str:
     # каталог сверяет его со своим и печатает отставание (157, 164).
     answered_to = str(export.get("contracts", {}).get("export", ""))
     stale = bool(answered_to) and answer.get("answers_to") != answered_to
-    if (added or stale) and write:
-        if answered_to:
-            answer["answers_to"] = answered_to
+    pending = any(binding["status"] == "unreviewed" for binding in rules.values())
+    raise_to = answered_version(str(answer.get("answers_to", "")), answered_to, pending)
+    if (added or raise_to) and write:
+        if raise_to:
+            answer["answers_to"] = raise_to
         answer["rules"] = {key: rules[key] for key in sorted(rules)}
         BINDINGS.write_text(json.dumps(answer, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     unreviewed = sum(1 for binding in rules.values() if binding["status"] == "unreviewed")
@@ -1742,10 +1744,34 @@ def sync_bindings(export: dict, write: bool = True) -> str:
     # Отставание поля «по какой выгрузке отвечено» называется вслух и на
     # сухом прогоне: сборка его чинит записью, а проверка — только видит.
     behind = (f", выгрузка ответа {answer.get('answers_to', '—')} против {answered_to}"
-              if stale and not write else "")
+              f"{' — сначала разбор, потом номер' if pending else ''}"
+              if stale else "")
     return (f"долг по правилам: без ответа {unanswered} · не рассмотрено {unreviewed} · "
             f"держится ничем {unheld}\n"
             f"ответ каталогу: записей {len(rules)}, дописано {len(added)}{tail}{behind}")
+
+
+def answered_version(current: str, published: str, pending: bool) -> str:
+    """Номер выгрузки, который вправе встать в ответ. Пусто — не вправе никакой.
+
+    ПОЛЕ ``answers_to`` — УТВЕРЖДЕНИЕ, А НЕ ОТМЕТКА О СИНХРОНИЗАЦИИ. Оно
+    говорит: ответы ниже построены по выгрузке такой-то. Пока в файле лежит
+    хоть один ``unreviewed``, это ложно — правило приехало, а ответа на него
+    нет.
+
+    ЧЕМ ПЛАТИТ МАШИНА, СТАВЯЩАЯ НОМЕР САМА. Каталог сверяет его со своим и
+    печатает отставание; номер, поднятый сборкой в тот же заход, что приехали
+    новые правила, глушит ровно этот сигнал — и глушит зелёным (146). Долг
+    остаётся виден локально («не рассмотрено N»), а издатель видит потребителя,
+    который якобы всё разобрал.
+
+    Отсюда асимметрия: номер поднимает ПЕРЕЧИТЫВАНИЕ, сборка лишь записывает
+    его тогда, когда перечитывать нечего. Пустая версия у издателя — третий
+    исход: выгрузка не назвала свой контракт, и выдумывать номер неоткуда (039).
+    """
+    if not published or pending or current == published:
+        return ""
+    return published
 
 
 def our_trails(export: dict, repo: str = SHOWCASE) -> list[str]:
@@ -2960,6 +2986,22 @@ def selftest() -> int:
         if not ok:
             broken.append(f"третий исход без адреса, {name}: нет")
         print(f"  {'да ' if ok else 'НЕТ'} — третий исход без адреса: {name}")
+
+    # ── номер выгрузки, по которой отвечено (контракт 1.2, правило 157) ─
+    # Обе стороны, и вторая здесь дороже: сборка, поднявшая номер сама, гасит
+    # у издателя сигнал отставания — зелёным и молча (146).
+    version_cases = [
+        ("издатель ушёл вперёд, разбирать нечего", ("1.4", "1.5", False), "1.5"),
+        ("издатель ушёл вперёд, но есть неразобранные", ("1.4", "1.5", True), ""),
+        ("номера совпали — двигать нечего", ("1.5", "1.5", False), ""),
+        ("издатель не назвал свой контракт — третий исход", ("1.4", "", False), ""),
+        ("своего номера нет вовсе — ставится издательский", ("", "1.5", False), "1.5"),
+    ]
+    for name, args, expected in version_cases:
+        got = answered_version(*args)
+        if got != expected:
+            broken.append(f"выгрузка ответа, {name}: ожидалось {expected!r}, вышло {got!r}")
+        print(f"  {'поднят  ' if got else 'оставлен'} — выгрузка ответа: {name}")
 
     # ── следы каталога в наши документы (правило 185) ─────────────────
     # Оба исхода, а не один: ложный отказ здесь отправляет чинить живой след
