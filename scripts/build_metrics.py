@@ -558,9 +558,139 @@ def accent_label(accents: list[dict]) -> str:
         if accent["badges"]:
             pieces.append(", ".join(f"{name} {value}" for name, value, _ in accent["badges"]))
         pieces.append(", ".join(f"{accent['stats'][f]} {f}" for f in FEATURED_FIELDS))
+        # Второй ряд и полоса правил — часть той же картинки, и подпись обязана
+        # нести их тоже: текстовому читателю достаётся только она.
+        if accent.get("made"):
+            pieces.append(", ".join(f"{value.replace(chr(0x2009), ' ')} {label}"
+                                    for value, label in accent["made"]))
+        rules = accent.get("rules")
+        if rules:
+            shares = ", ".join(f"{name} {value}"
+                               for name, value in ordered_mechanisms(rules["mechanisms"]))
+            tail = f"rules held by: {shares}"
+            if rules.get("answered"):
+                tail += f"; {rules['answered']} answered"
+            if rules.get("trails"):
+                tail += f", {rules['trails']} linked to issues"
+            pieces.append(tail)
+        elif "rules" in accent:
+            # Пробел называется, а не выравнивается: «не подключён» и «правил
+            # ноль» звучат по-разному и в подписи тоже.
+            pieces.append("not connected to the rules catalogue yet")
         pieces.append(accent["stack"])
         parts.append(". ".join(pieces))
     return " · ".join(parts)
+
+
+#: Числа блока «кто это»: что проект измерил о собственной работе. Порядок
+#: закрыт — он же порядок показа, и разъехаться им негде.
+MADE_FIELDS = (("tests", "functions", "tests"),
+               ("tests", "modules", "test modules"),
+               ("checks_per_pr", "count", "checks per PR"))
+
+
+#: Цвет доли по механизму. Словарь ЧУЖОЙ и растёт: за две недели к четырём
+#: значениям добавилось пятое. Поэтому у незнакомого механизма есть свой цвет —
+#: доля показывается, а не исчезает из полосы молча.
+MECHANISM_TONES = {
+    "dark": {"gate": "#3FB950", "pipeline": "#58A6FF", "document": "#8B949E",
+             "code": "#D2A8FF", "none": "#F85149", "_": "#6E7681"},
+    "light": {"gate": "#1A7F37", "pipeline": "#0969DA", "document": "#8C959F",
+              "code": "#8250DF", "none": "#CF222E", "_": "#6E7781"},
+}
+
+#: Порядок долей в полосе: от механизма к его отсутствию. Механизм, которого
+#: здесь нет, встаёт после известных — порядок задан, но не закрыт.
+MECHANISM_ORDER = ("gate", "pipeline", "code", "document", "none")
+
+
+def ordered_mechanisms(mechanisms: dict[str, int]) -> list[tuple[str, int]]:
+    """Доли в показанном порядке: известные по списку, прочие следом по имени."""
+    known = [(name, mechanisms[name]) for name in MECHANISM_ORDER if name in mechanisms]
+    rest = sorted((n, v) for n, v in mechanisms.items() if n not in MECHANISM_ORDER)
+    return known + rest
+
+
+def project_made(facts: dict) -> list[tuple[str, str]]:
+    """Чем проект меряет свою работу. Пусто — он об этом не рассказывает.
+
+    Пустой ответ и ноль — разные вещи, и разводятся здесь, а не в рисовальщике:
+    ключа нет — раздела в кадре не будет вовсе; ключ есть и в нём ноль — ноль и
+    покажем, потому что «тестов пока нет» это ответ, а не молчание.
+    """
+    made: list[tuple[str, str]] = []
+    for section, key, label in MADE_FIELDS:
+        value = (facts.get(section) or {}).get(key)
+        if isinstance(value, (int, float)):
+            made.append((f"{value:,}".replace(",", "\u2009"), label))
+    return made
+
+
+def project_rules(answer: dict | None) -> dict | None:
+    """Чем у проекта держатся правила каталога. ``None`` — он не подключён.
+
+    Доли берутся как есть, вместе с их именами: словарь механизмов чужой и
+    растёт — за две недели к четырём значениям добавилось пятое. Свой список
+    отстал бы молча, и первым это увидел бы читатель картинки (правило 022).
+    """
+    if not answer:
+        return None
+    mechanisms = answer.get("by_mechanism")
+    if not isinstance(mechanisms, dict) or not mechanisms:
+        return None
+    return {
+        "answered": answer.get("answered"),
+        "trails": answer.get("trails"),
+        "mechanisms": {str(k): int(v) for k, v in mechanisms.items() if isinstance(v, int)},
+    }
+
+
+def rules_strip(accent: dict, width: int, dark: bool, label_colour: str) -> list[str]:
+    """Полоса «чем держатся правила» и два числа под ней.
+
+    ПРОЕКТ БЕЗ ОТВЕТА НЕ ПРОПУСКАЕТСЯ, А НАЗЫВАЕТСЯ. «Не подключён» и «правил
+    ноль» — разные состояния, и пустая полоса читалась бы вторым. Поэтому у
+    неподключённого стоит строка словами, а не пустота (правило 046).
+    """
+    top, left = 210, 36
+    right = width - 36
+    rules = accent.get("rules")
+    if not rules:
+        return [f'    <text x="{left}" y="{top + 14}" fill="{label_colour}" '
+                f'font-family="{FONT}" font-size="12.5" font-weight="600">'
+                f'rules: not connected to the catalogue yet</text>']
+
+    tones = MECHANISM_TONES["dark" if dark else "light"]
+    shares = ordered_mechanisms(rules["mechanisms"])
+    total = sum(value for _, value in shares) or 1
+    track = right - left
+    out: list[str] = []
+    offset = left
+    for name, value in shares:
+        # Полоса делится по долям, но каждая доля видима: механизм с одним
+        # правилом из двухсот — тоже ответ, и стереть его в ноль пикселей
+        # значило бы показать, что его нет.
+        span = max(track * value / total, 3.0)
+        out.append(
+            f'    <rect x="{offset:.1f}" y="{top}" width="{span:.1f}" height="7" '
+            f'rx="3.5" fill="{tones.get(name, tones["_"])}"/>'
+        )
+        offset += span + 2
+    legend = " · ".join(f"{name} {value}" for name, value in shares)
+    tail = [f"{rules['answered']} rules answered"] if rules.get("answered") else []
+    if rules.get("trails"):
+        tail.append(f"{rules['trails']} linked to issues")
+    out.append(
+        f'    <text x="{left}" y="{top + 30}" fill="{label_colour}" font-family="{FONT}" '
+        f'font-size="12.5" font-weight="600">{escape(legend)}</text>'
+    )
+    if tail:
+        out.append(
+            f'    <text x="{right}" y="{top + 30}" fill="{label_colour}" font-family="{FONT}" '
+            f'font-size="12.5" font-weight="600" text-anchor="end">'
+            f'{escape(" · ".join(tail))}</text>'
+        )
+    return out
 
 
 def render_featured(accents: list[dict], dark: bool) -> str:
@@ -594,7 +724,7 @@ def render_featured(accents: list[dict], dark: bool) -> str:
             "  обязана говорить, что она урезана, а описание — не то место, где это уместно."
         )
 
-    width, height = 1000, 190
+    width, height = 1000, 248
     cycle = ACCENT_SECONDS * len(accents)
     if dark:
         card, stroke, name_c, num_c, lab_c = "#0D1117", "#30363D", "#F0F6FC", "#58A6FF", "#7D8590"
@@ -654,6 +784,23 @@ def render_featured(accents: list[dict], dark: bool) -> str:
             for column, field in enumerate(FEATURED_FIELDS)
         )
         lines.append(f"    {numbers}")
+
+        # ВТОРОЙ РЯД — МЕЛКО. Иерархия кеглей, а не стопка блоков: крупные числа
+        # остаются крупными, а то, что проект намерил о своей работе, идёт
+        # вторым рядом и тише. Раздела нет — строки нет вовсе: «не рассказывает»
+        # и «намерил ноль» показываются по-разному.
+        if accent.get("made"):
+            made = " · ".join(f"{value} {label}" for value, label in accent["made"])
+            lines.append(
+                f'    <text x="36" y="192" fill="{lab_c}" font-family="{FONT}" '
+                f'font-size="13" font-weight="600">{escape(made)}</text>'
+            )
+
+        # ТРЕТИЙ БЛОК — ЧЕМ ДЕРЖАТСЯ ПРАВИЛА. Ответ каталога о проекте, а не наша
+        # оценка его. Доля «ничем» показывается наравне с остальными и не
+        # прячется: правило под гейтом и правило без механизма обязаны быть
+        # различимы с одного взгляда — в этом весь смысл блока.
+        lines.extend(rules_strip(accent, width, dark, lab_c))
         lines.append("  </g>")
     lines.append("</svg>")
     return "\n".join(lines) + "\n"
@@ -1372,6 +1519,62 @@ def grader_facts() -> dict:
     if schema.split(".")[0] != FACTS_SCHEMA:
         raise SystemExit(f"схема фактов грейдера {schema!r}, а сборка умеет мажор {FACTS_SCHEMA}.x")
     return facts
+
+
+#: Сводка каталога о своих потребителях: чем у каждого держится каждое правило.
+#: Лежит на ветке ``badges``, а не в ``main`` — искать её там значит получить 404
+#: и решить, что предмета нет; окно витрины на этом уже ошиблось.
+WHERE_EXPORT = ("https://raw.githubusercontent.com/ArtVsMark/"
+                "Engineering-Incidents-Playbook/badges/export/where.json")
+
+
+def project_facts(repo: str) -> dict:
+    """Факты проекта — из файла, который он публикует о себе сам. Нет — пусто.
+
+    ОТЛИЧИЕ ОТ ``grader_facts``: там молчание источника роняет сборку, потому
+    что без тех чисел витрине нечего показать вовсе. Здесь молчание — законный
+    ответ «этот проект о себе пока не рассказывает», и он ОТЛИЧИМ от нуля:
+    пустой словарь означает «файла нет», а не «измерено ноль».
+
+    Соседи публикуют разное, и это нормально: контракт называет обязательными
+    три поля, остальные разделы — по мере того, как проект их измеряет.
+    """
+    try:
+        payload = _api(f"/repos/{repo}/contents/{FACTS_PATH}?ref=badges")
+        facts = json.loads(base64.b64decode(payload["content"]))
+    except (urllib.error.URLError, OSError, ValueError, KeyError):
+        return {}
+    if not isinstance(facts, dict):
+        return {}
+    schema = str(facts.get("schema", ""))
+    if schema and schema.split(".")[0] != FACTS_SCHEMA:
+        # Несовместимый мажор читать нельзя, но и ронять сборку из-за соседа,
+        # ушедшего вперёд, — значит останавливать витрину чужой правкой.
+        return {}
+    return facts
+
+
+def catalogue_where() -> dict[str, dict]:
+    """Ответ каталога о каждом потребителе: доли механизмов, разобрано, следы.
+
+    Читается у ИЗДАТЕЛЯ, а не собирается из чужих `bindings.json`: определение
+    того, что считается механизмом, принадлежит каталогу, и вторая копия этого
+    определения разошлась бы с первой молча (правило 090).
+
+    Словарь долей берётся КАК ЕСТЬ. За две недели он вырос с четырёх значений
+    до пяти — добавился ``code``, — и свой список отстал бы, а первым это
+    увидел бы читатель картинки.
+    """
+    try:
+        payload = json.loads(_get(WHERE_EXPORT, authenticated=False))
+    except (urllib.error.URLError, OSError, ValueError) as error:
+        print(checks.annotate("warning", f"ответ каталога о потребителях не прочитан: {error}"),
+              file=sys.stdout)
+        return {}
+    consumers = payload.get("consumers")
+    if not isinstance(consumers, list):
+        return {}
+    return {str(item.get("repo", "")): item for item in consumers if isinstance(item, dict)}
 
 
 def facts_staleness(generated_at: str, now: dt.datetime, limit: int = FACTS_STALE_DAYS) -> str:
@@ -2938,6 +3141,48 @@ def selftest() -> int:
         broken.append("следы: чужой документ принят за свой — владелец дерева другой")
     print(f"  {'НЕТ' if our_trails(foreign) else 'да '} — след: чужое дерево не наш предмет")
 
+    # ТРИ БЛОКА КАДРА: «не рассказывает» и «намерил ноль» — разные состояния, и
+    # набор проверяет именно их различие, а не наличие полей.
+    made_cases = [
+        ("раздела нет — строки не будет", {}, 0),
+        ("тесты есть, проверок нет", {"tests": {"functions": 12, "modules": 3}}, 2),
+        ("ноль тестов — это ответ, а не молчание",
+         {"tests": {"functions": 0, "modules": 0}}, 2),
+        ("чужой мусор вместо числа", {"tests": {"functions": "много"}}, 0),
+    ]
+    for name, facts, expected in made_cases:
+        got = len(project_made(facts))
+        if got != expected:
+            broken.append(f"кадр, {name}: ожидалось {expected} чисел, вышло {got}")
+        print(f"  {got} чисел  — кадр: {name}")
+
+    rules_cases = [
+        ("проект не подключён", None, False),
+        ("подключён, но долей нет", {"answered": 5, "by_mechanism": {}}, False),
+        ("доли есть", {"answered": 181, "trails": 7,
+                       "by_mechanism": {"gate": 76, "document": 65}}, True),
+    ]
+    for name, answer, expected in rules_cases:
+        got = project_rules(answer) is not None
+        if got is not expected:
+            broken.append(f"правила, {name}: ожидалось {'есть' if expected else 'нет'}")
+        print(f"  {'есть' if got else 'нет '}      — правила: {name}")
+
+    # Незнакомый механизм НЕ ТЕРЯЕТСЯ: словарь чужой и растёт, а доля, выпавшая
+    # из полосы, читается как «такого у нас нет» (правило 022).
+    grown = ordered_mechanisms({"gate": 3, "quantum": 1, "none": 2})
+    if [name for name, _ in grown] != ["gate", "none", "quantum"]:
+        broken.append(f"доли: незнакомый механизм потерялся или встал не туда: {grown}")
+    print(f"  {[n for n, _ in grown]} — доли: незнакомый механизм показан")
+
+    # Неподключённый проект НАЗЫВАЕТСЯ словами, а не пустой полосой: пустота
+    # читалась бы как «правил ноль» (правило 046).
+    silent = rules_strip({"rules": None}, 1000, True, "#8B949E")
+    if not silent or "not connected" not in silent[0]:
+        broken.append("правила: неподключённый проект показан пустотой, а не словами")
+    print(f"  {'назван' if silent and 'not connected' in silent[0] else 'НЕТ'}   "
+          f"— правила: неподключённый назван")
+
     if broken:
         print("\nсамопроверка провалена:", file=sys.stderr)
         for line in broken:
@@ -3096,14 +3341,21 @@ def main() -> int:
     # Находки о соседях копятся, а не роняют пересчёт. Ронять его чужой правкой
     # витрина перестала после трёх суток простоя 5–7 сентября (039).
     neighbour_findings: list[str] = []
+    # Два чужих ответа на кадр: проект о себе (facts.json) и каталог о нём
+    # (where.json). Оба необязательны и оба ОТЛИЧИМЫ от нуля: «не рассказывает»
+    # и «измерено ноль» — разные состояния, и кадр показывает их по-разному.
+    where = catalogue_where()
     for repo in rank_featured(stats)[:FEATURED_ACCENTS]:
         project = by_repo[repo]
+        facts = project_facts(repo)
         accents.append({
             "title": project["title"],
             "tagline": project["tagline"],
             "stack": project["stack"],
             "badges": project_badges(repo, project["badges"], neighbour_findings),
             "stats": stats[repo],
+            "made": project_made(facts),
+            "rules": project_rules(where.get(repo)),
         })
     print("акценты: " + " · ".join(
         f"{a['title']} ({', '.join(str(a['stats'][f]) for f in FEATURED_FIELDS)}"
