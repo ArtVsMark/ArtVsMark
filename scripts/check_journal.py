@@ -172,7 +172,7 @@ def selftest() -> int:
         print(f"  {'отвергнут' if found else 'пропущен '} — {name}")
 
     # Отказ обязан НАЗЫВАТЬ предмет: «journal missing» без имени файла — это
-    # отказ, по которому нечего чинить (правило 083).
+    # отказ, по которому нечего чинить (правило 158).
     named, _ = audit(["scripts/build_metrics.py"], "")
     if not any("build_metrics.py" in line for line in named):
         broken.append("отказ не называет файл, из-за которого он вынесен")
