@@ -72,32 +72,44 @@ def added_sections(base: str, head: str) -> list[tuple[str, int]]:
     бы держать изменение месяц. Гейт судит только то, что окно написало сейчас —
     прошлое сжимается отдельной работой, а не отказом на каждом изменении.
     """
-    return sections_from_diff(_git("diff", "--unified=0", f"{base}...{head}",
-                                   "--", JOURNAL))
+    diff = _git("diff", "--unified=0", f"{base}...{head}", "--", JOURNAL)
+    text = _git("show", f"{head}:{JOURNAL}")
+    return new_sections(diff, text)
 
 
-def sections_from_diff(diff: str) -> list[tuple[str, int]]:
-    """Разбор диффа, отделённый от похода в git: иначе набор проверял бы git.
+def added_titles(diff: str) -> list[str]:
+    """Заголовки, СОЗДАННЫЕ этим изменением: строки ``+## …`` в диффе."""
+    return [line[4:] for line in diff.splitlines()
+            if line.startswith("+## ") and not line.startswith("+++")]
 
-    Строки, дописанные ДО первого заголовка, ничьи: это правка внутри старого
-    раздела, и судить её длину нельзя — раздел уже длиннее потолка, и в этом
-    изменении он не создавался.
+
+def section_sizes(text: str) -> dict[str, int]:
+    """Длина каждого раздела в готовом файле, в строках."""
+    lines = text.splitlines()
+    starts = [i for i, line in enumerate(lines) if line.startswith("## ")]
+    sizes: dict[str, int] = {}
+    for n, i in enumerate(starts):
+        end = starts[n + 1] if n + 1 < len(starts) else len(lines)
+        sizes[lines[i][3:]] = end - i
+    return sizes
+
+
+def new_sections(diff: str, text: str) -> list[tuple[str, int]]:
+    """Разделы, созданные изменением, и их длина в ГОТОВОМ файле.
+
+    ПОЧЕМУ ДЛИНА БЕРЁТСЯ ИЗ ФАЙЛА, А НЕ ИЗ ДИФФА. Первая редакция считала
+    добавленные строки подряд — и обломалась на первом же сжатии: у переписанного
+    раздела заголовок НЕ МЕНЯЕТСЯ, значит в диффе он идёт контекстом, а его новое
+    тело — плюсами, которые приписываются предыдущему заголовку. Гейт назвал
+    двенадцатистрочную выжимку тридцатью тремя строками и отверг собственное
+    изменение.
+
+    ПОЧЕМУ ТОЛЬКО СОЗДАННЫЕ. Правка одной строки в старом разделе на сто тридцать
+    восемь строк иначе давала бы отказ за чужую длину — то есть требовала бы
+    переписать прошлое ради опечатки (правило 051).
     """
-    sections: list[tuple[str, int]] = []
-    title, size = None, 0
-    for line in diff.splitlines():
-        if not line.startswith("+") or line.startswith("+++"):
-            continue
-        body = line[1:]
-        if body.startswith("## "):
-            if title is not None:
-                sections.append((title, size))
-            title, size = body[3:], 1
-        elif title is not None:
-            size += 1
-    if title is not None:
-        sections.append((title, size))
-    return sections
+    sizes = section_sizes(text)
+    return [(title, sizes[title]) for title in added_titles(diff) if title in sizes]
 
 
 def touched(paths: list[str]) -> list[str]:
@@ -232,35 +244,33 @@ def selftest() -> int:
     if why != "сборка переписала сама":
         broken.append(f"причина отказа не доехала: {why!r}")
 
-    # ДЛИНА ЗАПИСИ — второй предмет гейта, и набор судит разбор, а не git.
-    diff_cases = [
-        ("выжимка в шесть строк", "+## Что сломалось\n+\n+Строка.\n+Ещё.\n+И третья.\n", 5),
-        ("правка внутри старого раздела ничья", "+одна строка без заголовка\n", 0),
-        ("два раздела считаются по отдельности",
-         "+## Первый\n+тело\n+## Второй\n+тело\n+тело\n", 2),
-        ("удалённые строки не считаются", "-## Старый\n-тело\n+## Новый\n+тело\n", 2),
-    ]
-    for name, diff, expected in diff_cases:
-        got = sections_from_diff(diff)
-        if name.startswith("два раздела"):
-            actual = len(got)
-        elif not got:
-            actual = 0
-        else:
-            actual = got[0][1]
-        if actual != expected:
-            broken.append(f"длина, {name}: ожидалось {expected}, вышло {actual} ({got})")
-        print(f"  {actual:2}        — длина: {name}")
+    # ДЛИНА ЗАПИСИ — второй предмет гейта. Набор судит разбор, а не git, и
+    # проверяет ровно то, на чём первая редакция сломалась: переписанный раздел.
+    poem = "## Поэма\n" + "строка\n" * (SECTION_LIMIT + 4)
+    digest = "## Выжимка\n\nЧто сломалось.\nЧем закрыли.\n"
+    old_one = "## Старый\n" + "строка\n" * 40
 
-    # Потолок обязан ОТВЕРГАТЬ длинное и ПРОПУСКАТЬ выжимку — иначе он украшение.
-    long_diff = "+## Поэма\n" + "+строка\n" * (SECTION_LIMIT + 2)
-    if not [t for t, size in sections_from_diff(long_diff) if size > SECTION_LIMIT]:
-        broken.append("длина: раздел длиннее потолка не пойман")
-    short_diff = "+## Выжимка\n" + "+строка\n" * 4
-    if [t for t, size in sections_from_diff(short_diff) if size > SECTION_LIMIT]:
-        broken.append("длина: выжимка отвергнута как длинная")
-    print(f"  отвергнут — длина: {SECTION_LIMIT + 3} строк при потолке {SECTION_LIMIT}")
-    print(f"  пропущен  — длина: 5 строк")
+    length_cases = [
+        ("новый раздел длиннее потолка", "+## Поэма\n", poem + digest, ["Поэма"]),
+        ("новая выжимка проходит", "+## Выжимка\n", digest + poem, []),
+        ("переписанный раздел не судится: заголовок не менялся",
+         "+Новое тело.\n+Ещё строка.\n", digest, []),
+        ("правка внутри старого раздела ничья", "+одна строка\n", old_one, []),
+        ("заголовок добавлен, а раздела в файле нет — не наш предмет",
+         "+## Призрак\n", digest, []),
+    ]
+    for name, diff, text, expected in length_cases:
+        got = [title for title, size in new_sections(diff, text) if size > SECTION_LIMIT]
+        if got != expected:
+            broken.append(f"длина, {name}: ожидалось {expected}, вышло {got}")
+        print(f"  {'отвергнут' if got else 'пропущен '} — длина: {name}")
+
+    # Длина берётся из ФАЙЛА: в диффе у переписанного раздела тело идёт плюсами
+    # без своего заголовка, и подсчёт по диффу приписал бы его соседу.
+    sizes = section_sizes(poem + digest)
+    if sizes.get("Выжимка") != 4:
+        broken.append(f"длина: раздел в файле измерен неверно — {sizes}")
+    print(f"  {sizes.get('Выжимка')} строк    — длина: измерение по готовому файлу")
 
     if broken:
         print("\nсамопроверка провалена:", file=sys.stderr)
