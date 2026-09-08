@@ -17,97 +17,11 @@
 <br>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/metrics-dark.svg?v=26b0765e">
-  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/metrics-light.svg?v=c040e80c">
-  <img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/metrics-dark.svg?v=26b0765e" alt="Stepik-Python-Grader: 5000+ tests, 269 test modules, 16 checks per PR" width="92%">
-</picture>
-
-<br><br>
-
-<picture>
   <source media="(prefers-color-scheme: dark)" srcset="./assets/divider-dark.svg?v=1c137c57">
   <source media="(prefers-color-scheme: light)" srcset="./assets/divider-light.svg?v=e01c573a">
   <img src="./assets/divider-dark.svg?v=1c137c57" alt="" width="100%">
 </picture>
 
-</div>
-
-## What I maintain
-
-<div align="center">
-<a href="https://github.com/ArtVsMark?tab=repositories">
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/featured-dark.svg?v=bbd9cda2">
-  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/featured-light.svg?v=647efb90">
-  <img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/featured-dark.svg?v=bbd9cda2" alt="Stepik-Python-Grader — Offline Python autograder: unlimited local checks, honest side-by-side comparison of solutions. release/pypi 1.11, CI success, coverage 91.3%, version 1.11.132. 3 stars, 1753 commits, 34 issues, 12 releases, 753 prs. CLI · web UI · GUI · pytest plugin · OS sandbox · Engineering-Incidents-Playbook — Rules for agent sessions and a GitHub pipeline — each one carrying the incident it grew from. release/pypi 1.2, CI success, coverage 66%, version 1.2.69. 3 stars, 415 commits, 8 issues, 4 releases, 305 prs. docs · RU/EN · Claude-Code_Usage-Token — Turns a three-step limit indicator into a number. Early: the spec is written, the tool is not. release/pypi v0.2.0, CI success, coverage 87.6%, version 0.2.0. 0 stars, 70 commits, 3 issues, 2 releases, 68 prs. Python · JSONL over git · Glossary-Python — The RU/EN glossary the grader links into when a run fails. release/pypi none, CI success, coverage 96.8%, version none. 2 stars, 94 commits, 1 issues, 0 releases, 39 prs. content · tooling" width="100%">
-</picture>
-</a>
-</div>
-
-<!--m:projects-->
-<div align="center">
-
-<a href="https://github.com/ArtVsMark/Stepik-Python-Grader"><picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/tile-stepik-python-grader-dark.svg?v=c11f5616"><source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/tile-stepik-python-grader-light.svg?v=28539d07"><img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/tile-stepik-python-grader-dark.svg?v=c11f5616" alt="Open Stepik-Python-Grader on GitHub" width="23%"></picture></a>
-<a href="https://github.com/ArtVsMark/Engineering-Incidents-Playbook"><picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/tile-engineering-incidents-playbook-dark.svg?v=89d67de5"><source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/tile-engineering-incidents-playbook-light.svg?v=1df6c568"><img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/tile-engineering-incidents-playbook-dark.svg?v=89d67de5" alt="Open Engineering-Incidents-Playbook on GitHub" width="23%"></picture></a>
-<a href="https://github.com/ArtVsMark/Claude-Code_Usage-Token"><picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/tile-claude-code-usage-token-dark.svg?v=834179d6"><source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/tile-claude-code-usage-token-light.svg?v=6143f0a0"><img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/tile-claude-code-usage-token-dark.svg?v=834179d6" alt="Open Claude-Code_Usage-Token on GitHub" width="23%"></picture></a>
-<a href="https://github.com/ArtVsMark/Glossary-Python"><picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/tile-glossary-python-dark.svg?v=c3e901f8"><source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/tile-glossary-python-light.svg?v=7db11f01"><img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/tile-glossary-python-dark.svg?v=c3e901f8" alt="Open Glossary-Python on GitHub" width="23%"></picture></a>
-
-<sub>data as of 2026-09-08</sub>
-
-</div>
-<!--/m:projects-->
-
-<sub><b>Quick start</b></sub>
-
-```bash
-pipx install stepik-python-grader && stepik-grader
-```
-
-**Beyond running tests:** an offline RU/EN glossary of <!--m:glossary-->1349<!--/m:glossary--> ready cards, reachable straight from the error you just hit · a step-by-step tracer with a memory graph · `timeit` microbenchmarks with time and memory ranking · an optional OS-level sandbox, kernel-enforced on Linux and macOS and partial on Windows, where the missing network isolation is a [named gap](https://github.com/ArtVsMark/Stepik-Python-Grader/blob/main/SECURITY.md#гарантии-по-ос-асимметрия--не-баг-задокументированный-компромисс), not an oversight · opt-in AI failure explanations, bring-your-own-key.
-
-<div align="center">
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./assets/divider-dark.svg?v=1c137c57">
-  <source media="(prefers-color-scheme: light)" srcset="./assets/divider-light.svg?v=e01c573a">
-  <img src="./assets/divider-dark.svg?v=1c137c57" alt="" width="100%">
-</picture>
-</div>
-
-## What holds the quality
-
-<!--m:required-->12<!--/m:required--> required checks on `main` · <!--m:os-->3<!--/m:os--> OS × <!--m:py-->2<!--/m:py--> Python versions, <!--m:exp-->3.14<!--/m:exp--> experimental · <!--m:releases-->12<!--/m:releases--> releases shipped
-
-- **Gates instead of memory** — `preflight.py` before a commit, `check_pr_ready.py` before a merge. Things you cannot forget, because they are enforced rather than remembered.
-- **The gate is a ruleset, not an agreement** — what protects `main` is public, and you can read it without taking my word: every required check green, on a branch already up to date with `main`, force-push and deletion refused. [See for yourself](https://api.github.com/repos/ArtVsMark/Stepik-Python-Grader/rules/branches/main).
-- **Every rule cites its incident** — each convention carries the issue number it grew from, and the incidents themselves live in a [public catalogue](https://github.com/ArtVsMark/Engineering-Incidents-Playbook). This page answers for every rule in it — adopted and by what, rejected and why, no subject here — in [`.rules/bindings.json`](./.rules/bindings.json).
-- **A changelog assembled from fragments**, not written after the fact — entries land with the change that caused them.
-- **The numbers above are measured, not typed** — a [daily job](./.github/workflows/metrics.yml) reads them from the repositories that produce them and rewrites this page. A number nobody measures is a number that rots.
-
-<div align="center">
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./assets/divider-dark.svg?v=1c137c57">
-  <source media="(prefers-color-scheme: light)" srcset="./assets/divider-light.svg?v=e01c573a">
-  <img src="./assets/divider-dark.svg?v=1c137c57" alt="" width="100%">
-</picture>
-</div>
-
-## Current focus
-
-<!--focus-->
-| | |
-|---|---|
-| **CI & merge automation** | stronger gates, less manual shepherding |
-| **Regression coverage** | every fixed bug leaves a test behind |
-| **English documentation** | full parity with the Russian docs tree |
-| **Local web UX** | making `--serve` the primary workflow, not the fallback |
-<!--/focus-->
-
-<div align="center">
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./assets/divider-dark.svg?v=1c137c57">
-  <source media="(prefers-color-scheme: light)" srcset="./assets/divider-light.svg?v=e01c573a">
-  <img src="./assets/divider-dark.svg?v=1c137c57" alt="" width="100%">
-</picture>
 </div>
 
 ## GitHub engineering stats
@@ -145,6 +59,77 @@ pipx install stepik-python-grader && stepik-grader
 </picture>
 </div>
 
+## What I maintain
+
+<div align="center">
+<a href="https://github.com/ArtVsMark?tab=repositories">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/featured-dark.svg?v=bbd9cda2">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/featured-light.svg?v=647efb90">
+  <img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/featured-dark.svg?v=bbd9cda2" alt="Stepik-Python-Grader — Offline Python autograder: unlimited local checks, honest side-by-side comparison of solutions. release/pypi 1.11, CI success, coverage 91.3%, version 1.11.132. 3 stars, 1753 commits, 34 issues, 12 releases, 753 prs. CLI · web UI · GUI · pytest plugin · OS sandbox · Engineering-Incidents-Playbook — Rules for agent sessions and a GitHub pipeline — each one carrying the incident it grew from. release/pypi 1.2, CI success, coverage 66%, version 1.2.69. 3 stars, 415 commits, 8 issues, 4 releases, 305 prs. docs · RU/EN · Claude-Code_Usage-Token — Turns a three-step limit indicator into a number. Early: the spec is written, the tool is not. release/pypi v0.2.0, CI success, coverage 87.6%, version 0.2.0. 0 stars, 70 commits, 3 issues, 2 releases, 68 prs. Python · JSONL over git · Glossary-Python — The RU/EN glossary the grader links into when a run fails. release/pypi none, CI success, coverage 96.8%, version none. 2 stars, 94 commits, 1 issues, 0 releases, 39 prs. content · tooling" width="100%">
+</picture>
+</a>
+</div>
+
+<!--m:projects-->
+<div align="center">
+
+<a href="https://github.com/ArtVsMark/Stepik-Python-Grader"><picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/tile-stepik-python-grader-dark.svg?v=c11f5616"><source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/tile-stepik-python-grader-light.svg?v=28539d07"><img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/tile-stepik-python-grader-dark.svg?v=c11f5616" alt="Open Stepik-Python-Grader on GitHub" width="23%"></picture></a>
+<a href="https://github.com/ArtVsMark/Engineering-Incidents-Playbook"><picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/tile-engineering-incidents-playbook-dark.svg?v=89d67de5"><source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/tile-engineering-incidents-playbook-light.svg?v=1df6c568"><img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/tile-engineering-incidents-playbook-dark.svg?v=89d67de5" alt="Open Engineering-Incidents-Playbook on GitHub" width="23%"></picture></a>
+<a href="https://github.com/ArtVsMark/Claude-Code_Usage-Token"><picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/tile-claude-code-usage-token-dark.svg?v=834179d6"><source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/tile-claude-code-usage-token-light.svg?v=6143f0a0"><img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/tile-claude-code-usage-token-dark.svg?v=834179d6" alt="Open Claude-Code_Usage-Token on GitHub" width="23%"></picture></a>
+<a href="https://github.com/ArtVsMark/Glossary-Python"><picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/tile-glossary-python-dark.svg?v=c3e901f8"><source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/tile-glossary-python-light.svg?v=7db11f01"><img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/tile-glossary-python-dark.svg?v=c3e901f8" alt="Open Glossary-Python on GitHub" width="23%"></picture></a>
+
+<sub>data as of 2026-09-08</sub>
+
+</div>
+<!--/m:projects-->
+
+<div align="center">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./assets/divider-dark.svg?v=1c137c57">
+  <source media="(prefers-color-scheme: light)" srcset="./assets/divider-light.svg?v=e01c573a">
+  <img src="./assets/divider-dark.svg?v=1c137c57" alt="" width="100%">
+</picture>
+</div>
+
+## Engineering approach
+
+Four things I do the same way in every repository, and the artefacts you can check them against.
+
+- **Mechanism over memory** — anything that matters is a script or a gate, not a habit. A convention nobody enforces is a convention that will be skipped on the day it matters most.
+- **Public rules over private habit** — the workflows, the conventions and the trade-offs are written down and versioned, so they can be read without taking my word for it. Every rule in the shared catalogue gets an answer from this repository — adopted and by what mechanism, rejected and why, or no subject here — in [`.rules/bindings.json`](./.rules/bindings.json).
+- **Incidents over folklore** — a rule exists because something broke. Each one carries the failure it grew from, and they live together in a [public catalogue](https://github.com/ArtVsMark/Engineering-Incidents-Playbook) rather than in my head.
+- **Measured over hand-written** — every number on this page is rebuilt from its source by a [daily job](./.github/workflows/metrics.yml). A number nobody measures is a number that rots, and it rots quietly.
+
+<sub><b>One worked example, not the whole argument.</b> On the flagship repository the branch protection is public and machine-readable: <!--m:required-->12<!--/m:required--> required checks on `main`, run across <!--m:os-->3<!--/m:os--> operating systems × <!--m:py-->2<!--/m:py--> Python versions with <!--m:exp-->3.14<!--/m:exp--> experimental, over <!--m:releases-->12<!--/m:releases--> releases — <a href="https://api.github.com/repos/ArtVsMark/Stepik-Python-Grader/rules/branches/main">read the ruleset yourself</a> instead of believing this line. The other repositories hold the same shape at their own maturity; this one simply has the most to show.</sub>
+
+<div align="center">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./assets/divider-dark.svg?v=1c137c57">
+  <source media="(prefers-color-scheme: light)" srcset="./assets/divider-light.svg?v=e01c573a">
+  <img src="./assets/divider-dark.svg?v=1c137c57" alt="" width="100%">
+</picture>
+</div>
+
+## Current focus
+
+<!--focus-->
+| | |
+|---|---|
+| **CI & merge automation** | stronger gates, less manual shepherding |
+| **Regression coverage** | every fixed bug leaves a test behind |
+| **English documentation** | full parity with the Russian docs tree |
+| **Local web UX** | making `--serve` the primary workflow, not the fallback |
+<!--/focus-->
+
+<div align="center">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./assets/divider-dark.svg?v=1c137c57">
+  <source media="(prefers-color-scheme: light)" srcset="./assets/divider-light.svg?v=e01c573a">
+  <img src="./assets/divider-dark.svg?v=1c137c57" alt="" width="100%">
+</picture>
+</div>
+
 ## Stack
 
 <div align="center">
@@ -163,39 +148,21 @@ pipx install stepik-python-grader && stepik-grader
 </picture>
 </div>
 
-## Contributions welcome
-
-The grader has a **"First contribution in 15 minutes"** onramp, and every `good first issue` is written in **both Russian and English** — a bilingual body is enforced by a dedicated check, not by good intentions. Open right now: **<!--m:gfi-->1<!--/m:gfi-->** — the count is rebuilt from the tracker daily, and an empty pool means none are waiting this minute, not that the door is closed.
-
-<div align="center">
-
-<a href="https://github.com/ArtVsMark/Stepik-Python-Grader/labels/good%20first%20issue"><img src="https://img.shields.io/badge/start_here-good_first_issue-7057FF?style=for-the-badge&logo=github&logoColor=white" alt="Good first issues"></a>
-<a href="https://github.com/ArtVsMark/Stepik-Python-Grader/discussions"><img src="https://img.shields.io/badge/discussions-ask_anything-1F6FEB?style=for-the-badge&logo=github&logoColor=white" alt="Discussions"></a>
-<a href="https://github.com/ArtVsMark/Stepik-Python-Grader/issues/new/choose"><img src="https://img.shields.io/badge/issues-report_a_bug-F78166?style=for-the-badge&logo=github&logoColor=white" alt="Report a bug"></a>
-
-</div>
-
-<div align="center">
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./assets/divider-dark.svg?v=1c137c57">
-  <source media="(prefers-color-scheme: light)" srcset="./assets/divider-light.svg?v=e01c573a">
-  <img src="./assets/divider-dark.svg?v=1c137c57" alt="" width="100%">
-</picture>
-</div>
-
 ### 🇷🇺 По-русски
 
-**Мейнтейнер open-source на Python.** Флагман — [Stepik-Python-Grader](https://github.com/ArtVsMark/Stepik-Python-Grader):
-локальный грейдер, который не просто прогоняет тесты, а **сравнивает решения честно** — сначала по
-корректности, потом по benchmark-метрикам. Рядом — [Engineering-Incidents-Playbook](https://github.com/ArtVsMark/Engineering-Incidents-Playbook),
-каталог из <!--m:rules-->193<!--/m:rules--> правил, каждое с историей поломки, из которой выросло, и [Claude-Code_Usage-Token](https://github.com/ArtVsMark/Claude-Code_Usage-Token) —
-остаток лимитов Claude Code в цифрах вместо трёхступенчатого светофора; пока спецификация.
+**Мейнтейнер open-source на Python.** Работаю с инструментами для разработчика: локальные средства
+проверки и запуска, автоматизация качества, воспроизводимые рабочие процессы. Веду несколько
+репозиториев — от флагманского [грейдера](https://github.com/ArtVsMark/Stepik-Python-Grader) до
+[каталога инженерных инцидентов](https://github.com/ArtVsMark/Engineering-Incidents-Playbook) из
+<!--m:rules-->193<!--/m:rules--> правил, у каждого из которых записана поломка, из которой оно выросло.
 
-Качество держится механикой, а не памятью: гейты перед коммитом и мержем, зелёный CI на актуальной
-ветке как условие мержа, числа на этой странице пересобирает
+Подход одинаков во всех: **механика вместо памяти** — существенное держат проверки и скрипты, а не
+привычка; **правила на виду** — соглашения и компромиссы записаны и версионируются, их можно
+прочитать, а не поверить на слово; **правило из инцидента** — конвенция существует потому, что
+что-то сломалось; **измерено, а не вписано** — числа на этой странице пересобирает
 [отдельный workflow](./.github/workflows/metrics.yml), а не автор.
 
-Подробности — в самих проектах: [README грейдера](https://github.com/ArtVsMark/Stepik-Python-Grader#readme) (на русском) · [история](https://github.com/ArtVsMark/Stepik-Python-Grader/blob/main/HISTORY.md) · [как включиться](https://github.com/ArtVsMark/Stepik-Python-Grader/blob/main/CONTRIBUTING.md)
+Подробности о каждом проекте — в его собственном README: страница-навигатор их не заменяет.
 
 <div align="center">
 

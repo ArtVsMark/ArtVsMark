@@ -281,21 +281,6 @@ def badge(name: str) -> str:
     return json.loads(base64.b64decode(payload["content"]))["message"]
 
 
-def good_first_issues() -> int:
-    """Сколько задач для новичка открыто прямо сейчас.
-
-    Грейдер публикует это число бейджем, но бейдж пишет его CI — между
-    прогонами значение отстаёт, и витрина однажды показывала три открытые
-    задачи против четырёх настоящих. Покрытие и глоссарий иначе не достать,
-    а это обычный запрос к трекеру: делать его самим дешевле, чем показывать
-    вчерашнее.
-
-    Из выдачи убираются PR: endpoint ``issues`` отдаёт и их тоже.
-    """
-    label = urllib.parse.quote("good first issue")
-    issues = _api(f"/repos/{REPO}/issues?state=open&labels={label}&per_page=100")
-    return len([issue for issue in issues if "pull_request" not in issue])
-
 
 def repo_activity(repo: str) -> str:
     """Время последнего пуша — ключ сортировки проектов.
@@ -1432,10 +1417,7 @@ def facts_gaps(facts: dict) -> list[str]:
     в разных репозиториях, и путать их дороже, чем разбирать (правило 039).
     """
     needed = {
-        "tests.functions": facts.get("tests", {}).get("functions"),
-        "tests.modules": facts.get("tests", {}).get("modules"),
         "python.experimental": facts.get("python", {}).get("experimental"),
-        "checks_per_pr.count": facts.get("checks_per_pr", {}).get("count"),
     }
     return sorted(key for key, value in needed.items() if value in (None, "", [], {}))
 
@@ -1824,58 +1806,6 @@ def orphaned(export: dict, rules: dict) -> list[str]:
     live = {rule["id"] for rule in export["rules"]}
     return sorted(set(rules) - live)
 
-
-def render(tiles: list[tuple[str, str]], dark: bool, owner: str = "") -> str:
-    """Плитка измеренного. ``owner`` — чьи это числа.
-
-    Подпись не оформление. Три числа без имени проекта читаются как «всё, чем
-    занимается автор», тогда как это глубина механики ОДНОГО репозитория:
-    тестов и проверок у остальных нет вовсе. Утверждение, которого читатель не
-    может отнести к предмету, витрина на себя не берёт.
-    """
-    width, height, gap = 1000, 118, 18
-    if owner:
-        height += 28
-    tile_w = (width - gap * (len(tiles) - 1)) // len(tiles)
-    if dark:
-        card, stroke, num, lab = "#0D1117", "#30363D", "#F0F6FC", "#7D8590"
-    else:
-        card, stroke, num, lab = "#FFFFFF", "#D0D7DE", "#1F2328", "#636C76"
-
-    label = ", ".join(f"{value} {name}" for value, name in tiles)
-    if owner:
-        label = f"{owner}: {label}"
-    out = [
-        f'<svg width="{width}" height="{height}" viewBox="0 0 {width} {height}" '
-        f'xmlns="http://www.w3.org/2000/svg" role="img" aria-label="{label}">',
-        '<defs><linearGradient id="a" x1="0" y1="0" x2="1" y2="0">'
-        '<stop offset="0%" stop-color="#58A6FF"/><stop offset="100%" stop-color="#7EE787"/>'
-        "</linearGradient></defs>",
-    ]
-    top = 0
-    if owner:
-        top = 28
-        out.append(
-            f'<text x="{width / 2:.0f}" y="17" fill="{lab}" font-family="{FONT}" '
-            f'font-size="13" font-weight="700" text-anchor="middle" '
-            f'letter-spacing="0.4">{escape(owner)}</text>'
-        )
-    for index, (value, name) in enumerate(tiles):
-        x = index * (tile_w + gap)
-        font_size = 46 if len(value) <= 3 else 40
-        out.append(
-            f"  <g>\n"
-            f'    <rect x="{x + 0.5}" y="{top + 0.5}" width="{tile_w - 1}" '
-            f'height="{height - top - 1}" rx="14" fill="{card}" stroke="{stroke}"/>\n'
-            f'    <rect x="{x + 22}" y="{top + 22}" width="44" height="4" rx="2" fill="url(#a)"/>\n'
-            f'    <text x="{x + tile_w / 2:.0f}" y="{top + 73}" fill="{num}" '
-            f'font-family="{FONT}" font-size="{font_size}" font-weight="800" '
-            f'text-anchor="middle" letter-spacing="-1">{value}</text>\n'
-            f'    <text x="{x + tile_w / 2:.0f}" y="{top + 98}" fill="{lab}" font-family="{FONT}" '
-            f'font-size="15.5" font-weight="600" text-anchor="middle">{name}</text>\n'
-            f"  </g>"
-        )
-    return "\n".join(out) + "\n</svg>\n"
 
 
 #: Что показывает карточка профиля и в каком порядке. Список — вход
@@ -2289,10 +2219,12 @@ def patch_readme(values: dict[str, object], fresh: dict[str, str],
         readme.write_text(text, encoding="utf-8")
 
 
-# Ноль допустим ровно у одной метрики: пустой пул задач для новичка — это
-# состояние трекера, а не сбой сборки. У остальных ноль означает, что источник
-# не ответил, и переписывать витрину по нему нельзя.
-ZERO_IS_A_STATE = {"gfi"}
+# Ноль у метрики означает, что источник не ответил, и переписывать витрину по
+# нему нельзя. Исключений сейчас нет: единственное — пустой пул задач новичка —
+# ушло вместе с блоком, который его показывал. Множество оставлено пустым, а не
+# удалено: разница между «ноль — состояние» и «ноль — молчание» существует и
+# вернётся вместе с первой же метрикой, у которой ноль законен.
+ZERO_IS_A_STATE: set[str] = set()
 
 
 def unanswered(measured: dict[str, object]) -> list[str]:
@@ -2312,8 +2244,8 @@ def unanswered(measured: dict[str, object]) -> list[str]:
     for key, value in measured.items():
         text = str(value).strip()
         if not text:
-            # Пустая строка — не ответ ни для одной метрики, включая gfi:
-            # «ноль задач» и «трекер промолчал» это разные вещи.
+            # Пустая строка — не ответ ни для одной метрики: «ноль» и
+            # «источник промолчал» это разные вещи.
             empty.append(key)
             continue
         digits = [character for character in text if character.isdigit()]
@@ -2321,15 +2253,6 @@ def unanswered(measured: dict[str, object]) -> list[str]:
             empty.append(key)
     return empty
 
-
-def order_of(count: int) -> str:
-    """Порядок числа для плитки: 4321 → «4000+».
-
-    Меньше тысячи порядка не имеет, и показывать его как «0000+» нельзя:
-    это выглядит как несобравшаяся метрика при живом источнике. Сторож такой
-    случай не поймает и не должен — источник ответил честно, врёт запись.
-    """
-    return f"{count // 1000}000+" if count >= 1000 else str(count)
 
 
 def selftest() -> int:
@@ -2352,7 +2275,7 @@ def selftest() -> int:
     """
     live = {
         "projects": "|таблица|", "modules": 218, "required": 11, "os": 3, "py": 2,
-        "exp": "3.14", "releases": 12, "glossary": "1349", "gfi": 3, "rules": 140,
+        "exp": "3.14", "releases": 12, "rules": 140,
         "tests": 4321, "coverage": "92.4%", "checks per PR": 17,
     }
     cases = [
@@ -2362,12 +2285,8 @@ def selftest() -> int:
         ("покрытие «0%» — ноль с единицей измерения", {**live, "coverage": "0%"}, ["coverage"]),
         ("покрытие «0.0%»", {**live, "coverage": "0.0%"}, ["coverage"]),
         ("покрытие «0.5%»: маленькое, но не пустое", {**live, "coverage": "0.5%"}, []),
-        ("пустой пул задач новичка — состояние трекера", {**live, "gfi": 0}, []),
-        ("трекер промолчал — это не состояние", {**live, "gfi": ""}, ["gfi"]),
-        ("глоссарий не ответил", {**live, "glossary": 0}, ["glossary"]),
         ("экспериментальные версии не прочитаны", {**live, "exp": ""}, ["exp"]),
     ]
-    plate_cases = [(4321, "4000+"), (12000, "12000+"), (999, "999"), (0, "0")]
 
     broken = []
     for name, measured, expected in cases:
@@ -2375,11 +2294,6 @@ def selftest() -> int:
         if got != expected:
             broken.append(f"{name}: ожидалось {expected or 'пропуск'}, вышло {got or 'пропуск'}")
         print(f"  {'отвергнут' if got else 'пропущен '} — {name}")
-    for count, expected in plate_cases:
-        got = order_of(count)
-        if got != expected:
-            broken.append(f"плитка на {count}: ожидалось «{expected}», вышло «{got}»")
-        print(f"  плитка {count:>6} → «{got}»")
 
     # ── ранжирование акцентов ──────────────────────────────────────────────
     lead = {"stars": 9, "commits": 900, "issues": 90, "releases": 9, "prs": 90}
@@ -2787,21 +2701,18 @@ def selftest() -> int:
     # честности не легче: показать число всё равно нечем. Проверяется, что
     # пробел НАЙДЕН и НАЗВАН — «что-то не так с фактами» отправило бы читающего
     # искать предмет самому.
-    whole = {"tests": {"functions": 4961, "modules": 247},
-             "python": {"experimental": ["3.14"]},
-             "checks_per_pr": {"count": 16}}
+    whole = {"python": {"experimental": ["3.14"]}}
     if facts_gaps(whole):
         broken.append("полные факты объявлены неполными")
-    without = {**whole, "checks_per_pr": {}}
-    if facts_gaps(without) != ["checks_per_pr.count"]:
+    if facts_gaps({"python": {}}) != ["python.experimental"]:
         broken.append("пробел в фактах не назван поимённо")
-    if facts_gaps({}) != ["checks_per_pr.count", "python.experimental",
-                          "tests.functions", "tests.modules"]:
+    if facts_gaps({}) != ["python.experimental"]:
         broken.append("пустые факты не дают всех пробелов")
-    # Ноль — измеренное значение, а не пробел: у проекта может не быть ни одного
-    # теста, и это ответ, а не молчание. Первая редакция считала иначе.
-    if facts_gaps({**whole, "tests": {"functions": 0, "modules": 0}}):
-        broken.append("ноль тестов принят за отсутствие ответа")
+    # Спрашивается ровно то, что витрина показывает. Тесты и проверки на
+    # изменение ушли отсюда вместе с плиткой флагмана: падать из-за чужого
+    # пробела в числе, которого на странице нет, значит требовать невозможного.
+    if facts_gaps({**whole, "tests": {}, "checks_per_pr": {}}):
+        broken.append("спрашивается больше, чем показывается")
     print("  отвергнут — факты: пробел назван поимённо, ноль пробелом не считается")
 
     # Сверка ответа с каталогом идёт в обе стороны, и вторая половина
@@ -3071,14 +2982,9 @@ def main() -> int:
               file=sys.stderr)
         return 1
 
-    tests = int(facts["tests"]["functions"])
-    modules = int(facts["tests"]["modules"])
-    per_pr = int(facts["checks_per_pr"]["count"])  # НЕ `checks`: имя занято модулем разметки
     required, systems, versions = protection_facts()
     experimental = " · ".join(facts["python"]["experimental"])
     releases = release_count()
-    glossary = badge("glossary").split()[0]
-    open_for_newcomers = good_first_issues()
     export = rules_export()
     rules = int(export["count"])
     bindings = sync_bindings(export, write=not check)
@@ -3159,8 +3065,6 @@ def main() -> int:
         "py": versions,
         "exp": experimental,
         "releases": releases,
-        "glossary": glossary,
-        "gfi": open_for_newcomers,
         "rules": rules,
     }
     print(bindings)
@@ -3170,8 +3074,7 @@ def main() -> int:
     # красоты. Пока «4000+» собиралось раньше проверки, ноль тестов давал
     # «0000+» — строку, в которой сторож ноля не находит: он сравнивал с "0".
     # Метрика, попадающая в сторож уже строкой для показа, не проверена.
-    empty = unanswered({**values, "tests": tests, "checks per PR": per_pr,
-                        "test modules": modules})
+    empty = unanswered(values)
     if empty:
         print(checks.annotate("error", f"метрика не собралась ({', '.join(empty)}) "
                               "— ничего не переписываю"), file=sys.stderr)
@@ -3181,12 +3084,6 @@ def main() -> int:
     # Текстовому читателю они достаются через alt картинки, а его тоже
     # проставляет этот скрипт — см. sync_alt.
     #
-    # Покрытия здесь больше нет: оно приезжает плашкой в баннере, и держать его
-    # в двух местах значило бы завести два места, где одно число расходится.
-    # На его место встало число тест-модулей, которое взамен ушло из текста.
-    plate = [(order_of(tests), "tests"), (str(modules), "test modules"),
-             (str(per_pr), "checks per PR")]
-    print(" · ".join(f"{name}: {value}" for value, name in plate))
 
     # Акценты баннера. Через сторож пустых метрик эти числа НЕ проходят, и это
     # решение, а не пропуск: ноль звёзд и ноль релизов — честное состояние
@@ -3272,9 +3169,6 @@ def main() -> int:
             stack = render_stack(reach, roles, len(project_repos), dark)
             drawn[f"stack-{theme}"] = stack
             fresh[f"stack-{theme}"] = aria_of(stack)
-        drawn[f"metrics-{theme}"] = render(plate, dark, owner=flagship)
-        fresh[f"metrics-{theme}"] = f"{flagship}: " + ", ".join(
-            f"{value} {name}" for value, name in plate)
         drawn[f"featured-{theme}"] = render_featured(accents, dark)
         fresh[f"featured-{theme}"] = accent_label(accents)
         for project in config["projects"]:
