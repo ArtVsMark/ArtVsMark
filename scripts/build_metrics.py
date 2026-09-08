@@ -1777,7 +1777,7 @@ def grader_facts() -> dict:
     return facts
 
 
-def project_facts(repo: str) -> dict:
+def project_facts(repo: str, silent: list[str] | None = None) -> dict:
     """Факты проекта — из файла, который он публикует о себе сам. Нет — пусто.
 
     ОТЛИЧИЕ ОТ ``grader_facts``: там молчание источника роняет сборку, потому
@@ -1787,20 +1787,97 @@ def project_facts(repo: str) -> dict:
 
     Соседи публикуют разное, и это нормально: контракт называет обязательными
     три поля, остальные разделы — по мере того, как проект их измеряет.
+
+    ТРЕТИЙ ИСХОД ОТДАЁТСЯ ОТДЕЛЬНО (правило 039). Пустой словарь у этой функции
+    означает «читать нечего», а ПОЧЕМУ — два разных ответа: ``404`` это «файла
+    нет», а сорванная связь, чужой код ошибки или несовместимая схема — «источник
+    промолчал». Для картинки разницы нет, а для утверждения о соседе есть:
+    молчание источника нельзя записывать в «не публикует». Кто промолчал,
+    складывается в ``silent``, если список передан.
     """
     try:
         payload = _api(f"/repos/{repo}/contents/{FACTS_PATH}?ref=badges")
         facts = json.loads(base64.b64decode(payload["content"]))
+    except urllib.error.HTTPError as refusal:
+        if refusal.code != 404 and silent is not None:
+            silent.append(repo)
+        return {}
     except (urllib.error.URLError, OSError, ValueError, KeyError):
+        if silent is not None:
+            silent.append(repo)
         return {}
     if not isinstance(facts, dict):
+        if silent is not None:
+            silent.append(repo)
         return {}
     schema = str(facts.get("schema", ""))
     if schema and schema.split(".")[0] != FACTS_SCHEMA:
         # Несовместимый мажор читать нельзя, но и ронять сборку из-за соседа,
         # ушедшего вперёд, — значит останавливать витрину чужой правкой.
+        if silent is not None:
+            silent.append(repo)
         return {}
     return facts
+
+#: Колонки таблицы «Кто это уже делает» в .rules/facts-contract.md: подпись в
+#: шапке и раздел фактов, о котором она говорит. Порядок — порядок колонок.
+CONTRACT_COLUMNS = (("файл", None), ("tests", "tests"), ("checks", "checks_per_pr"),
+                    ("coverage", "coverage_percent"), ("rules", "rules"))
+
+#: Строка таблицы: имя проекта ссылкой, дальше клетки. Ключом берётся АДРЕС, а
+#: не подпись: подпись правят, адрес — нет.
+CONTRACT_ROW = re.compile(r"^\|\s*\[[^\]]+\]\(https://github\.com/(?P<repo>[\w.-]+/[\w.-]+)\)"
+                          r"\s*\|(?P<cells>.+)\|\s*$", re.M)
+
+#: Что в клетке считается «да» и что «нет». Всё остальное — не разобрано, и
+#: молчать об этом нельзя: непонятая клетка не значит «нет».
+CONTRACT_YES = ("есть", "✅", "да")
+CONTRACT_NO = ("нет", "—", "-", "–")
+
+
+def contract_findings(document: str, facts: dict[str, dict],
+                      silent: list[str]) -> list[str]:
+    """Таблица «кто это уже делает» сверяется с тем, что соседи публикуют сейчас.
+
+    ЗАЧЕМ. Документ сам называет свою болезнь: «Эта таблица устаревала молча, и
+    дважды». К 8 сентября это случилось ТРЕТИЙ раз и за один час: строка про
+    каталог говорила «файла нет» — и была верна утром, а к полудню каталог
+    закрыл свою задачу и начал публиковать все четыре раздела. Ответ о соседе,
+    написанный однажды, врёт тем же способом, что число, вписанное руками.
+
+    ПОЧЕМУ ЭТО НЕ ГЕЙТ ДЕРЕВА, А НАХОДКА О СОСЕДЕ. Предмет живёт на чужой
+    стороне и меняется без нашего участия. Поэтому находка едет тем же каналом,
+    что и остальные о соседях: красная на проверке изменения (чинится правкой
+    документа здесь и сейчас), предупреждением — в суточной сборке, где чужая
+    правка не вправе останавливать наши числа.
+
+    МОЛЧАНИЕ ИСТОЧНИКА НЕ СУДИТСЯ (правило 039). Сосед, чьи факты не прочитаны
+    вовсе — сорванная связь, чужой код ошибки, несовместимая схема, — из сверки
+    выпадает: «не ответил» и «не публикует» это разные вещи, и записывать первое
+    во второе значило бы врать в документе о том, чего не знаешь.
+    """
+    found: list[str] = []
+    for row in CONTRACT_ROW.finditer(document):
+        repo = row.group("repo")
+        if repo in silent or repo not in facts:
+            continue
+        cells = [cell.strip().strip("*").strip() for cell in row.group("cells").split("|")]
+        known = facts[repo]
+        for (name, section), cell in zip(CONTRACT_COLUMNS, cells):
+            said = (True if cell.lower() in CONTRACT_YES
+                    else False if cell.lower() in CONTRACT_NO else None)
+            truth = bool(known) if section is None else bool(known.get(section))
+            if said is None:
+                found.append(f".rules/facts-contract.md: клетка «{name}» у {repo} записана "
+                             f"как «{cell}» — сверить не с чем, а непонятая клетка не "
+                             f"значит «нет»")
+            elif said != truth:
+                found.append(f".rules/facts-contract.md: у {repo} в таблице «{name}» = "
+                             f"«{cell}», а сосед сейчас {'публикует' if truth else 'не публикует'} "
+                             f"это. Таблица устаревает молча — поправьте строку, "
+                             f"а не проверку")
+    return found
+
 
 
 def catalogue_where() -> dict[str, dict]:
@@ -3834,6 +3911,47 @@ def selftest() -> int:
         broken.append("правила: блок без заголовка — читателю не сказано, что за доли")
     print(f"  {'назван' if named else 'НЕТ'}   — правила: неподключённый назван")
 
+    # ── таблица контракта сверяется с соседями ─────────────────────────────
+    # Набор двусторонний (140). Ложный отказ здесь дороже пропуска: находки о
+    # соседях красные на проверке изменения, и ругаться на верную строку значит
+    # красить чужой правкой то, что в порядке.
+    TABLE = ("| проект | файл | tests | checks | coverage | rules |\n"
+             "|---|:---:|:---:|:---:|:---:|:---:|\n"
+             "| [Сосед](https://github.com/Owner/Neighbour) | есть | ✅ | ✅ | — | — |\n")
+    HAS = {"Owner/Neighbour": {"schema": "1.0", "tests": {"functions": 5},
+                               "checks_per_pr": {"count": 3}}}
+    contract_cases = [
+        ("строка сходится с тем, что сосед публикует", TABLE, HAS, [], False),
+        ("сосед начал публиковать раздел, а в таблице прочерк", TABLE,
+         {"Owner/Neighbour": {**HAS["Owner/Neighbour"], "rules": {"gate": 1}}}, [], True),
+        ("сосед перестал публиковать раздел, а в таблице галочка", TABLE,
+         {"Owner/Neighbour": {"schema": "1.0", "checks_per_pr": {"count": 3}}}, [], True),
+        ("файла не стало вовсе, а таблица говорит «есть»", TABLE,
+         {"Owner/Neighbour": {}}, [], True),
+        ("файл появился, а таблица говорит «нет»",
+         TABLE.replace("| есть |", "| **нет** |"), HAS, [], True),
+        # Молчание источника не судится: «не ответил» и «не публикует» — разное.
+        ("сосед промолчал — строка не сверяется", TABLE, {"Owner/Neighbour": {}},
+         ["Owner/Neighbour"], False),
+        ("фактов этого соседа не читали вовсе", TABLE, {}, [], False),
+        # Непонятая клетка не значит «нет»: гадать здесь дороже, чем спросить.
+        ("клетка записана словом, которого разбор не знает",
+         TABLE.replace("| ✅ | ✅ |", "| частично | ✅ |"), HAS, [], True),
+        ("строки таблицы нет — сверять нечего", "текст без таблицы\n", HAS, [], False),
+    ]
+    for name, table, known, quiet, must_reject in contract_cases:
+        found = contract_findings(table, known, quiet)
+        if bool(found) is not must_reject:
+            broken.append(f"контракт соседей, {name}: ожидалось "
+                          f"{'отказ' if must_reject else 'пропуск'}, вышло {found}")
+        print(f"  {'отвергнут' if found else 'пропущен '} — контракт соседей: {name}")
+
+    # Отказ обязан назвать и проект, и колонку: находка без предмета отправляет
+    # читающего искать его самому (158).
+    named = contract_findings(TABLE, {"Owner/Neighbour": {"schema": "1.0"}}, [])
+    if not (named and "Owner/Neighbour" in named[0] and "tests" in " ".join(named)):
+        broken.append(f"контракт соседей: отказ не называет проект или колонку: {named}")
+
     # ── читаемость текста на картинках ─────────────────────────────────────
     # Набор двусторонний (правило 140), и живая половина здесь дороже: гейт,
     # ругающийся на исправную палитру, останавливает СБОРКУ, а не правку, —
@@ -4057,9 +4175,15 @@ def main() -> int:
     # (where.json). Оба необязательны и оба ОТЛИЧИМЫ от нуля: «не рассказывает»
     # и «измерено ноль» — разные состояния, и кадр показывает их по-разному.
     where = catalogue_where()
+    # Прочитанные факты держатся до конца сборки: по ним сверяется таблица
+    # «кто это уже делает» в контракте. Второго похода в сеть для этого не
+    # делается — читается то же, что уже прочитано для карточек.
+    read: dict[str, dict] = {}
+    silent: list[str] = []
     for repo in rank_featured(stats)[:FEATURED_ACCENTS]:
         project = by_repo[repo]
-        facts = project_facts(repo)
+        facts = project_facts(repo, silent)
+        read[repo] = facts
         accents.append({
             "title": project["title"],
             "tagline": project["tagline"],
@@ -4069,6 +4193,13 @@ def main() -> int:
             "made": project_made(facts),
             "rules": project_rules(where.get(repo)),
         })
+    # Утверждение о соседе сверяется с соседом, а не перечитывается глазами.
+    neighbour_findings += contract_findings(
+        (ROOT / ".rules/facts-contract.md").read_text(encoding="utf-8"), read, silent)
+    if silent:
+        print(checks.annotate("warning", "факты не прочитаны у " + ", ".join(silent)
+                              + " — строки контракта по ним не сверялись"))
+
     print("акценты: " + " · ".join(
         f"{a['title']} ({', '.join(str(a['stats'][f]) for f in FEATURED_FIELDS)}"
         + (f"; {', '.join(f'{n} {v}' for n, v, _ in a['badges'])}" if a["badges"] else "")
