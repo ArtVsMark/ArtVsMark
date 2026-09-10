@@ -448,29 +448,86 @@ def streaks(days: list[tuple[str, int]], today: str = "") -> tuple[int, int]:
     return current_run, longest
 
 
-def owned_stars(login: str = OWNER) -> tuple[int, int]:
-    """Звёзды и число публичных репозиториев ВЛАДЕЛЬЦА, без форков.
+def owned_repos(login: str = OWNER) -> list[tuple[str, int]]:
+    """Публичные репозитории ВЛАДЕЛЬЦА с их звёздами, без форков.
 
     Форки исключены намеренно: их звёзды принадлежат исходному проекту, и
     складывать их значило бы приписывать себе чужое. Постранично, потому что
     страница по умолчанию — тридцать записей, а витрина не знает заранее,
     сколько их будет завтра.
+
+    ИМЕНА ВОЗВРАЩАЮТСЯ, А НЕ ВЫБРАСЫВАЮТСЯ, и это правка по живому пробелу.
+    Прежде здесь считались только две суммы — звёзды и число, — а имена
+    терялись внутри цикла. Из-за этого сборка КАЖДЫЙ прогон видела появившийся
+    репозиторий, прибавляла его к числу на карточке и не могла сказать, что на
+    витрине его нет: данные были в руках, вопрос не задан. Так 9 сентября
+    появился пятый проект, и заметил это человек, а не механизм (#202).
+
+    ПРИВАТНЫЕ СЮДА НЕ ПОПАДАЮТ, и это названо: штатный токен прогона чужих
+    приватных репозиториев не видит вовсе. Их отсутствие в ответе — не «их
+    нет», а «отсюда не видно», и требовать по ним заявления нельзя.
     """
-    stars = repos = 0
+    found: list[tuple[str, int]] = []
     page = 1
     while True:
         chunk = _api(f"/users/{login}/repos?per_page=100&type=owner&page={page}")
         if not chunk:
             break
-        for repo in chunk:
-            if repo.get("fork"):
-                continue
-            repos += 1
-            stars += repo.get("stargazers_count", 0)
+        found += [(repo["full_name"], repo.get("stargazers_count", 0))
+                  for repo in chunk if not repo.get("fork")]
         if len(chunk) < 100:
             break
         page += 1
-    return stars, repos
+    return found
+
+
+#: Ответ «этот репозиторий на витрину не берём» живёт данными рядом с составом
+#: проектов, а не в памяти автора: ключ — адрес, значение — причина.
+NOT_SHOWN = "not_shown"
+
+
+def unlisted_repos(owned: list[str], config: dict) -> list[str]:
+    """Публичный репозиторий владельца, о котором витрина не сказала НИЧЕГО.
+
+    ПРЕДМЕТ ОПЛАЧЕН 9 СЕНТЯБРЯ. Engineering-Pipeline-Mechanisms открылся утром,
+    к вечеру отвечал каталогу правил на все 195 правил — и на витрине его не
+    было. Ни один механизм этого не спросил: состав проектов ведётся руками,
+    а обход репозиториев считал суммы и забывал имена.
+
+    ТРЕТЬЕГО ОТВЕТА ЗДЕСЬ НЕ БЫВАЕТ: репозиторий либо показан в projects.json,
+    либо назван в ``not_shown`` с причиной. Пустая причина ответом не считается
+    — «мы решили не показывать» и «мы не дошли» выглядят одинаково ровно до тех
+    пор, пока их не развели (правило 046).
+
+    ОТКАЗ ДВУСТОРОННИЙ. Устаревшая отговорка — такая же находка: репозиторий,
+    названный в ``not_shown`` и при этом показанный, и отговорка про
+    репозиторий, которого у владельца больше нет, врут тем же способом, что и
+    число, вписанное руками.
+
+    САМА ВИТРИНА ПРЕДМЕТОМ НЕ ЯВЛЯЕТСЯ: страница не показывает себя плиткой, и
+    требовать от неё заявления значило бы требовать невозможного (051).
+    """
+    shown = {project["repo"] for project in config["projects"]}
+    excused = config.get(NOT_SHOWN) or {}
+    found: list[str] = []
+
+    for repo in sorted(owned):
+        if repo == SHOWCASE or repo in shown:
+            continue
+        why = str(excused.get(repo, "")).strip()
+        if not why:
+            found.append(f"{repo}: репозиторий владельца не заявлен — его нет ни в списке "
+                         f"проектов, ни в «{NOT_SHOWN}» с причиной. Витрина показывает "
+                         f"выбранные проекты, и выбор называется, а не подразумевается")
+
+    for repo, why in sorted(excused.items()):
+        if repo in shown:
+            found.append(f"{repo}: назван в «{NOT_SHOWN}» («{why}») и при этом показан на "
+                         f"витрине — отговорка устарела и врёт")
+        elif repo not in owned:
+            found.append(f"{repo}: назван в «{NOT_SHOWN}» («{why}»), а публичного репозитория "
+                         f"с таким адресом у владельца нет — отговорка пережила предмет")
+    return found
 
 
 def language_reach(repos: list[str]) -> list[tuple[str, int]]:
@@ -502,11 +559,15 @@ def profile_stats() -> dict[str, object]:
     получить картинку, которая наполовину нарисована, наполовину упала.
     """
     profile = _api(f"/users/{OWNER}")
-    stars, owned = owned_stars()
+    owned = owned_repos()
+    stars = sum(count for _, count in owned)
     total, days = contribution_days()
     current, longest = streaks(days)
     return {
-        "repos": profile.get("public_repos", owned),
+        # Имена репозиториев едут вместе с числами: по ним сверяется состав
+        # витрины, и второго обхода для этого не делается (правило 090).
+        "owned": [name for name, _ in owned],
+        "repos": profile.get("public_repos", len(owned)),
         "followers": profile.get("followers", 0),
         "stars": stars,
         "contributions": total,
@@ -3911,6 +3972,38 @@ def selftest() -> int:
         broken.append("правила: блок без заголовка — читателю не сказано, что за доли")
     print(f"  {'назван' if named else 'НЕТ'}   — правила: неподключённый назван")
 
+    # ── состав витрины сверяется со списком репозиториев ───────────────────
+    # Набор двусторонний (140), и вторая сторона здесь не формальность:
+    # отговорка, пережившая предмет, врёт ровно так же, как незаявленный
+    # репозиторий, — только тише.
+    SHOWN = {"projects": [{"repo": "Owner/Shown"}], "not_shown": {}}
+    listing = [
+        ("всё заявлено", ["Owner/Shown"], SHOWN, False),
+        ("появился новый — не заявлен нигде", ["Owner/Shown", "Owner/Fresh"], SHOWN, True),
+        ("новый назван в not_shown с причиной", ["Owner/Shown", "Owner/Fresh"],
+         {**SHOWN, "not_shown": {"Owner/Fresh": "черновик, показывать нечего"}}, False),
+        ("причина пустая — это не ответ", ["Owner/Shown", "Owner/Fresh"],
+         {**SHOWN, "not_shown": {"Owner/Fresh": "   "}}, True),
+        ("отговорка про показанный проект устарела", ["Owner/Shown"],
+         {**SHOWN, "not_shown": {"Owner/Shown": "показывать не будем"}}, True),
+        ("отговорка пережила предмет", ["Owner/Shown"],
+         {**SHOWN, "not_shown": {"Owner/Gone": "его больше нет"}}, True),
+        ("сама витрина предметом не является", ["Owner/Shown", SHOWCASE], SHOWN, False),
+        ("списка нет вовсе — сверять нечего", [], SHOWN, False),
+    ]
+    for name, owned, config_case, must_reject in listing:
+        found = unlisted_repos(owned, config_case)
+        if bool(found) is not must_reject:
+            broken.append(f"состав витрины, {name}: ожидалось "
+                          f"{'отказ' if must_reject else 'пропуск'}, вышло {found}")
+        print(f"  {'отвергнут' if found else 'пропущен '} — состав витрины: {name}")
+
+    # Отказ обязан назвать АДРЕС репозитория: находка без него отправляет
+    # читающего искать предмет самому (158).
+    named = unlisted_repos(["Owner/Shown", "Owner/Fresh"], SHOWN)
+    if not (named and "Owner/Fresh" in named[0]):
+        broken.append(f"состав витрины: отказ не называет репозиторий: {named}")
+
     # ── таблица контракта сверяется с соседями ─────────────────────────────
     # Набор двусторонний (140). Ложный отказ здесь дороже пропуска: находки о
     # соседях красные на проверке изменения, и ругаться на верную строку значит
@@ -4239,6 +4332,16 @@ def main() -> int:
         profile = {}
         print(checks.annotate("warning", f"профильные числа не собраны ({refusal}) — "
                               f"карточка не перерисовывается, прежняя остаётся"))
+
+    # СОСТАВ ВИТРИНЫ СВЕРЯЕТСЯ С РЕАЛЬНОСТЬЮ, А НЕ С ПАМЯТЬЮ АВТОРА. Имена
+    # репозиториев уже прочитаны вместе с числами профиля — второго похода в
+    # сеть нет. Молчание источника не выдаётся за порядок: сверять нечем —
+    # значит сказано, что не сверяли (правило 039).
+    if profile.get("owned"):
+        neighbour_findings += unlisted_repos(profile["owned"], config)
+    else:
+        print(checks.annotate("warning", "список репозиториев владельца не прочитан — "
+                              "состав витрины с ним не сверялся"))
 
     # След технологий читается по РЕПОЗИТОРНЫМ эндпоинтам, и потому доступен
     # даже там, где профильные закрыты: у него свой отказ и своя судьба.
