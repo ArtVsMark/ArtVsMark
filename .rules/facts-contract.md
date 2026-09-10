@@ -155,16 +155,26 @@
 
 | проект | файл | tests | checks | coverage | rules |
 |---|:---:|:---:|:---:|:---:|:---:|
-| [Stepik-Python-Grader](https://github.com/ArtVsMark/Stepik-Python-Grader) | есть | ✅ | ✅ | — | — |
+| [Stepik-Python-Grader](https://github.com/ArtVsMark/Stepik-Python-Grader) | есть | ✅ | ✅ | ✅ | ✅ |
 | [Claude-Code_Usage-Token](https://github.com/ArtVsMark/Claude-Code_Usage-Token) | есть | ✅ | ✅ | ✅ | ✅ |
 | [Glossary-Python](https://github.com/ArtVsMark/Glossary-Python) | есть | — | — | ✅ | ✅ |
 | [Engineering-Incidents-Playbook](https://github.com/ArtVsMark/Engineering-Incidents-Playbook) | есть | ✅ | ✅ | ✅ | ✅ |
+| [Engineering-Pipeline-Mechanisms](https://github.com/ArtVsMark/Engineering-Pipeline-Mechanisms) | нет | — | — | — | — |
 
 Замечания по форме: у грейдера она эталонная — `schema` строкой, `generated_at`,
 `commit`, `names` рядом с `count`. Глоссарий отдаёт `rules` и свой раздел
 `glossary`, а версии Python называет `python_versions` вместо `python.supported`:
 поле есть, но под другим именем, и потому не читается — разные имена для одного
 предмета делают сравнение проектов невозможным.
+
+**У механизмов конвейера файл есть, но не здесь и не такой.** Они публикуют
+`facts.json` в КОРНЕ ветки `badges`, а не по адресу контракта
+`.github/badges/facts.json`, и своей формой: `schema` числом, `contract`, `rules`
+со счётом по статусам, `checks` с делением на обязательные и совещательные,
+`generated` с `at` и `sha`. Ни одно поле контракта в ней не совпадает по имени —
+поэтому в таблице у них «нет», и это ответ по нашему адресу, а не оценка их
+файла. Пробел назван здесь и задачей у них НЕ заведён: проект открыт 9 сентября,
+и решать, чьей правкой это сходится — их адресом или нашим контрактом, — рано.
 
 Пробелы заведены задачами у самих проектов, а не записаны здесь как жалоба:
 [глоссарий](https://github.com/ArtVsMark/Glossary-Python/issues/47) — нет чисел
