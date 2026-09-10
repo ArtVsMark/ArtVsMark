@@ -109,13 +109,33 @@ jobs:
 
       # Пустая ветка — не повод для красного: так выглядит пуш ветки, ещё не
       # разошедшейся с общей. Это состояние, а не поломка.
+      # ГОЛОВА БЕРЁТСЯ У ВЕТКИ, А НЕ У ПРОГОНА, И ЭТО ПОЧИНКА КНОПКИ.
+      # Здесь стоял `$GITHUB_SHA` — голова того ref, на котором прогон
+      # запущен. От пуша это та же ветка, и всё сходилось; от РУЧНОЙ кнопки с
+      # `main` — голова main, то есть «коммитов впереди main: 0 — открывать
+      # нечего» на любой ветке, какую ни назови входом. Кнопка была объявлена
+      # (правило 104) и не работала: проверить её было нечем, пока она не
+      # понадобилась по-настоящему — 10 сентября, когда у токена владельца
+      # исчерпался бюджет запросов площадки и пуш изменение не открыл.
+      #
+      # Дальше по шагам идёт `$HEAD_SHA`: заголовок, тело и зоны обязаны
+      # считаться по той же голове, иначе кнопка открыла бы изменение с
+      # заголовком чужой ветки.
       - name: ветка разошлась с main?
         if: env.SKIP != '1'
         run: |
           set -uo pipefail
-          git fetch --no-tags origin main:refs/remotes/origin/main 2>/dev/null || true
-          ahead=$(git rev-list --count origin/main.."$GITHUB_SHA" 2>/dev/null || echo 0)
-          echo "коммитов впереди main: $ahead"
+          git fetch --no-tags origin main:refs/remotes/origin/main \
+            "+$BRANCH:refs/remotes/origin/$BRANCH" 2>/dev/null || true
+          head=$(git rev-parse --verify --quiet "refs/remotes/origin/$BRANCH") || head=""
+          if [ -z "$head" ]; then
+            echo "::warning::Ветки $BRANCH на площадке нет — открывать нечего."
+            echo "SKIP=1" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          echo "HEAD_SHA=$head" >> "$GITHUB_ENV"
+          ahead=$(git rev-list --count "origin/main..$head" 2>/dev/null || echo 0)
+          echo "голова $BRANCH: $head; коммитов впереди main: $ahead"
           if [ "$ahead" -eq 0 ]; then
             echo "::warning::$BRANCH не разошлась с main — открывать нечего."
             echo "SKIP=1" >> "$GITHUB_ENV"
@@ -130,8 +150,8 @@ jobs:
           # Заголовок — тема ветки, то есть ПЕРВЫЙ коммит после main: следующие
           # обычно правят его же. Тело собирается из сообщений всех коммитов —
           # тем же порядком, каким его потом соберёт squash.
-          title=$(git log --format=%s --reverse "origin/main..$GITHUB_SHA" | head -1)
-          body=$(git log --format='%B' --reverse "origin/main..$GITHUB_SHA")
+          title=$(git log --format=%s --reverse "origin/main..$HEAD_SHA" | head -1)
+          body=$(git log --format='%B' --reverse "origin/main..$HEAD_SHA")
 
           # Таблица «тип — метка» живёт в scripts/check_labels.py, рядом с
           # гейтом, который эти же метки проверяет: второй копии списка не
@@ -147,7 +167,7 @@ jobs:
           # Вывод берётся подстановкой, а не подстановкой процесса: у `< <(…)`
           # код возврата не читается вовсе, и молчаливый отказ разбора выглядел
           # бы как «зон нет» (правило 039).
-          derived=$(git diff --name-only "origin/main...$GITHUB_SHA" \
+          derived=$(git diff --name-only "origin/main...$HEAD_SHA" \
             | python3 scripts/check_labels.py --zones-for-diff) \
             || { echo "::error::Вывод зон не отработал — scripts/check_labels.py"; exit 1; }
 

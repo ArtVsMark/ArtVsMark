@@ -162,6 +162,7 @@ def audit_workflows(sources: dict[str, str]) -> list[str]:
                      "ни красного, ни строки на вкладке (147)")
     found += cancellation_groups(sources)
     found += pinned_actions(sources)
+    found += dispatch_head(sources)
     return found
 
 
@@ -1312,6 +1313,52 @@ def audit_calls(sources: dict[str, str]) -> list[str]:
     return found
 
 
+#: Прогон принимает ветку входом ручной кнопки. Форма записи одна на все наши
+#: прогоны: `${{ inputs.branch || github.ref_name }}`.
+BRANCH_INPUT = re.compile(r"inputs\.branch")
+
+#: Голова, взятая у ПРОГОНА, а не у названной ветки. Оболочечная форма, а не
+#: выражение: `${{ github.sha }}` в группе отмены законна и предметом не
+#: является (правило 179 требует её там прямо).
+RUN_HEAD = re.compile(r"\$GITHUB_SHA|\$\{GITHUB_SHA\}")
+
+
+def dispatch_head(flows: dict[str, str]) -> list[str]:
+    """Прогон, которому ветку передают входом, берёт голову У НЕЁ (правило 104).
+
+    ИНЦИДЕНТ, И ОН СТОИЛ ЧАСА. `open-pr` объявлял ручную кнопку со входом
+    `branch`, честно подставлял его в `gh pr list --head` — и считал коммиты
+    впереди main у `$GITHUB_SHA`, то есть у ref, на котором запущен ПРОГОН. От
+    пуша это одна и та же ветка, и десятки прогонов сходились. От кнопки с
+    `main` выходило «коммитов впереди main: 0 — открывать нечего» на любой
+    ветке, какую ни назови.
+
+    ПОЧЕМУ ЭТО НЕ НАШЛОСЬ РАНЬШЕ: кнопкой не пользовались. Она была объявлена и
+    ни разу не проверена — зелёное здесь означало «пуш работает», а не «кнопка
+    работает» (правило 146). Понадобилась она в первый же раз, когда пуш
+    изменение не открыл: у токена владельца исчерпался бюджет запросов
+    площадки.
+
+    ГРАНИЦА. Гейт судит ПРИЗНАК, а не смысл: прогон, который ветку входом не
+    принимает, волен брать `$GITHUB_SHA` — у него другой предмет. Комментарии
+    не считаются: имя переменной в объяснении называет предмет, а не задаёт
+    его. Того, что кнопка ДЕЙСТВИТЕЛЬНО открывает изменение, эта проверка не
+    доказывает — доказать это может только запуск, и он остаётся за человеком.
+    """
+    found: list[str] = []
+    for name, source in sorted(flows.items()):
+        if not BRANCH_INPUT.search(source):
+            continue
+        code = "\n".join(line for line in source.splitlines()
+                         if not line.lstrip().startswith("#"))
+        if RUN_HEAD.search(code):
+            found.append(f"{name}: ветка приходит входом ручной кнопки, а голова берётся у "
+                         f"прогона ($GITHUB_SHA). От пуша это одно и то же, от кнопки — "
+                         f"голова чужого ref: изменение либо не откроется, либо откроется "
+                         f"не тем содержимым (104)")
+    return found
+
+
 #: Прогоны, которые ОТКАЗЫВАЮТ изменению, а не сообщают о нём. `pr-check` —
 #: обязательная проверка защиты ветки; `automerge` не сливает, пока условие не
 #: сошлось; `release-hold` держит стоп-кран меткой. Названный в вердикте прогон
@@ -1644,6 +1691,27 @@ def selftest() -> int:
          {"a.yml": "      - uses: ./.github/actions/local\n"}, False),
         ("хвост комментарием версией не считается", pinned_actions,
          {"a.yml": "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n"}, False),
+
+        # ── ветку дали входом — голову берут у неё (правило 104) ─────────
+        ("голова берётся у названной ветки", dispatch_head,
+         {"a.yml": "on:\n  workflow_dispatch:\n    inputs:\n      branch:\n"
+                   "env:\n  BRANCH: ${{ inputs.branch || github.ref_name }}\n"
+                   "    steps:\n      - run: git rev-parse \"refs/remotes/origin/$BRANCH\"\n"}, False),
+        ("голова берётся у прогона — кнопка откроет не то", dispatch_head,
+         {"a.yml": "on:\n  workflow_dispatch:\n    inputs:\n      branch:\n"
+                   "env:\n  BRANCH: ${{ inputs.branch || github.ref_name }}\n"
+                   "    steps:\n      - run: git rev-list --count origin/main..\"$GITHUB_SHA\"\n"}, True),
+        ("ветку входом не принимают — свой ref законен", dispatch_head,
+         {"a.yml": "on:\n  push:\n    steps:\n      - run: git log \"$GITHUB_SHA\"\n"}, False),
+        ("имя переменной в комментарии называет предмет, а не задаёт", dispatch_head,
+         {"a.yml": "on:\n  workflow_dispatch:\n    inputs:\n      branch:\n"
+                   "env:\n  BRANCH: ${{ inputs.branch }}\n"
+                   "    steps:\n      # здесь стоял $GITHUB_SHA, и это была ошибка\n"
+                   "      - run: git rev-parse \"origin/$BRANCH\"\n"}, False),
+        ("github.sha в группе отмены — не предмет", dispatch_head,
+         {"a.yml": "on:\n  workflow_dispatch:\n    inputs:\n      branch:\n"
+                   "env:\n  BRANCH: ${{ inputs.branch }}\n"
+                   "concurrency:\n  group: a-${{ github.sha }}\n"}, False),
 
         ("прогон полон", audit_runners, {"a.yml": GOOD_FLOW}, False),
         ("нет ручной кнопки", audit_runners,
