@@ -109,6 +109,26 @@
           "none": "версии нет: содержимое не версионируется, глоссарий читают по ссылке на актуальный текст"
         }
       }
+    },
+    {
+      "repo": "ArtVsMark/Engineering-Pipeline-Mechanisms",
+      "title": "Engineering-Pipeline-Mechanisms",
+      "tagline": "One pipeline skeleton for the whole family: same workflows, own contents. Early — nothing to take yet.",
+      "stack": "GitHub Actions · gates · Python",
+      "badges": {
+        "release": {
+          "release": true
+        },
+        "ci": {
+          "workflow": "ci.yml"
+        },
+        "coverage": {
+          "none": "покрытие не считается: ни в одном из прогонов проекта нет шага с coverage — линтер, формат, типы и тесты без него"
+        },
+        "version": {
+          "none": "пакета нет: на PyPI имени engineering-pipeline-mechanisms нет, а версионируется здесь не пакет, а договор — файлом CONTRACT_VERSION"
+        }
+      }
     }
   ]
 }
