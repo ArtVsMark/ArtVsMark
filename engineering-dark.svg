@@ -1,0 +1,40 @@
+<svg width="492" height="308" viewBox="0 0 492 308" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="GitHub engineering stats: 6 public repos, 11 stars earned, 62 followers, 4 567 contributions · 365d, 6 day streak, 25 longest streak">
+<defs><linearGradient id="e" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#58A6FF"/><stop offset="100%" stop-color="#7EE787"/></linearGradient></defs>
+<text x="246" y="17" fill="#7D8590" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="13" font-weight="700" text-anchor="middle" letter-spacing="0.4">GitHub engineering stats</text>
+  <g>
+    <rect x="0.5" y="28.5" width="238" height="83" rx="14" fill="#0D1117" stroke="#30363D"/>
+    <rect x="18" y="44" width="36" height="4" rx="2" fill="url(#e)"/>
+    <text x="120" y="82" fill="#F0F6FC" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="32" font-weight="800" text-anchor="middle" letter-spacing="-1">6</text>
+    <text x="120" y="101" fill="#7D8590" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="12.5" font-weight="600" text-anchor="middle">public repos</text>
+  </g>
+  <g>
+    <rect x="253.5" y="28.5" width="238" height="83" rx="14" fill="#0D1117" stroke="#30363D"/>
+    <rect x="271" y="44" width="36" height="4" rx="2" fill="url(#e)"/>
+    <text x="372" y="82" fill="#F0F6FC" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="32" font-weight="800" text-anchor="middle" letter-spacing="-1">11</text>
+    <text x="372" y="101" fill="#7D8590" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="12.5" font-weight="600" text-anchor="middle">stars earned</text>
+  </g>
+  <g>
+    <rect x="0.5" y="126.5" width="238" height="83" rx="14" fill="#0D1117" stroke="#30363D"/>
+    <rect x="18" y="142" width="36" height="4" rx="2" fill="url(#e)"/>
+    <text x="120" y="180" fill="#F0F6FC" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="32" font-weight="800" text-anchor="middle" letter-spacing="-1">62</text>
+    <text x="120" y="199" fill="#7D8590" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="12.5" font-weight="600" text-anchor="middle">followers</text>
+  </g>
+  <g>
+    <rect x="253.5" y="126.5" width="238" height="83" rx="14" fill="#0D1117" stroke="#30363D"/>
+    <rect x="271" y="142" width="36" height="4" rx="2" fill="url(#e)"/>
+    <text x="372" y="180" fill="#F0F6FC" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="26" font-weight="800" text-anchor="middle" letter-spacing="-1">4 567</text>
+    <text x="372" y="199" fill="#7D8590" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="12.5" font-weight="600" text-anchor="middle">contributions · 365d</text>
+  </g>
+  <g>
+    <rect x="0.5" y="224.5" width="238" height="83" rx="14" fill="#0D1117" stroke="#30363D"/>
+    <rect x="18" y="240" width="36" height="4" rx="2" fill="url(#e)"/>
+    <text x="120" y="278" fill="#F0F6FC" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="32" font-weight="800" text-anchor="middle" letter-spacing="-1">6</text>
+    <text x="120" y="297" fill="#7D8590" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="12.5" font-weight="600" text-anchor="middle">day streak</text>
+  </g>
+  <g>
+    <rect x="253.5" y="224.5" width="238" height="83" rx="14" fill="#0D1117" stroke="#30363D"/>
+    <rect x="271" y="240" width="36" height="4" rx="2" fill="url(#e)"/>
+    <text x="372" y="278" fill="#F0F6FC" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="32" font-weight="800" text-anchor="middle" letter-spacing="-1">25</text>
+    <text x="372" y="297" fill="#7D8590" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="12.5" font-weight="600" text-anchor="middle">longest streak</text>
+  </g>
+</svg>
