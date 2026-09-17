@@ -20,7 +20,7 @@
 
 Вторая половина здесь нужнее первой: статус читают, не заглядывая в реализацию,
 и достраивают недосказанное в сторону полноты
-([056](https://github.com/ArtVsMark/Engineering-Incidents-Playbook/blob/main/rules/ru/056-a-signal-says-what-it-does-not-mean.md)).
+([056](https://github.com/ArtVsMark/Engineering-Incidents-Playbook/blob/main/rules/ru/056-a-signal-states-what-it-does-not-mean.md)).
 
 | статус | означает | **не** означает |
 |---|---|---|
