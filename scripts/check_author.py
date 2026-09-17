@@ -149,15 +149,32 @@ def offenders(authors: list[str]) -> list[str]:
 COAUTHOR = "co-authored-by"
 
 
-def unattributed(records: list[tuple[str, str, str]]) -> list[tuple[str, str]]:
+def unattributed(records: list[tuple[str, str, str, str]]) -> list[tuple[str, str]]:
     """Коммиты без трейлера соавтора: ``(хеш, тема)``.
 
     Слияния не спрашиваются вовсе — их сообщение составляет площадка, а не
     автор; в диапазоне изменения их и не бывает, но условие названо, чтобы
     проверка не начала врать на ветке, куда влили общую.
+
+    С МАШИНЫ ТРЕЙЛЕР НЕ СПРАШИВАЕТСЯ, и это не поблажка, а правило 051: у
+    dependabot нет исполнителя, которого он мог бы назвать, и дописать хвост
+    его коммиту некому. Тот же вырез уже сделан у трёх соседей — у гейта
+    журнала (#136), у гейта имени ветки и у половины ЭТОГО гейта, которая
+    судит тело изменения. Четвёртая половина спрашивала — и оплачено это было
+    17 сентября: #209 встало намертво с «без трейлера исполнителя коммитов:
+    1 из 1» на коммите, автор которого бот.
+
+    АТРИБУЦИЯ В ОБЩЕЙ ВЕТКЕ ОТ ЭТОГО НЕ ТЕРЯЕТСЯ (123): соавтором машинного
+    коммита площадка при уплотнении ставит саму машину, и её имя лежит в
+    .github/authors.txt именно поэтому. Вырез снимает вопрос там, где ответа
+    быть не может, а не там, где ответ неудобен.
+
+    УМОЛЧАНИЕ — В СТОРОНУ ЧЕЛОВЕКА: пустое или незнакомое имя считается живым
+    автором, и трейлер с него спрашивается (``checks.machine_made``).
     """
-    return [(sha, subject) for sha, subject, body in records
-            if COAUTHOR not in checks.trailers(body)]
+    return [(sha, subject) for author, sha, subject, body in records
+            if not checks.machine_made(author)
+            and COAUTHOR not in checks.trailers(body)]
 
 
 def selftest() -> int:
@@ -238,16 +255,30 @@ def selftest() -> int:
     # Обе стороны. Ложный отказ здесь останавливает работу на верном коммите,
     # ложный пропуск — пускает долг в общую ветку, где его уже не переписать.
     tail = "\n\nCo-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+    HUMAN = "ArtVsMark <arvs.markitanov@gmail.com>"
     trailer_cases = [
-        ("трейлер в хвосте", [("a1", "правка", tail.strip())], False),
-        ("трейлера нет вовсе", [("b2", "правка", "Обычное тело без хвоста.")], True),
-        ("тело пустое", [("c3", "правка", "")], True),
+        ("трейлер в хвосте", [(HUMAN, "a1", "правка", tail.strip())], False),
+        ("трейлера нет вовсе", [(HUMAN, "b2", "правка", "Обычное тело без хвоста.")], True),
+        ("тело пустое", [(HUMAN, "c3", "правка", "")], True),
         ("другой регистр — тот же трейлер",
-         [("d4", "правка", "co-authored-by: Claude Opus 5 <noreply@anthropic.com>")], False),
-        ("трейлер после абзаца", [("e5", "правка", "Разбор." + tail)], False),
+         [(HUMAN, "d4", "правка",
+           "co-authored-by: Claude Opus 5 <noreply@anthropic.com>")], False),
+        ("трейлер после абзаца", [(HUMAN, "e5", "правка", "Разбор." + tail)], False),
         ("один из двух коммитов молчит",
-         [("f6", "с хвостом", tail.strip()), ("g7", "без хвоста", "тело")], True),
+         [(HUMAN, "f6", "с хвостом", tail.strip()),
+          (HUMAN, "g7", "без хвоста", "тело")], True),
         ("коммитов нет", [], False),
+        # Вырез для машины — обе стороны (140). Ложный отказ здесь останавливает
+        # обновление зависимостей навсегда: дописать хвост боту некому (051).
+        ("коммит dependabot без хвоста",
+         [("dependabot[bot]", "h1", "bump", "Bumps the actions group.")], False),
+        ("коммит прогона площадки без хвоста",
+         [("github-actions[bot]", "h2", "метрики", "Пересобранные метрики.")], False),
+        ("похожее имя автора машинным не считается",
+         [("dependabot <bot@example.com>", "h3", "bump", "тело")], True),
+        ("живой автор рядом с машиной всё равно спрашивается",
+         [("dependabot[bot]", "h4", "bump", "тело"),
+          (HUMAN, "h5", "правка", "тело")], True),
     ]
     for name, records, must_reject in trailer_cases:
         found = unattributed(records)
@@ -258,7 +289,8 @@ def selftest() -> int:
 
     # Отказ обязан назвать КАЖДЫЙ молчащий коммит, а не первый: чинить придётся
     # все, а второй заход стоит ещё одного прогона.
-    both = unattributed([("f6", "первый", "тело"), ("g7", "второй", "тело")])
+    both = unattributed([(HUMAN, "f6", "первый", "тело"),
+                         (HUMAN, "g7", "второй", "тело")])
     if len(both) != 2:
         broken.append(f"трейлер: названо {len(both)} молчащих коммитов из двух")
 
@@ -267,7 +299,7 @@ def selftest() -> int:
     # хоть одна строка прозаическая, блоком не считается целиком. Раньше здесь
     # стоял ложный ПРОПУСК с оговоркой «чинится на той стороне» — теперь это
     # находка, и коммит с упоминанием в прозе честно называется без атрибуции.
-    prose = unattributed([("h8", "правка",
+    prose = unattributed([(HUMAN, "h8", "правка",
                            "площадка дописывает\n"
                            "Co-Authored-By: github-actions[bot] в уплотнённый коммит")])
     if not prose:
@@ -357,7 +389,7 @@ def main() -> int:
     records = [(r.split("\x00") + ["", "", "", ""])[:4]
                for r in out.split("\x1e") if r.strip()]
     bad = [r for r in records if r[0].strip() in FORBIDDEN]
-    silent = unattributed([(sha, subject, body) for _, sha, subject, body in records])
+    silent = unattributed(records)
 
     if bad:
         print(checks.annotate("error", f"подписано контейнерным умолчанием коммитов: {len(bad)} из {len(records)}"), file=sys.stderr)
@@ -389,8 +421,13 @@ def main() -> int:
         )
         return 1
 
+    # Освобождённые называются, а не растворяются в «все несут»: иначе итог
+    # утверждал бы о машинном коммите то, чего у него нет и быть не может.
+    machine = sum(1 for r in records if checks.machine_made(r[0]))
     print(f"подписи авторов в порядке: {len(records)} коммитов в {rng}, "
-          f"все несут трейлер исполнителя")
+          + (f"с трейлером исполнителя {len(records) - machine}, "
+             f"машинных {machine} — с них не спрашивают (051)"
+             if machine else "все несут трейлер исполнителя"))
     return 0
 
 
