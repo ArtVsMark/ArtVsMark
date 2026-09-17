@@ -1198,6 +1198,109 @@ def verify_absence(repo: str, kind: str, why: str) -> str:
             f"устаревает он молча; замените «none» на источник значения либо "
             f"исправьте причину")
 
+#: Номера контрактов каталога, которые витрина ДЕРЖИТ САМА, и где лежит наш
+#: ответ на каждый. Остальные два из шести названы здесь же и не проверяются
+#: по причине, а не по забывчивости: `consumers` — реестр самого каталога, его
+#: ведёт издатель; `showcase` — его набор вопросов к витринам, и витрина его
+#: сегодня не читает вовсе (это названный пробел, а не выполненная работа).
+OUR_CONTRACTS = {
+    "bindings": "формат ответа каталогу — .rules/bindings.json, ключ schema",
+    "export": "выгрузка, по которой построены ответы — .rules/bindings.json, ключ answers_to",
+    "proposals": "формат предложений каталогу — .rules/proposals.json, ключ schema",
+}
+
+
+def contracts_drift(published: dict, ours: dict) -> list[str]:
+    """Каждый наш номер против опубликованного каталогом. Пусто — не отстали.
+
+    ПРЕДМЕТ ИЗМЕРЕН НА СЕБЕ 17 сентября, и он же описан правилом 197: каталог
+    публикует ШЕСТЬ номеров ровно затем, чтобы потребитель сверял их со своими,
+    — а витрина сверяла ОДИН. Цена вышла наружу в тот же день: формат
+    предложений уехал на 1.1, наш файл остался на 1.0, и сказать об этом было
+    некому; версию сводки потребителей витрина не спрашивала вовсе.
+
+    СРАВНИВАЮТСЯ ВЕРСИИ ОДНОГО ПРЕДМЕТА, и это не педантизм: у всех шести
+    номеров ключ называется `schema`, и однажды в нашем ответе уже лежал чужой
+    номер — формат выгрузки в поле формата ответа (164).
+
+    Номер, которого каталог не публикует, предметом не является: «ключа нет —
+    значит не прочитали», и молчать о таком честнее, чем подставлять ноль.
+    """
+    found: list[str] = []
+    for name, where in OUR_CONTRACTS.items():
+        theirs = str(published.get(name, "")).strip()
+        if not theirs:
+            continue
+        drift = contract_drift(theirs, str(ours.get(name, "")).strip())
+        if drift:
+            found.append(f"{name}: {drift} — {where}")
+    return found
+
+
+#: Ссылка на файл правила каталога. Номер и слаг разбираются РАЗДЕЛЬНО:
+#: «такого правила нет» и «правило есть, адрес переврали» — разные находки,
+#: разные починки и разная цена ошибки (правило 198).
+RULE_LINK = re.compile(r"rules/(?P<lang>ru|en)/(?P<num>\d{3})-(?P<slug>[a-z0-9-]+)\.md")
+
+# Единственный вырез из сверки ссылок, и он назван вслух (046): строка с этой
+# пометкой не проверяется. Нужен он ровно одному месту — набору самой сверки:
+# чтобы показать, КАК выглядит битая ссылка, её приходится написать целиком, и
+# без выреза гейт краснел бы на собственных образцах. Вырез строчный, а не
+# файловый: подделка в докстроке этого же модуля по-прежнему ловится.
+LINK_FIXTURE = "образец ссылки"
+
+
+def rule_links(sources: dict[str, str], export: dict) -> list[str]:
+    """Ссылки на правила каталога сверяются с его выгрузкой, а не с памятью.
+
+    ЗАМЕР, РАДИ КОТОРОГО ЭТО НАПИСАНО: 17 сентября в дереве витрины было 34
+    ссылки на файлы правил и ЧЕТЫРЕ битые — 051, 056, 082, 164. У всех четырёх
+    номер верный, а имя написано по памяти и близко по смыслу: догадка про
+    содержание правила оказывалась почти правильной, и потому ошибка не
+    бросалась в глаза. Площадка отдаёт по такому адресу 404, и до сегодня об
+    этом не говорил ни один прогон.
+
+    ИМЯ ФАЙЛА БЕРЁТСЯ ИЗ ВЫГРУЗКИ, А НЕ ИЗ СПИСКА У СЕБЯ: копия чужого
+    оглавления разошлась бы с первой правкой на той стороне (090), а выгрузка
+    приезжает той же сборкой, что читает правила.
+
+    ВЫРЕЗ ОДИН И НАЗВАН (046): строка с пометкой ``LINK_FIXTURE`` пропускается.
+    Он понадобился первому же прогону — набор этой самой сверки обязан
+    показывать битую ссылку целиком, и гейт краснел на собственных образцах.
+    Вырез строчный, а не файловый, и потому не заводит слепого пятна: битая
+    ссылка в соседней строке того же файла ловится. Цена названа честно —
+    пометку можно приписать и к настоящей ссылке; видно это будет в различиях.
+    """
+    known: dict[str, set[str]] = {}
+    for rule in export.get("rules", []):
+        files = rule.get("files") or {}
+        names = {str(path).rsplit("/", 1)[-1] for path in files.values() if isinstance(path, str)}
+        known[str(rule.get("id", "")).lstrip("0") or "0"] = names
+
+    found: list[str] = []
+    for name, text in sorted(sources.items()):
+        seen: set[str] = set()
+        for number_line, line in enumerate(text.splitlines(), start=1):
+            if LINK_FIXTURE in line:
+                continue
+            for link in sorted({m.group(0) for m in RULE_LINK.finditer(line)}):
+                if link in seen:
+                    continue
+                seen.add(link)
+                file_name = link.split("/")[-1]
+                number = file_name[:3].lstrip("0") or "0"
+                names = known.get(number)
+                where = f"{name}:{number_line}"
+                if names is None:
+                    found.append(f"{where}: ссылка {link} — правила с таким номером в выгрузке "
+                                 f"каталога нет вовсе")
+                elif file_name not in names:
+                    right = sorted(n for n in names if n.startswith(file_name[:3]))
+                    found.append(f"{where}: ссылка {link} — номер верный, имя другое: "
+                                 f"{right[0] if right else 'в выгрузке'}")
+    return found
+
+
 
 def latest_tag(repo: str) -> str | None:
     """Тег последнего выпуска, либо ``None``.
@@ -2297,9 +2400,12 @@ def contract_drift(published: str, answered: str) -> str:
                 f"сверить отставание нечем")
     if theirs <= ours:
         return ""
+    # ПРЕДМЕТ НАЗЫВАЕТ ВЫЗЫВАЮЩИЙ, А НЕ ЭТА СТРОКА. Здесь стояло имя одного
+    # файла — ответа каталогу, — а сверок теперь три: тем же текстом отвечали
+    # бы и про предложения, и про выгрузку, называя чужой предмет (158).
     return (f"контракт каталога {published}, ответ витрины {answered} — "
-            f"перечитать записи .rules/bindings.json и поднять schema: подъём минора "
-            f"меняет значение полей, а не только формат (правило 157)")
+            f"перечитать записи и поднять номер: подъём минора меняет значение "
+            f"полей, а не только формат (правило 157)")
 
 
 def sync_bindings(export: dict, write: bool = True) -> str:
@@ -3737,9 +3843,12 @@ def selftest() -> int:
         print(f"  {'найдено ' if got else 'пропущен'} — отставание: {name}")
 
     # Отказ обязан назвать ОБЕ версии: без них чинящий идёт смотреть их сам.
+    # ИМЕНИ ФАЙЛА ЗДЕСЬ БОЛЬШЕ НЕТ, и это не потеря: сверок стало три, а имя
+    # одного файла в общей строке называло бы чужой предмет у двух из них.
+    # Адрес приписывает вызывающий, и на это есть свой случай ниже (158).
     said = contract_drift("1.2", "1.0")
-    if not ("1.2" in said and "1.0" in said and "bindings.json" in said):
-        broken.append("отставание от контракта: отказ не называет обе версии и файл")
+    if not ("1.2" in said and "1.0" in said and "157" in said):
+        broken.append("отставание от контракта: отказ не называет обе версии или правило")
 
     # ── обязательная проверка кем-то создаётся ────────────────────────────
     # Сверка идёт ОТ НАСТРОЙКИ К ДЕРЕВУ: лишняя работа никого не блокирует, а
@@ -3972,6 +4081,81 @@ def selftest() -> int:
         broken.append("правила: блок без заголовка — читателю не сказано, что за доли")
     print(f"  {'назван' if named else 'НЕТ'}   — правила: неподключённый назван")
 
+    # ── все наши номера контрактов, а не один из шести (правило 197) ───────
+    # Набор двусторонний (140), и живая половина здесь дороже: ложный отказ
+    # краснит КАЖДОЕ изменение, включая машинные. Так витрина и простояла
+    # неделю с замороженными числами, когда отстал один номер.
+    THEIRS = {"bindings": "1.5", "export": "1.7", "proposals": "1.1",
+              "consumers": "1.1", "showcase": "1.1", "where": "1.4"}
+    contract_cases = [
+        ("все наши номера сходятся", THEIRS,
+         {"bindings": "1.5", "export": "1.7", "proposals": "1.1"}, 0),
+        ("отстал формат ответа", THEIRS,
+         {"bindings": "1.2", "export": "1.7", "proposals": "1.1"}, 1),
+        ("отстали предложения — номер, о котором молчали", THEIRS,
+         {"bindings": "1.5", "export": "1.7", "proposals": "1.0"}, 1),
+        ("отстали все три", THEIRS,
+         {"bindings": "1.2", "export": "1.5", "proposals": "1.0"}, 3),
+        ("мы впереди — это не отставание", THEIRS,
+         {"bindings": "1.6", "export": "1.7", "proposals": "1.1"}, 0),
+        # Чужие номера в блоке есть, а предмета у нас нет: consumers ведёт
+        # издатель, showcase витрина не читает — и это названный пробел.
+        ("чужие номера предметом не являются", THEIRS,
+         {"bindings": "1.5", "export": "1.7", "proposals": "1.1"}, 0),
+        # «Ключа нет — значит не прочитали»: нулём отсутствие не обозначается.
+        ("каталог номер не опубликовал — сверять нечего", {"bindings": "1.5"},
+         {"bindings": "1.5", "export": "1.7", "proposals": "1.1"}, 0),
+    ]
+    for name, theirs, mine, expected in contract_cases:
+        got = contracts_drift(theirs, mine)
+        if len(got) != expected:
+            broken.append(f"контракты, {name}: ожидалось находок {expected}, вышло {got}")
+        print(f"  {len(got)} находок — контракты: {name}")
+
+    # Отказ обязан назвать, ЧЕЙ номер отстал и где лежит наш ответ (158).
+    named = contracts_drift(THEIRS, {"bindings": "1.5", "export": "1.7", "proposals": "1.0"})
+    if not (named and "proposals" in named[0] and "proposals.json" in named[0]):
+        broken.append(f"контракты: отказ не называет предмет и его адрес: {named}")
+
+    # ── ссылки на правила каталога сверяются с выгрузкой (правило 198) ─────
+    EXPORT = {"rules": [
+        {"id": "051", "files": {"ru": "rules/ru/051-warn-on-likely-block-on-certain.md",
+                                "en": "rules/en/051-warn-on-likely-block-on-certain.md"}},
+        {"id": "198", "files": {"ru": "rules/ru/198-a-link-to-a-foreign-rule-is-checked-by-a-gate.md"}},
+    ]}
+    link_cases = [
+        ("имя совпадает с выгрузкой",
+         {"a.md": "см. rules/ru/051-warn-on-likely-block-on-certain.md"}, False),
+        ("номер верный, имя написано по памяти",
+         {"a.md": "см. rules/ru/051-do-not-demand-the-impossible.md"}, True),  # образец ссылки
+        ("правила с таким номером в выгрузке нет",
+         {"a.md": "см. rules/ru/999-a-rule-that-never-was.md"}, True),  # образец ссылки
+        ("английская сторона выгрузки тоже считается",
+         {"a.md": "см. rules/en/051-warn-on-likely-block-on-certain.md"}, False),
+        ("ссылок нет вовсе — сверять нечего", {"a.md": "просто текст"}, False),
+        # Вырез проверяется с обеих сторон (140): пометка прикрывает СВОЮ
+        # строку и только её — иначе она стала бы выключателем всей сверки.
+        ("битая ссылка на строке с пометкой — вырез сработал",
+         {"a.md": "rules/ru/999-a-rule-that-never-was.md — образец ссылки"}, False),
+        ("пометка на соседней строке не прикрывает",
+         {"a.md": "rules/ru/051-warn-on-likely-block-on-certain.md — образец ссылки\n"
+                  "а ниже rules/ru/999-a-rule-that-never-was.md"}, True),  # образец ссылки
+    ]
+    for name, tree, must_reject in link_cases:
+        found = rule_links(tree, EXPORT)
+        if bool(found) is not must_reject:
+            broken.append(f"ссылки на правила, {name}: ожидалось "
+                          f"{'отказ' if must_reject else 'пропуск'}, вышло {found}")
+        print(f"  {'отвергнута' if found else 'пропущена '} — ссылка: {name}")
+
+    # Отказ обязан назвать ФАЙЛ, где ссылка стоит, и верное имя: иначе искать
+    # её читающему самому (158).
+    said = rule_links(
+        {"CLAUDE.md": "rules/ru/051-do-not-demand-the-impossible.md"}, EXPORT)  # образец ссылки
+    if not (said and "CLAUDE.md:1" in said[0] and "051-warn-on-likely-block-on-certain.md" in said[0]):
+        broken.append(f"ссылки на правила: отказ не называет ни файл со строкой, "
+                      f"ни верное имя: {said}")
+
     # ── состав витрины сверяется со списком репозиториев ───────────────────
     # Набор двусторонний (140), и вторая сторона здесь не формальность:
     # отговорка, пережившая предмет, врёт ровно так же, как незаявленный
@@ -4168,16 +4352,51 @@ def main() -> int:
     # (правило 164). Теперь обе стороны про формат ответа: наша — из своего
     # файла, издательская — из его заготовки.
     answer = json.loads(BINDINGS.read_text(encoding="utf-8"))
-    drift = contract_drift(answer_contract_version(), str(answer.get("schema", "")))
-    if drift and check:
-        print(checks.annotate("error", f"ответ витрины отстал от контракта: {drift}"),
+    # ВСЕ НАШИ НОМЕРА, А НЕ ОДИН ИЗ ШЕСТИ (правило 197). Формат ответа берётся
+    # у заготовки каталога — он публикует её отдельно, — остальные из блока
+    # contracts самой выгрузки, тем же чтением, что и правила.
+    proposals = {}
+    try:
+        proposals = json.loads((ROOT / ".rules/proposals.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError) as refusal:
+        print(checks.annotate("warning", f"предложения каталогу не разобраны ({refusal}) — "
+                              f"версия их формата не сверялась"))
+    published = dict(export.get("contracts", {}))
+    published["bindings"] = answer_contract_version() or published.get("bindings", "")
+    drifts = contracts_drift(published, {
+        "bindings": str(answer.get("schema", "")),
+        "export": str(answer.get("answers_to", "")),
+        "proposals": str(proposals.get("schema", "")),
+    })
+    if drifts and check:
+        print(checks.annotate("error", f"ответ витрины отстал от контрактов: {len(drifts)}"),
               file=sys.stderr)
+        for line in drifts:
+            print(f"  • {line}", file=sys.stderr)
         print("  Перечитываются ЗАПИСИ, а не только их формат: вместе с минором меняется"
-              "\n  значение полей, и валидность это переживает. Поднимите schema после"
+              "\n  значение полей, и валидность это переживает. Поднимите номер после"
               "\n  перечитывания, а не вместо него.", file=sys.stderr)
         return 1
-    if drift:
-        print(checks.annotate("warning", f"ответ витрины отстал от контракта: {drift}"))
+    for line in drifts:
+        print(checks.annotate("warning", f"ответ витрины отстал от контракта: {line}"))
+
+    # Ссылки на правила каталога сверяются с выгрузкой, а не с памятью (198).
+    tree = {}
+    for path in checks.git_paths("ls-files", cwd=ROOT):
+        if path.endswith((".md", ".json", ".py", ".yml")):
+            try:
+                tree[path] = (ROOT / path).read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue
+    broken = rule_links(tree, export)
+    if broken:
+        print(checks.annotate("error" if check else "warning",
+                              f"ссылки на правила каталога не сходятся с выгрузкой: {len(broken)}"),
+              file=sys.stderr)
+        for line in broken:
+            print(f"  • {line}", file=sys.stderr)
+        if check:
+            return 1
 
     # Обязательная проверка обязана кем-то создаваться. Отказ площадки здесь —
     # третий исход, а не находка: настройка защиты живёт вне репозитория, и её

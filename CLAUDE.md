@@ -138,7 +138,7 @@
 `dependabot/**` гейты пропускают, и не только этот: гейт журнала тоже, по
 автору коммита. У машины нет ни задачи, ни решения, о котором пишут в журнал, —
 требовать от неё того и другого значит требовать невозможного
-→ [`051`](https://github.com/ArtVsMark/Engineering-Incidents-Playbook/blob/main/rules/ru/051-do-not-demand-the-impossible.md).
+→ [`051`](https://github.com/ArtVsMark/Engineering-Incidents-Playbook/blob/main/rules/ru/051-warn-on-likely-block-on-certain.md).
 
 **Ветка живёт задачей, а не окном.** Тема кончилась — ветка кончилась. Ветка
 на окно живёт неделю и собирает всё, что окно успело сделать: изменение #129

@@ -43,7 +43,7 @@
 **Ключ `schema` есть и у соседних файлов, и предметы у них разные** — выгрузка
 правил каталога, ответ потребителя, сводка, предложение. Поэтому рядом
 допустимо и полезно поле `schema_of` — одна строка о том, ЧЕГО эта версия
-([164](https://github.com/ArtVsMark/Engineering-Incidents-Playbook/blob/main/rules/ru/164-a-version-number-says-what-it-versions.md)).
+([164](https://github.com/ArtVsMark/Engineering-Incidents-Playbook/blob/main/rules/ru/164-a-version-says-what-it-versions.md)).
 
 ## Обязательный минимум
 
