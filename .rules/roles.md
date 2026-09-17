@@ -107,7 +107,7 @@
 | `.github/workflows/stuck-prs.yml` | конвейер | окно; секреты за владельцем |
 | `.github/workflows/pr-check.yml` | конвейер | окно; секреты за владельцем |
 | `.github/workflows/automerge.yml` | конвейер | окно; секреты за владельцем |
-| `.github/workflows/open-pr.yml` | конвейер | окно; секреты за владельцем |
+| `.github/workflows/agent-pr.yml` | конвейер | окно; секреты за владельцем |
 | `.github/workflows/main-red.yml` | конвейер | окно; секреты за владельцем |
 | `.github/workflows/release-hold.yml` | конвейер | окно; секреты за владельцем |
 | `scripts/hold.py` | конвейер | окно; секреты за владельцем |

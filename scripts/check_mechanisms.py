@@ -25,7 +25,7 @@
   `sleep` в цикле означает, что прогон держит исполнителя и опрашивает чужой
   сервер вместо того, чтобы дождаться события или расписания;
 
-* **147 — у отменяющего переключателя есть адресат.** `open-pr.yml` будится на
+* **147 — у отменяющего переключателя есть адресат.** `agent-pr.yml` будится на
   ЛЮБОЙ рабочей ветке (`branches-ignore`), а не по имени. Переключатель по имени
   отменяет операцию молча: у соседа правило пролежало сутки на ветке без единого
   прогона, потому что префикс не совпал;
@@ -155,9 +155,9 @@ def audit_workflows(sources: dict[str, str]) -> list[str]:
     found = [f"{name}: цикл ожидания в шаге — прогон опрашивает вместо того, "
              f"чтобы дождаться события или расписания (011)"
              for name, source in sorted(sources.items()) if POLL_LOOP.search(source)]
-    opener = sources.get("open-pr.yml", "")
+    opener = sources.get("agent-pr.yml", "")
     if opener and "branches-ignore:" not in opener:
-        found.append("open-pr.yml: изменение открывается не на любой рабочей ветке. "
+        found.append("agent-pr.yml: изменение открывается не на любой рабочей ветке. "
                      "Переключатель по имени отменяет операцию МОЛЧА — ни прогона, "
                      "ни красного, ни строки на вкладке (147)")
     found += cancellation_groups(sources)
@@ -1326,7 +1326,7 @@ RUN_HEAD = re.compile(r"\$GITHUB_SHA|\$\{GITHUB_SHA\}")
 def dispatch_head(flows: dict[str, str]) -> list[str]:
     """Прогон, которому ветку передают входом, берёт голову У НЕЁ (правило 104).
 
-    ИНЦИДЕНТ, И ОН СТОИЛ ЧАСА. `open-pr` объявлял ручную кнопку со входом
+    ИНЦИДЕНТ, И ОН СТОИЛ ЧАСА. `agent-pr` объявлял ручную кнопку со входом
     `branch`, честно подставлял его в `gh pr list --head` — и считал коммиты
     впереди main у `$GITHUB_SHA`, то есть у ref, на котором запущен ПРОГОН. От
     пуша это одна и та же ветка, и десятки прогонов сходились. От кнопки с
@@ -1574,12 +1574,12 @@ def selftest() -> int:
          {"a.py": "_get(f'https://raw.githubusercontent.com/x')\n"}, True),
 
         ("прогоны без циклов ожидания", audit_workflows,
-         {"open-pr.yml": "on:\n  push:\n    branches-ignore: [main]\n"}, False),
+         {"agent-pr.yml": "on:\n  push:\n    branches-ignore: [main]\n"}, False),
         ("цикл ожидания в шаге", audit_workflows,
-         {"open-pr.yml": "on:\n  push:\n    branches-ignore: [main]\n",
+         {"agent-pr.yml": "on:\n  push:\n    branches-ignore: [main]\n",
           "x.yml": "run: |\n  while true; do\n    sleep 30\n  done\n"}, True),
         ("переключатель по имени ветки", audit_workflows,
-         {"open-pr.yml": "on:\n  push:\n    branches: ['agent/**']\n"}, True),
+         {"agent-pr.yml": "on:\n  push:\n    branches: ['agent/**']\n"}, True),
 
         # ── маркер сверяется целиком, а не началом (правило 141) ──────────
         ("маркер ищется без закрывающей пары", prefix_matched_markers,

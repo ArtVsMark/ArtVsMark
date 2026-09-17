@@ -30,7 +30,7 @@
 # избегает. Вывод механический (Conventional Commits), окно правит его одним
 # вызовом, если не угадано. Неизвестный тип — не догадка, а предупреждение:
 # лучше пустая метка, чем неверная.
-name: open-pr
+name: agent-pr
 
 on:
   push:
@@ -55,12 +55,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: open-pr-${{ github.ref }}
+  group: agent-pr-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   open:
-    name: open-pr
+    name: agent-pr
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -195,7 +195,7 @@ jobs:
           printf '%s\n' "$body" > "$RUNNER_TEMP/pr-body.md"
           {
             printf '\n---\n\n'
-            printf 'Изменение открыто прогоном `open-pr` от имени владельца: автором squash-коммита в `main` площадка ставит автора ИЗМЕНЕНИЯ, и открывать его должен тот, чью личность этот коммит обязан нести.\n\n'
+            printf 'Изменение открыто прогоном `agent-pr` от имени владельца: автором squash-коммита в `main` площадка ставит автора ИЗМЕНЕНИЯ, и открывать его должен тот, чью личность этот коммит обязан нести.\n\n'
             if [ "$marker" = "yes" ]; then
               printf 'Метка `hold` стоит намеренно — автомерж здесь по умолчанию. Она снимется сама, когда тело будет заполнено и проверки позеленеют: решение принимает `release-hold.yml` по маркеру ниже.\n\n'
               # Маркер — сигнал «тело ещё от прогона». Окно, заполняя тело,
@@ -212,7 +212,7 @@ jobs:
           # `gh pr create --label` применяет метки ВТОРЫМ запросом поверх
           # создания, и площадка записывает постановку каждой дважды: замер по
           # #102 — шесть событий `labeled` с разными идентификаторами при одном
-          # прогоне open-pr. Каждое событие будит `pr-check.yml`, и семь
+          # прогоне agent-pr. Каждое событие будит `pr-check.yml`, и семь
           # прогонов на одном коммите берутся ровно отсюда (#99).
           out=$(gh pr create --repo "$GITHUB_REPOSITORY" --base main --head "$BRANCH" \
             --title "$title" --body-file "$RUNNER_TEMP/pr-body.md" 2>&1) && rc=0 || rc=$?
