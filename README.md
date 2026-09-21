@@ -30,9 +30,9 @@
 <!--m:profile-cards-->
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/engineering-dark.svg?v=55c677da">
-  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/engineering-light.svg?v=985149a9">
-  <img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/engineering-dark.svg?v=55c677da" alt="GitHub engineering stats: 6 public repos, 12 stars earned, 76 followers, 5 350 contributions · 365d, 14 day streak, 25 longest streak" width="48%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/engineering-dark.svg?v=053f2620">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/engineering-light.svg?v=fcc779f9">
+  <img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/engineering-dark.svg?v=053f2620" alt="GitHub engineering stats: 6 public repos, 13 stars earned, 75 followers, 5 390 contributions · 365d, 15 day streak, 25 longest streak" width="48%">
 </picture>
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/stack-dark.svg?v=420a5172">
@@ -43,9 +43,9 @@
 <br><br>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/activity-dark.svg?v=60adace4">
-  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/activity-light.svg?v=f938ad18">
-  <img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/activity-dark.svg?v=60adace4" alt="A year of contributions day by day, peak 266 in a day, weekly trend below; a snake crossing the contribution grid" width="92%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/activity-dark.svg?v=db32a4d8">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/activity-light.svg?v=18d8813c">
+  <img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/activity-dark.svg?v=db32a4d8" alt="A year of contributions day by day, peak 266 in a day, weekly trend below; a snake crossing the contribution grid" width="92%">
 </picture>
 
 <!--/m:profile-cards-->
@@ -67,9 +67,9 @@
 <div align="center">
 <a href="https://github.com/ArtVsMark?tab=repositories">
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/featured-dark.svg?v=f8c768f8">
-  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/featured-light.svg?v=0341a033">
-  <img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/featured-dark.svg?v=f8c768f8" alt="Stepik-Python-Grader — Offline Python autograder: unlimited local checks, honest side-by-side comparison of solutions. release/pypi 1.11, CI success, coverage 91.2%, version 1.11.156. 3 stars, 1777 commits, 46 issues, 12 releases, 781 prs. 5 479 tests, 276 test modules, 20 checks per PR. rules held by: gate 86, pipeline 39, document 67; 195 answered, 187 linked to issues. CLI · web UI · GUI · pytest plugin · OS sandbox · Engineering-Incidents-Playbook — Rules for agent sessions and a GitHub pipeline — each one carrying the incident it grew from. release/pypi 1.2, CI success, coverage 68%, version 1.2.198. 4 stars, 544 commits, 9 issues, 4 releases, 442 prs. 1 114 tests, 53 test modules, 3 checks per PR. rules held by: gate 125, pipeline 9, document 31, none 11; 207 answered, 55 linked to issues. docs · RU/EN · Engineering-Pipeline-Mechanisms — One pipeline skeleton for the whole family: same workflows, own contents. Early — nothing to take yet. release/pypi v1.1.0, CI success, coverage none, version none. 1 stars, 559 commits, 9 issues, 3 releases, 505 prs. rules held by: gate 166, pipeline 19, document 8, skill 1; 207 answered, 9 linked to issues. GitHub Actions · gates · Python · Claude-Code_Usage-Token — Turns a three-step limit indicator into a number. Early: the spec is written, the tool is not. release/pypi v0.2.0, CI success, coverage 87.6%, version 0.2.0. 1 stars, 71 commits, 12 issues, 2 releases, 68 prs. 557 tests, 34 test modules, 12 checks per PR. rules held by: gate 95, pipeline 9, document 46, none 2; 181 answered, 17 linked to issues. Python · JSONL over git" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/featured-dark.svg?v=1054af7f">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/featured-light.svg?v=17bff8de">
+  <img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/featured-dark.svg?v=1054af7f" alt="Stepik-Python-Grader — Offline Python autograder: unlimited local checks, honest side-by-side comparison of solutions. release/pypi 1.11, CI failure, coverage 91.2%, version 1.11.156. 3 stars, 1777 commits, 46 issues, 12 releases, 781 prs. 5 479 tests, 276 test modules, 20 checks per PR. rules held by: gate 86, pipeline 39, document 67; 195 answered, 187 linked to issues. CLI · web UI · GUI · pytest plugin · OS sandbox · Engineering-Incidents-Playbook — Rules for agent sessions and a GitHub pipeline — each one carrying the incident it grew from. release/pypi 1.2, CI success, coverage 68%, version 1.2.198. 5 stars, 544 commits, 9 issues, 4 releases, 442 prs. 1 114 tests, 53 test modules, 3 checks per PR. rules held by: gate 125, pipeline 9, document 31, none 11; 207 answered, 55 linked to issues. docs · RU/EN · Engineering-Pipeline-Mechanisms — One pipeline skeleton for the whole family: same workflows, own contents. Early — nothing to take yet. release/pypi v1.2.0, CI success, coverage none, version none. 1 stars, 577 commits, 9 issues, 4 releases, 523 prs. rules held by: gate 166, pipeline 19, document 8, skill 1; 207 answered, 9 linked to issues. GitHub Actions · gates · Python · Claude-Code_Usage-Token — Turns a three-step limit indicator into a number. Early: the spec is written, the tool is not. release/pypi v0.2.0, CI success, coverage 87.6%, version 0.2.0. 1 stars, 71 commits, 12 issues, 2 releases, 68 prs. 557 tests, 34 test modules, 12 checks per PR. rules held by: gate 95, pipeline 9, document 46, none 2; 181 answered, 17 linked to issues. Python · JSONL over git" width="100%">
 </picture>
 </a>
 </div>
@@ -83,7 +83,7 @@
 <a href="https://github.com/ArtVsMark/Claude-Code_Usage-Token"><picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/tile-claude-code-usage-token-dark.svg?v=834179d6"><source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/tile-claude-code-usage-token-light.svg?v=6143f0a0"><img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/tile-claude-code-usage-token-dark.svg?v=834179d6" alt="Open Claude-Code_Usage-Token on GitHub" width="23%"></picture></a>
 <a href="https://github.com/ArtVsMark/Glossary-Python"><picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/tile-glossary-python-dark.svg?v=c3e901f8"><source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/tile-glossary-python-light.svg?v=7db11f01"><img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/tile-glossary-python-dark.svg?v=c3e901f8" alt="Open Glossary-Python on GitHub" width="23%"></picture></a>
 
-<sub>data as of 2026-09-20</sub>
+<sub>data as of 2026-09-21</sub>
 
 </div>
 <!--/m:projects-->
@@ -104,7 +104,7 @@ Four things I do the same way in every repository, and the artefacts you can che
 - **Public rules over private habit** — the workflows, the conventions and the trade-offs are written down and versioned, so they can be read without taking my word for it. Every rule in the shared catalogue gets an answer from this repository — adopted and by what mechanism, rejected and why, or no subject here — in [`.rules/bindings.json`](./.rules/bindings.json).
 - **Incidents over folklore** — a rule exists because something broke. Each one carries the failure it grew from, and they live together in a [public catalogue](https://github.com/ArtVsMark/Engineering-Incidents-Playbook) rather than in my head.
 - **Measured over hand-written** — every number on this page is rebuilt from its source by a [daily job](./.github/workflows/metrics.yml). A number nobody measures is a number that rots, and it rots quietly.
-- **Agent work, signed and traceable** — the work here is done in agent sessions, and the history says so: every commit carries who did it and a link to the session that produced it. Over the last 30 days that is <!--m:signed-->76<!--/m:signed--> of <!--m:signed-total-->77<!--/m:signed-total--> work commits — machine rebuilds excluded, because a scheduled job takes no decisions to sign for. A gate refuses the ones that don't, before the merge rather than after.
+- **Agent work, signed and traceable** — the work here is done in agent sessions, and the history says so: every commit carries who did it and a link to the session that produced it. Over the last 30 days that is <!--m:signed-->76<!--/m:signed--> of <!--m:signed-total-->76<!--/m:signed-total--> work commits — machine rebuilds excluded, because a scheduled job takes no decisions to sign for. A gate refuses the ones that don't, before the merge rather than after.
 
 <sub><b>One worked example, not the whole argument.</b> On the flagship repository the branch protection is public and machine-readable: <!--m:required-->15<!--/m:required--> required checks on `main`, run across <!--m:os-->3<!--/m:os--> operating systems × <!--m:py-->3<!--/m:py--> Python versions with <!--m:exp-->3.15<!--/m:exp--> experimental, over <!--m:releases-->12<!--/m:releases--> releases — <a href="https://api.github.com/repos/ArtVsMark/Stepik-Python-Grader/rules/branches/main">read the ruleset yourself</a> instead of believing this line. The other repositories hold the same shape at their own maturity; this one simply has the most to show.</sub>
 
