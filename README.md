@@ -135,6 +135,25 @@ Four things I do the same way in every repository, and the artefacts you can che
 </picture>
 </div>
 
+## Where this is headed
+
+The repositories above are not parallel products competing for attention. They are one sequence, and the order is deliberate.
+
+- **The grader came first.** [Stepik-Python-Grader](https://github.com/ArtVsMark/Stepik-Python-Grader) — today's flagship — was the first real project, and the [glossary](https://github.com/ArtVsMark/Glossary-Python) later folded into it. Every infrastructure repository here grew out of a problem hit while building it.
+- **Infrastructure before features.** Three repositories do the job a project manager would: they sit between me as the client and AI agents as the development team, and hold the pace, the rules and the reusable machinery for everything else — [shared pipeline mechanisms](https://github.com/ArtVsMark/Engineering-Pipeline-Mechanisms), a [rule catalogue](https://github.com/ArtVsMark/Engineering-Incidents-Playbook) where every rule carries its incident, and [development pace control](https://github.com/ArtVsMark/Claude-Code_Usage-Token) from session telemetry. They are finished first, so the same mistake is not paid for again in every repository.
+- **Then the grader, all the way.** Work returns to the grader once that groundwork holds, and it is brought to a state worth promoting publicly. A quiet grader in the activity above is this ordering at work, not an abandoned project.
+- **Then the next flagship.** All of this is preparation for a modular platform that automates analytics, reporting and budgeting, built to grow beyond a single tool. It gets its own repository when there is code to show, not before.
+
+<sub>A plan, not a promise with dates: the order can change, and this section changes with it.</sub>
+
+<div align="center">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./assets/divider-dark.svg?v=1c137c57">
+  <source media="(prefers-color-scheme: light)" srcset="./assets/divider-light.svg?v=e01c573a">
+  <img src="./assets/divider-dark.svg?v=1c137c57" alt="" width="100%">
+</picture>
+</div>
+
 ## Stack
 
 <div align="center">
@@ -172,3 +191,13 @@ Four things I do the same way in every repository, and the artefacts you can che
 простая: число, которое никто не измеряет, устаревает молча, и первым это замечает не автор, а
 читатель. Когда источник не отвечает, страница показывает вчерашнюю картинку и говорит об этом
 вслух, вместо того чтобы подставить правдоподобное.
+
+**Куда это движется.** Репозитории выше — не параллельные продукты, а одна последовательность.
+Первым был грейдер; глоссарий позже влился в него, а три инфраструктурных проекта — механизмы
+конвейера, каталог правил и контроль темпа по телеметрии сессий — родились из проблем, найденных
+при его разработке. Они делают работу руководителя проектов: держат темп, правила и общие механизмы
+между мной как заказчиком и ИИ-агентами как командой. Сначала доделывается эта инфраструктура, чтобы
+не наступать на одни и те же грабли в каждом репозитории; затем грейдер доводится до готовности, с
+которой его можно продвигать; и только после него начинается следующий флагман — модульная
+платформа автоматизации аналитики, отчётности и бюджетирования. Это план, а не обязательство с
+датами.
