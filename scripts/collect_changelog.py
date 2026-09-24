@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import argparse
 import pathlib
+import re
 import sys
 
 import checks
@@ -59,6 +60,14 @@ SECTIONS = {
 }
 
 
+#: Имя секции в начале строки, с двоеточием: «internal: …», «Fixed : …». Секцию
+#: подставляет сборка из ИМЕНИ файла, и второе её написание внутри текста уехало
+#: бы в журнал как «- internal: …» под заголовком «Внутреннее». Спрашивается
+#: именно ПРЕФИКС — слово секции внутри фразы («починка internal-гейта»)
+#: законно и находкой не является.
+SECTION_PREFIX = re.compile(rf"^(?P<name>{'|'.join(SECTIONS)})\s*:\s*", re.I)
+
+
 def fragments() -> list[pathlib.Path]:
     """Файлы фрагментов, кроме соглашения. Порядок — по имени, он же в выводе."""
     return sorted(p for p in FRAGMENTS.glob("*.md") if p.name != "README.md")
@@ -79,8 +88,18 @@ def parse(path: pathlib.Path) -> tuple[str, str, list[str]]:
     text = " ".join(path.read_text(encoding="utf-8").split())
     if not text:
         found.append(f"{path.name}: пусто — запись без текста хуже отсутствующей")
-    if text.startswith("- "):
+    body = text
+    if body.startswith("- "):
         found.append(f"{path.name}: ведущий дефис подставит сборка, убирается из текста")
+        body = body[2:]
+    # ПРЕФИКС ИЩЕТСЯ ПОСЛЕ СНЯТОГО ДЕФИСА — тем же разбором, а не вторым. Иначе
+    # «- internal: …» показал бы одну находку, и вторая всплыла бы только
+    # следующим прогоном, после починки первой: две ходки на один фрагмент.
+    prefix = SECTION_PREFIX.match(body)
+    if prefix:
+        rest = body[prefix.end():]
+        found.append(f"{path.name}: имя секции «{prefix['name']}:» в начале строки "
+                     f"подставит сборка из имени файла — оставьте «{checks.clip(rest, 60)}»")
     return section, text, found
 
 
@@ -126,6 +145,20 @@ def selftest() -> int:
         ("секция не из списка", "logo-loop.fix.md", "починили", 1),
         ("пустой фрагмент", "logo-loop.added.md", "   \n", 1),
         ("ведущий дефис", "logo-loop.added.md", "- добавили", 1),
+        # Имя секции внутри текста (находка 24 сентября: «internal: …» прошёл
+        # --check зелёным). Обе стороны: префикс — отказ в любом регистре и для
+        # любой секции, не только своей; слово секции в прозе — пропуск.
+        ("имя своей секции префиксом", "opus.internal.md", "internal: трейлер соавтора", 1),
+        ("регистр не спасает", "opus.internal.md", "Internal: трейлер соавтора", 1),
+        ("пробел перед двоеточием не спасает", "opus.fixed.md", "fixed : починили", 1),
+        ("чужая секция префиксом", "opus.internal.md", "fixed: починили", 1),
+        ("слово секции не первым", "gate.fixed.md", "починка internal-гейта (#1)", 0),
+        ("слово секции первым, но без двоеточия", "gate.fixed.md",
+         "internal-гейт починен (#1)", 0),
+        ("длиннее имени секции — не префикс", "gate.changed.md",
+         "addedness: слово длиннее имени секции", 0),
+        # Тот же разбор, что у дефиса: обе находки за один прогон, а не по одной.
+        ("дефис и префикс вместе", "opus.internal.md", "- internal: трейлер соавтора", 2),
     ]
     import tempfile                                            # noqa: PLC0415
     with tempfile.TemporaryDirectory() as tmp:
@@ -189,7 +222,8 @@ def main() -> int:
         for line in found:
             print(f"  • {line}", file=sys.stderr)
         print("\n  Имя: changelog.d/<слаг>.<секция>.md, внутри одна строка без "
-              "ведущего\n  дефиса. Формат и примеры — changelog.d/README.md.",
+              "ведущего\n  дефиса и без имени секции. Формат и примеры — "
+              "changelog.d/README.md.",
               file=sys.stderr)
         return 1
 
