@@ -349,7 +349,7 @@ def selftest() -> int:
     # Обе стороны, и обе ошибки названы: лишний маркер останавливает
     # пересборку навсегда, недостающий пускает изменение без тела.
     BOT = "Co-authored-by: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>"
-    WINDOW = "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+    WINDOW = "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
     marker_cases = [
         ("коммит окна — тело допишут", f"Разбор правки.\n\n{WINDOW}", True),
         ("коммит прогона — дописывать некому", f"Пересобранные числа.\n\n{BOT}", False),

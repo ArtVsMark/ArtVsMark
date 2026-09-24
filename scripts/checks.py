@@ -268,7 +268,7 @@ def selftest() -> int:
     # Обе ошибки названы: принять прозу за трейлер значит отвергнуть верное
     # изменение тем охотнее, чем подробнее оно описано; не увидеть настоящий
     # трейлер — пропустить коммит без атрибуции в общую ветку.
-    TAIL = "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+    TAIL = "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
     trailer_cases = [
         ("хвост из одного трейлера", f"Разбор.\n\n{TAIL}", ["co-authored-by"]),
         ("хвост из двух", f"Тело.\n\n{TAIL}\nClaude-Session: https://x", ["claude-session", "co-authored-by"]),
@@ -291,7 +291,7 @@ def selftest() -> int:
 
     # Значение доезжает целиком: по нему сверяют имя со списком согласованных.
     value = trailers(f"Тело.\n\n{TAIL}").get("co-authored-by", [""])[0]
-    if value != "Claude Opus 5 <noreply@anthropic.com>":
+    if value != "Claude Opus 5.5 <noreply@anthropic.com>":
         broken.append(f"трейлеры: значение обрезано или искажено — {value!r}")
 
     # ── кто не принимает решений, тот за них не отвечает (правило 051) ────

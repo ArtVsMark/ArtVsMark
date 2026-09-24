@@ -53,7 +53,7 @@ FORBIDDEN = {"Claude <noreply@anthropic.com>"}
 #: .github/authors.txt гейтом каталога, поэтому образец здесь — из него, а не
 #: выдуманный. Строка ставится ХВОСТОВЫМ блоком: разбор ищет её началом строки,
 #: и упоминание в прозе он принял бы за трейлер (находка на #95).
-TRAILER = "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+TRAILER = "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 #: Что делать, а не «почини атрибуцию»: отказ обязан называть команду целиком.
 REMEDY = (
@@ -187,7 +187,7 @@ def selftest() -> int:
         ("владелец из веб-интерфейса",
          ["Artem Markitanov <86671904+ArtVsMark@users.noreply.github.com>"], False),
         ("соавтор-исполнитель автором не притворяется",
-         ["Claude Opus 5 <noreply@anthropic.com>"], False),
+         ["Claude Opus 5.5 <noreply@anthropic.com>"], False),
         ("бот площадки — не предмет этой проверки",
          ["github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>"], False),
         ("коммитов нет", [], False),
@@ -197,13 +197,13 @@ def selftest() -> int:
     # Обе стороны: пропустить тело без трейлеров — потерять атрибуцию в общей
     # ветке после переключения; потребовать их от прозы — приучить дописывать
     # хвост наугад.
-    TAIL = ("\n\nCo-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+    TAIL = ("\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
             "\nClaude-Session: https://claude.ai/code/session_x")
     body_cases = [
         ("тело с полным хвостом", "Разбор." + TAIL, False),
         ("соавтора нет", "Разбор.\n\nClaude-Session: https://x", True),
         ("следа сессии нет",
-         "Разбор.\n\nCo-Authored-By: Claude Opus 5 <noreply@anthropic.com>", True),
+         "Разбор.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>", True),
         ("тело пустое", "", True),
         # Служебный футер площадки дописывается ПОСЛЕ блока трейлеров и убрать
         # его нельзя. Гейт каталога ищет трейлеры любой строкой и такое тело
@@ -254,7 +254,7 @@ def selftest() -> int:
     # ── второй предмет: трейлер исполнителя ────────────────────────────────
     # Обе стороны. Ложный отказ здесь останавливает работу на верном коммите,
     # ложный пропуск — пускает долг в общую ветку, где его уже не переписать.
-    tail = "\n\nCo-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+    tail = "\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
     HUMAN = "ArtVsMark <arvs.markitanov@gmail.com>"
     trailer_cases = [
         ("трейлер в хвосте", [(HUMAN, "a1", "правка", tail.strip())], False),
@@ -262,7 +262,7 @@ def selftest() -> int:
         ("тело пустое", [(HUMAN, "c3", "правка", "")], True),
         ("другой регистр — тот же трейлер",
          [(HUMAN, "d4", "правка",
-           "co-authored-by: Claude Opus 5 <noreply@anthropic.com>")], False),
+           "co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>")], False),
         ("трейлер после абзаца", [(HUMAN, "e5", "правка", "Разбор." + tail)], False),
         ("один из двух коммитов молчит",
          [(HUMAN, "f6", "с хвостом", tail.strip()),
@@ -324,6 +324,18 @@ def selftest() -> int:
     if "не отработала" not in probe.stderr:
         broken.append("исход «проверка не отработала» не называет себя в потоке ошибок")
     print(f"  код {probe.returncode}     — неразобранный диапазон: проверка не отработала")
+
+    # Образец в отказе обязан быть из списка согласованных, а не выдуманным:
+    # после смены версии исполнителя (Opus 5 → 5.5) он менялся руками, и
+    # расхождение значило бы, что отказ советует трейлер, на котором краснеет
+    # гейт каталога. Сверяется значением целиком — так же, как сверяет он.
+    authors = pathlib.Path(__file__).resolve().parent.parent / ".github" / "authors.txt"
+    listed = {line.strip() for line in authors.read_text(encoding="utf-8").splitlines()
+              if line.strip() and not line.lstrip().startswith("#")}
+    advised = TRAILER.split(":", 1)[1].strip()
+    if advised not in listed:
+        broken.append(f"образец трейлера {advised!r} не найден в .github/authors.txt")
+    print(f"  {'в списке ' if advised in listed else 'ВНЕ СПИСКА'} — образец трейлера в отказе")
 
     if broken:
         print("\nсамопроверка провалена:", file=sys.stderr)
