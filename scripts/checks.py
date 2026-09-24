@@ -102,8 +102,10 @@ def git_paths(*args: str, cwd=None) -> list[str]:
 #: ветка) — второму через префикс ниже.
 MACHINE_AUTHORS = ("dependabot[bot]", "github-actions[bot]")
 
-#: Приставки веток, которые заводит не человек.
-MACHINE_BRANCHES = ("dependabot/", "chore/metrics")
+#: Приставки веток, которые заводит не человек. `chore/deps-` — ветки, куда
+#: scripts/reauthor_deps.py кладёт правку dependabot от имени владельца: слага
+#: задачи и следа сессии у неё нет по той же причине, что у суточной пересборки.
+MACHINE_BRANCHES = ("dependabot/", "chore/metrics", "chore/deps-")
 
 #: ЧТО СЧИТАЕТСЯ ПРАВКОЙ ПОВЕДЕНИЯ. Список короткий намеренно: `.rules/` сюда не
 #: входит — ответ каталогу меняется и от чужой правки, а `README.md` собирается

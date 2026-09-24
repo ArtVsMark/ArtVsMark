@@ -47,9 +47,11 @@ HOLD_MARKER = re.compile(r"<!--\s*hold:\s*(.*?)\s*-->", re.S)
 HOLD_LABEL = "hold"
 
 
-#: Исполнитель, у которого нет окна. Имя то же, что в .github/authors.txt, и
-#: смысл тот же: коммит составил прогон площадки, а не человек и не окно.
-PIPELINE_AUTHOR = "github-actions[bot]"
+#: Исполнитель, у которого нет окна, — любая учётка из
+#: scripts/checks.py::MACHINE_AUTHORS. Здесь стояло одно имя, прогон площадки,
+#: и с переоформлением правок dependabot (deps-reauthor.yml) второго машинного
+#: соавтора стоп-кран держал бы вечно: маркер «тело не заполнено» на изменении,
+#: тело которого дописывать некому. Список один на все гейты (правило 090).
 
 #: Имя трейлера соавторства. Разбор — общий, из scripts/checks.py: хвостовой
 #: блок, а не любая строка (правило 156).
@@ -78,8 +80,8 @@ def marker_needed(commit_body: str) -> bool:
     встала бы с `hold`, которого некому снять.
     """
     named = checks.trailers(commit_body or "").get(COAUTHOR, [])
-    pipeline = [name for name in named if PIPELINE_AUTHOR in name]
-    # Маркер не нужен, только когда прогон — ЕДИНСТВЕННЫЙ исполнитель. Стоит
+    pipeline = [name for name in named if checks.machine_made(name)]
+    # Маркер не нужен, только когда машина — ЕДИНСТВЕННЫЙ исполнитель. Стоит
     # рядом оказаться окну, и тело допишет оно: пропустить маркер здесь значило
     # бы пустить в общую ветку изменение без тела, а это ошибка в опасную
     # сторону, в отличие от лишнего маркера.
@@ -350,6 +352,7 @@ def selftest() -> int:
     # пересборку навсегда, недостающий пускает изменение без тела.
     BOT = "Co-authored-by: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>"
     WINDOW = "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+    DEPS = "Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>"
     marker_cases = [
         ("коммит окна — тело допишут", f"Разбор правки.\n\n{WINDOW}", True),
         ("коммит прогона — дописывать некому", f"Пересобранные числа.\n\n{BOT}", False),
@@ -359,6 +362,13 @@ def selftest() -> int:
          f"Правка.\n\n{WINDOW}\n{BOT}", True),
         ("имя прогона в прозе, а не трейлером",
          "объясняем, почему github-actions[bot] дописывается площадкой", True),
+        # Второй машинный исполнитель — переоформленная правка dependabot. Обе
+        # стороны: один бот — дописывать некому; бот рядом с окном — допишет окно.
+        ("коммит переоформленной правки бота — дописывать некому",
+         f"Пины сдвинуты.\n\n{DEPS}", False),
+        ("бот и окно вместе — тело допишут", f"Правка.\n\n{DEPS}\n{WINDOW}", True),
+        ("похожее имя — не машина",
+         "Правка.\n\nCo-authored-by: dependabot <bot@example.com>", True),
     ]
     for name, body, expected in marker_cases:
         got = marker_needed(body)
