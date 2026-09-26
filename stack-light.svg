@@ -1,0 +1,29 @@
+<svg width="492" height="308" viewBox="0 0 492 308" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Technology footprint: Python in 6 of 6 repos, HTML in 3 of 6 repos, Shell in 2 of 6 repos, Batchfile in 1 of 6 repos, CSS in 1 of 6 repos; roles: CLI, web UI, GUI, pytest plugin, OS sandbox, docs, RU/EN, Python, JSONL over git, content, tooling, GitHub Actions, gates, Python">
+<defs><linearGradient id="s" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#58A6FF"/><stop offset="100%" stop-color="#7EE787"/></linearGradient></defs>
+<text x="246" y="17" fill="#636C76" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="13" font-weight="700" text-anchor="middle" letter-spacing="0.4">Technology footprint</text>
+<rect x="0.5" y="28.5" width="491" height="279" rx="14" fill="#FFFFFF" stroke="#D0D7DE"/>
+<text x="22" y="62" fill="#1F2328" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="13.5" font-weight="700">Python</text>
+<text x="470" y="62" fill="#636C76" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="12.5" font-weight="600" text-anchor="end">6 / 6</text>
+<rect x="22" y="70" width="448" height="6" rx="3" fill="#EAEEF2"/>
+<rect x="22" y="70" width="448" height="6" rx="3" fill="url(#s)"/>
+<text x="22" y="96" fill="#1F2328" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="13.5" font-weight="700">HTML</text>
+<text x="470" y="96" fill="#636C76" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="12.5" font-weight="600" text-anchor="end">3 / 6</text>
+<rect x="22" y="104" width="448" height="6" rx="3" fill="#EAEEF2"/>
+<rect x="22" y="104" width="224" height="6" rx="3" fill="url(#s)"/>
+<text x="22" y="130" fill="#1F2328" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="13.5" font-weight="700">Shell</text>
+<text x="470" y="130" fill="#636C76" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="12.5" font-weight="600" text-anchor="end">2 / 6</text>
+<rect x="22" y="138" width="448" height="6" rx="3" fill="#EAEEF2"/>
+<rect x="22" y="138" width="149" height="6" rx="3" fill="url(#s)"/>
+<text x="22" y="164" fill="#1F2328" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="13.5" font-weight="700">Batchfile</text>
+<text x="470" y="164" fill="#636C76" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="12.5" font-weight="600" text-anchor="end">1 / 6</text>
+<rect x="22" y="172" width="448" height="6" rx="3" fill="#EAEEF2"/>
+<rect x="22" y="172" width="74" height="6" rx="3" fill="url(#s)"/>
+<text x="22" y="198" fill="#1F2328" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="13.5" font-weight="700">CSS</text>
+<text x="470" y="198" fill="#636C76" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="12.5" font-weight="600" text-anchor="end">1 / 6</text>
+<rect x="22" y="206" width="448" height="6" rx="3" fill="#EAEEF2"/>
+<rect x="22" y="206" width="74" height="6" rx="3" fill="url(#s)"/>
+<text x="22" y="236" fill="#636C76" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="12" font-weight="700" letter-spacing="0.4">WHAT THEY DO</text>
+<text x="22" y="256" fill="#1F2328" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="12.5" font-weight="600">CLI · web UI · GUI · pytest plugin · OS sandbox · docs · RU/EN</text>
+<text x="22" y="274" fill="#1F2328" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="12.5" font-weight="600">Python · JSONL over git · content · tooling · GitHub Actions · gates</text>
+<text x="22" y="292" fill="#1F2328" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif" font-size="12.5" font-weight="600">Python</text>
+</svg>
