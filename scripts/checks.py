@@ -175,18 +175,23 @@ def clip(text: str, width: int) -> str:
     return text[: max(0, width - len(ELLIPSIS))] + ELLIPSIS
 
 
-def tail(items: list[str], shown: int, sep: str = ", ") -> str:
+def tail(items: list[str], shown: int, sep: str = ", ",
+         more: str = "и ещё {left}") -> str:
     """Первые ``shown`` через запятую, и НАСКОЛЬКО список урезан.
 
     Отличается от ``clip`` предметом: там обрывается строка, здесь — перечень, и
     читателю нужно не многоточие, а ЧИСЛО непоказанного. «a, b, c» и «a, b, c и
     ещё 47» — разные утверждения о состоянии, и первое из них ложное.
+
+    ``more`` — формулировка остатка. Служебный вывод говорит по-русски, а
+    картинки витрины — по-английски («and 3 more»); вторая копия помощника ради
+    одного слова разошлась бы со знаком обрыва на первой же правке (090).
     """
     if shown <= 0:
         raise ValueError(f"показать {shown} — перечень без единого элемента не отвечает ни о чём")
     head = sep.join(items[:shown])
     left = len(items) - shown
-    return f"{head} и ещё {left}" if left > 0 else head
+    return f"{head} {more.format(left=left)}" if left > 0 else head
 
 
 #: Уровни площадки. Список закрытый: команда с чужим словом площадкой

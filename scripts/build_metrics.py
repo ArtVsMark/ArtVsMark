@@ -53,6 +53,8 @@
 
 from __future__ import annotations
 
+from typing import NamedTuple
+
 import base64
 import contextlib
 import datetime as dt
@@ -530,7 +532,15 @@ def unlisted_repos(owned: list[str], config: dict) -> list[str]:
     return found
 
 
-def language_reach(repos: list[str]) -> list[tuple[str, int]]:
+class Language(NamedTuple):
+    """Язык проектов: в скольких репозиториях встречается и сколько весит."""
+
+    name: str
+    repos: int
+    size: int  # байты кода по всем репозиториям, как их считает площадка
+
+
+def language_reach(repos: list[str]) -> list[Language]:
     """Языки по ЧИСЛУ репозиториев, а не по объёму кода. Наибольший охват первым.
 
     ПОЧЕМУ НЕ ПО БАЙТАМ, КАК ДЕЛАЮТ ТИПОВЫЕ КАРТОЧКИ. Замер по нашим пяти
@@ -543,12 +553,50 @@ def language_reach(repos: list[str]) -> list[tuple[str, int]]:
     ОХВАТ ОТВЕЧАЕТ НА ДРУГОЙ ВОПРОС — в скольких проектах язык вообще
     встречается. У него нет ложной точности процентов: «Python в 5 из 5, HTML в
     3 из 5» — утверждение, которое читатель может проверить, открыв проекты.
+
+    ОБЪЁМ ЕДЕТ РЯДОМ ВТОРОЙ МЕРОЙ, А НЕ ГЛАВНОЙ (решение владельца 28 сентября).
+    Охват говорит «где язык есть», доля кода — «сколько он весит»: HTML в
+    половине проектов и меньше процента кода — это два разных ответа, и один
+    другого не заменяет. Порядок и полоса остаются за охватом.
+
+    РАВНЫЕ МЕСТА — ПО ОБЪЁМУ, А НЕ ПО АЛФАВИТУ. Замер 28 сентября: при семи
+    языках и пяти строках алфавит отдал пятое место Batchfile (980 байт) и
+    молча выбросил JavaScript — второй язык по объёму, 1,6% кода.
     """
     reach: dict[str, int] = {}
+    size: dict[str, int] = {}
     for repo in repos:
-        for language in _api(f"/repos/{repo}/languages"):
+        for language, count in _api(f"/repos/{repo}/languages").items():
             reach[language] = reach.get(language, 0) + 1
-    return sorted(reach.items(), key=lambda pair: (-pair[1], pair[0]))
+            size[language] = size.get(language, 0) + int(count)
+    return sorted((Language(name, reach[name], size[name]) for name in reach),
+                  key=reach_order)
+
+
+def _parses(svg: str) -> bool:
+    """Разбирается ли картинка как XML: площадка не рисует битый SVG вовсе."""
+    import xml.dom.minidom                                        # noqa: PLC0415
+    try:
+        xml.dom.minidom.parseString(svg)
+    except Exception:                                             # noqa: BLE001
+        return False
+    return True
+
+
+def reach_order(lang: Language) -> tuple[int, int, str]:
+    """Ключ порядка: охват, затем объём, затем имя — только чтобы порядок был полным."""
+    return (-lang.repos, -lang.size, lang.name)
+
+
+def code_share(size: int, total: int) -> str:
+    """Доля кода с одним знаком после запятой; меньше видимого — «<0.1%».
+
+    ОДИН ЗНАК, А НЕ ЦЕЛЫЕ (решение владельца): «<1%» у HTML, CSS и JavaScript
+    стирал разницу, которую и показывает эта колонка. Меньше знака — не ноль:
+    «0.0%» читалось бы как «языка нет», а 980 байт Batchfile — есть.
+    """
+    share = 100 * size / total if total else 0.0
+    return "<0.1%" if share < 0.05 else f"{share:.1f}%"
 
 
 def profile_stats() -> dict[str, object]:
@@ -2631,7 +2679,12 @@ def render_engineering(stats: dict[str, object], dark: bool) -> str:
     return "\n".join(out) + "\n</svg>\n"
 
 
-def render_stack(reach: list[tuple[str, int]], roles: list[str], total: int,
+#: Строк языков в карточке. Высота равна соседней карточке чисел, и остальные
+#: языки не выбрасываются, а называются строкой «+N more» под полосами.
+STACK_ROWS = 5
+
+
+def render_stack(reach: list[Language], roles: list[str], total: int,
                  dark: bool, height: int = 308) -> str:
     """След технологий: языки по охвату проектов и роли, которые они играют.
 
@@ -2650,9 +2703,13 @@ def render_stack(reach: list[tuple[str, int]], roles: list[str], total: int,
     else:
         card, stroke, num, lab, bar = "#FFFFFF", "#D0D7DE", "#1F2328", "#636C76", "#EAEEF2"
 
-    shown = reach[:5]
+    shown, rest = reach[:STACK_ROWS], reach[STACK_ROWS:]
+    code = sum(lang.size for lang in reach)
+    # Подпись несёт ВСЕ языки, а не показанные строками: картинка обязана
+    # говорить то же, что рисует, и ни на язык меньше (правило 016).
     label = ("Technology footprint: "
-             + ", ".join(f"{name} in {count} of {total} repos" for name, count in shown)
+             + ", ".join(f"{lang.name} in {lang.repos} of {total} repos, "
+                         f"{code_share(lang.size, code)} of code" for lang in reach)
              + (f"; roles: {', '.join(roles)}" if roles else ""))
     out = [
         svg_open(width, height, label),
@@ -2666,20 +2723,37 @@ def render_stack(reach: list[tuple[str, int]], roles: list[str], total: int,
         f'fill="{card}" stroke="{stroke}"/>',
     ]
     y = 62
-    for name, count in shown:
+    for lang in shown:
         # Полоса — доля ПРОЕКТОВ, а не байтов: длина читается как «в скольких из
-        # пяти», и подпись рядом говорит это словами.
+        # пяти», и подпись рядом говорит это словами. Доля кода стоит второй
+        # мерой в той же подписи и порядка не решает.
         full = width - pad * 2
-        filled = max(int(full * count / max(total, 1)), 6)
+        filled = max(int(full * lang.repos / max(total, 1)), 6)
         out += [
             f'<text x="{pad}" y="{y}" fill="{num}" font-family="{FONT}" font-size="13.5" '
-            f'font-weight="700">{escape(name)}</text>',
+            f'font-weight="700">{escape(lang.name)}</text>',
             f'<text x="{width - pad}" y="{y}" fill="{lab}" font-family="{FONT}" '
-            f'font-size="12.5" font-weight="600" text-anchor="end">{count} / {total}</text>',
+            f'font-size="12.5" font-weight="600" text-anchor="end">'
+            f'{escape(f"{lang.repos} / {total} · {code_share(lang.size, code)}")}</text>',
             f'<rect x="{pad}" y="{y + 8}" width="{full}" height="6" rx="3" fill="{bar}"/>',
             f'<rect x="{pad}" y="{y + 8}" width="{filled}" height="6" rx="3" fill="url(#s)"/>',
         ]
         y += 34
+
+    if rest:
+        # Языки сверх строк НАЗЫВАЮТСЯ, а не пропадают: до 28 сентября шестой и
+        # седьмой отбрасывались молча, и среди них был JavaScript. Строка одна:
+        # имён в ней столько, сколько влезает, остаток — числом (правило 016).
+        names = [lang.name for lang in rest]
+        room = width - pad * 2
+        fit = len(names)
+        while fit > 1 and len(f"+{len(rest)} more: "
+                              + checks.tail(names, fit, more="and {left} more")) * 6.4 > room:
+            fit -= 1
+        line = f"+{len(rest)} more: " + checks.tail(names, fit, more="and {left} more")
+        out.append(f'<text x="{pad}" y="{y}" fill="{lab}" font-family="{FONT}" '
+                   f'font-size="12" font-weight="600">{escape(line)}</text>')
+        y += 18
 
     if roles:
         y += 4
@@ -3447,7 +3521,9 @@ def selftest() -> int:
     # репозиториям Python даёт 96% объёма, и круговая диаграмма из этого
     # сообщает только язык. Охват отвечает на другой вопрос — в скольких
     # проектах язык встречается вообще.
-    reach_sample = [("Python", 5), ("HTML", 3), ("JavaScript", 1), ("CSS", 1), ("Shell", 1)]
+    reach_sample = [Language("Python", 5, 10_000_000), Language("HTML", 3, 60_000),
+                    Language("JavaScript", 1, 280_000), Language("CSS", 1, 78_000),
+                    Language("Shell", 1, 4_000)]
     roles_sample = ["CLI", "web UI", "GUI", "pytest plugin", "OS sandbox", "docs", "RU/EN"]
     for dark in (True, False):
         stack = render_stack(reach_sample, roles_sample, 5, dark)
@@ -3455,6 +3531,9 @@ def selftest() -> int:
         stack_checks = [
             ("полос столько же, сколько языков", stack.count("url(#s)") == len(reach_sample)),
             ("подпись несёт охват", "Python in 5 of 5 repos" in aria_of(stack)),
+            ("подпись несёт долю кода", "96.0% of code" in aria_of(stack)),
+            ("строка несёт обе меры", "5 / 5 · 96.0%" in stack),
+            ("языков не больше строк — остатка нет", "more:" not in stack),
             ("подпись несёт роли", "roles:" in aria_of(stack)),
             ("роли попали в картинку", "pytest plugin" in stack),
             ("высота равна карточке чисел", 'height="308"' in stack),
@@ -3478,6 +3557,70 @@ def selftest() -> int:
     if many.count("font-size=\"12.5\"") < 3:
         broken.append("след технологий: длинный список ролей не перенесён по строкам")
     print("  да  — след технологий: длинные роли переносятся")
+
+    # ДОЛЯ КОДА — один знак, и меньше видимого не притворяется нулём (решение
+    # владельца 28 сентября). Обе стороны порога и граница деления на ноль.
+    share_cases = [
+        ("крупная доля", 973, 1000, "97.3%"),
+        ("малая, но видимая", 16, 1000, "1.6%"),
+        ("ровно на пороге округления", 5, 10_000, "0.1%"),
+        ("меньше видимого — не ноль", 1, 10_000, "<0.1%"),
+        ("кода нет вовсе — не деление на ноль", 0, 0, "<0.1%"),
+    ]
+    for name, size, whole, expected in share_cases:
+        got = code_share(size, whole)
+        if got != expected:
+            broken.append(f"доля кода, {name}: ожидалось {expected!r}, вышло {got!r}")
+        print(f"  {got:<8} — доля кода: {name}")
+
+    # ЯЗЫКИ СВЕРХ СТРОК НАЗЫВАЮТСЯ, А РАВНЫЕ МЕСТА РЕШАЕТ ОБЪЁМ. Живой случай 28
+    # сентября: семь языков, пять строк, алфавит отдал место Batchfile (980 байт)
+    # и молча выбросил JavaScript — второй по объёму.
+    live = sorted([Language("Python", 6, 17_152_423), Language("HTML", 3, 99_731),
+                   Language("Shell", 2, 3_944), Language("Batchfile", 1, 980),
+                   Language("CSS", 1, 78_444), Language("JavaScript", 1, 286_275),
+                   Language("Makefile", 1, 5_755)],
+                  key=reach_order)
+    seven = render_stack(live, roles_sample, 6, True)
+    order = [lang.name for lang in live]
+    tail_cases = [
+        ("равные места по объёму: JavaScript выше CSS и Batchfile",
+         order.index("JavaScript") < order.index("CSS") < order.index("Batchfile")),
+        ("полос ровно пять", seven.count("url(#s)") == STACK_ROWS),
+        ("остаток назван числом и именами", "+2 more: Makefile, Batchfile" in seven),
+        ("подпись несёт все семь языков",
+         all(f"{lang.name} in" in aria_of(seven) for lang in live)),
+        # «<0.1%» — первый текст карточки со знаком разметки: без экранирования
+        # SVG перестаёт быть XML, и картинка не рисуется вовсе.
+        ("карточка с «<0.1%» остаётся XML", _parses(seven)),
+    ]
+    crowd = [Language(f"Lang{i:02d}", 1, 100 - i) for i in range(40)]
+    wide = render_stack(live[:5] + crowd, [], 6, True)
+    last = re.search(r">(\+40 more: [^<]*)</text>", wide)
+    tail_cases.append(("длинный остаток обрывается числом, а не молча",
+                       bool(last and re.search(r" and \d+ more$", last.group(1)))))
+    for name, ok in tail_cases:
+        if not ok:
+            broken.append(f"след технологий: {name} — нет")
+        print(f"  {'да ' if ok else 'НЕТ'} — след технологий: {name}")
+
+    # ВСЁ ВМЕЩАЕТСЯ В ВЫСОТУ СОСЕДНЕЙ КАРТОЧКИ — на НАСТОЯЩИХ ролях из
+    # projects.json, а не на образце: строки ролей пишет человек, и лишняя
+    # строка вылезла бы за рамку молча. Порог — последняя базовая линия текста
+    # не ниже рамки за вычетом поля.
+    config_roles = list(dict.fromkeys(
+        role.strip() for project in json.loads(PROJECTS.read_text(encoding="utf-8"))["projects"]
+        for role in project["stack"].split("·") if role.strip()))
+    fitted = render_stack(live, config_roles, 6, True)
+    lowest = max(float(v) for v in re.findall(r'<text [^>]*?\by="([\d.]+)"', fitted))
+    fits = lowest <= 308 - 14
+    if not fits:
+        broken.append(f"след технологий: текст на y={lowest:.0f} вылез за карточку высотой 308 — "
+                      f"сократите строки stack в projects.json или число строк языков")
+    print(f"  {'да ' if fits else 'НЕТ'} — след технологий: семь языков и роли из projects.json "
+          f"вмещаются (нижняя строка y={lowest:.0f})")
+    if len(config_roles) != len(set(config_roles)):
+        broken.append("след технологий: роли повторяются")
 
     # ── карточка профиля рисуется и называет себя ─────────────────────────
     eng_stats = {"repos": 12, "stars": 6, "followers": 4,
@@ -4571,8 +4714,10 @@ def main() -> int:
     project_repos = [project["repo"] for project in config["projects"]] + [SHOWCASE]
     try:
         reach = language_reach(project_repos)
-        roles = [role.strip() for project in config["projects"]
-                 for role in project["stack"].split("·")]
+        # Повторы снимаются с сохранением порядка: «Python» стоял в роли у двух
+        # проектов и занимал в карточке отдельную строку.
+        roles = list(dict.fromkeys(role.strip() for project in config["projects"]
+                                   for role in project["stack"].split("·") if role.strip()))
     except (urllib.error.URLError, OSError, ValueError, KeyError) as refusal:
         reach, roles = [], []
         print(checks.annotate("warning", f"след технологий не собран ({refusal}) — "
