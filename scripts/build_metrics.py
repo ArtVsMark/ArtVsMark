@@ -1389,10 +1389,19 @@ def verify_absence(repo: str, kind: str, why: str) -> str:
 #: по причине, а не по забывчивости: `consumers` — реестр самого каталога, его
 #: ведёт издатель; `showcase` — его набор вопросов к витринам, и витрина его
 #: сегодня не читает вовсе (это названный пробел, а не выполненная работа).
+#:
+#: `where` СЧИТАЛСЯ ЧУЖИМ, А БЫЛ НАШИМ. Здесь стояло «остальные три из шести»,
+#: хотя из сводки «где держится» строится полоса правил на карточке каждого
+#: проекта. Файла ответа у нас на неё нет — мы её только читаем, — поэтому наша
+#: сторона здесь номер, под который перечитан её разбор (WHERE_READ). Нашлось
+#: сверкой с выпуском каталога 1.3.0, 28 сентября.
 OUR_CONTRACTS = {
     "bindings": "формат ответа каталогу — .rules/bindings.json, ключ schema",
     "export": "выгрузка, по которой построены ответы — .rules/bindings.json, ключ answers_to",
     "proposals": "формат предложений каталогу — .rules/proposals.json, ключ schema",
+    "where": ("сводка «где держится», из неё строится полоса правил — WHERE_READ в "
+              "scripts/build_metrics.py: перечитайте поля by_mechanism, by_status, "
+              "answered и trails и поднимите номер"),
 }
 
 
@@ -2228,6 +2237,13 @@ def contract_findings(document: str, facts: dict[str, dict],
                              f"а не проверку")
     return found
 
+
+
+#: Номер сводки «где держится», под который перечитан её разбор: поля
+#: ``by_mechanism``, ``by_status``, ``answered`` и ``trails``. Это не копия чужой
+#: константы, а наше утверждение «прочитано под 1.5»: поднимает его человек,
+#: перечитав поля, а сверка с опубликованным номером говорит, когда пора.
+WHERE_READ = "1.5"
 
 
 def catalogue_where() -> dict[str, dict]:
@@ -4437,22 +4453,26 @@ def selftest() -> int:
               "consumers": "1.1", "showcase": "1.1", "where": "1.4"}
     contract_cases = [
         ("все наши номера сходятся", THEIRS,
-         {"bindings": "1.5", "export": "1.7", "proposals": "1.1"}, 0),
+         {"bindings": "1.5", "export": "1.7", "proposals": "1.1", "where": "1.4"}, 0),
         ("отстал формат ответа", THEIRS,
-         {"bindings": "1.2", "export": "1.7", "proposals": "1.1"}, 1),
+         {"bindings": "1.2", "export": "1.7", "proposals": "1.1", "where": "1.4"}, 1),
         ("отстали предложения — номер, о котором молчали", THEIRS,
-         {"bindings": "1.5", "export": "1.7", "proposals": "1.0"}, 1),
-        ("отстали все три", THEIRS,
-         {"bindings": "1.2", "export": "1.5", "proposals": "1.0"}, 3),
+         {"bindings": "1.5", "export": "1.7", "proposals": "1.0", "where": "1.4"}, 1),
+        # Сводку «где держится» читает полоса правил, и её номер считался чужим
+        # до сверки с выпуском 1.3.0 — поля меняют смысл с минором молча.
+        ("отстал разбор сводки «где держится»", THEIRS,
+         {"bindings": "1.5", "export": "1.7", "proposals": "1.1", "where": "1.3"}, 1),
+        ("отстали все четыре", THEIRS,
+         {"bindings": "1.2", "export": "1.5", "proposals": "1.0", "where": "1.3"}, 4),
         ("мы впереди — это не отставание", THEIRS,
-         {"bindings": "1.6", "export": "1.7", "proposals": "1.1"}, 0),
+         {"bindings": "1.6", "export": "1.7", "proposals": "1.1", "where": "1.4"}, 0),
         # Чужие номера в блоке есть, а предмета у нас нет: consumers ведёт
         # издатель, showcase витрина не читает — и это названный пробел.
         ("чужие номера предметом не являются", THEIRS,
-         {"bindings": "1.5", "export": "1.7", "proposals": "1.1"}, 0),
+         {"bindings": "1.5", "export": "1.7", "proposals": "1.1", "where": "1.4"}, 0),
         # «Ключа нет — значит не прочитали»: нулём отсутствие не обозначается.
         ("каталог номер не опубликовал — сверять нечего", {"bindings": "1.5"},
-         {"bindings": "1.5", "export": "1.7", "proposals": "1.1"}, 0),
+         {"bindings": "1.5", "export": "1.7", "proposals": "1.1", "where": "1.4"}, 0),
     ]
     for name, theirs, mine, expected in contract_cases:
         got = contracts_drift(theirs, mine)
@@ -4461,9 +4481,15 @@ def selftest() -> int:
         print(f"  {len(got)} находок — контракты: {name}")
 
     # Отказ обязан назвать, ЧЕЙ номер отстал и где лежит наш ответ (158).
-    named = contracts_drift(THEIRS, {"bindings": "1.5", "export": "1.7", "proposals": "1.0"})
+    named = contracts_drift(THEIRS, {"bindings": "1.5", "export": "1.7", "proposals": "1.0",
+                                     "where": "1.4"})
     if not (named and "proposals" in named[0] and "proposals.json" in named[0]):
         broken.append(f"контракты: отказ не называет предмет и его адрес: {named}")
+    # У сводки своего файла нет — отказ обязан вести к константе и полям.
+    where_named = contracts_drift(THEIRS, {"bindings": "1.5", "export": "1.7",
+                                           "proposals": "1.1", "where": "1.3"})
+    if not (where_named and "WHERE_READ" in where_named[0] and "by_status" in where_named[0]):
+        broken.append(f"контракты: отказ по сводке не ведёт к WHERE_READ и полям: {where_named}")
 
     # ── ссылки на правила каталога сверяются с выгрузкой (правило 198) ─────
     EXPORT = {"rules": [
@@ -4715,6 +4741,7 @@ def main() -> int:
         "bindings": str(answer.get("schema", "")),
         "export": str(answer.get("answers_to", "")),
         "proposals": str(proposals.get("schema", "")),
+        "where": WHERE_READ,
     })
     if drifts and check:
         print(checks.annotate("error", f"ответ витрины отстал от контрактов: {len(drifts)}"),
