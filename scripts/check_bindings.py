@@ -314,6 +314,24 @@ def selftest() -> int:
             broken.append(f"раздел, {name}: ожидалось находок {expected}, вышло {got}")
         print(f"  {'найдено ' if got else 'пропущено'} — раздел: {name}")
 
+    # Словарь предела — обе стороны (140): законные слова проходят, чужое слово
+    # и отказ без замера краснеют.
+    limit_cases = [
+        ("три слова без отказа законны", {str(n): {"holdable": w} for n, w in
+                                      enumerate(("no", "not-yet", "conditional"), 1)}, 0),
+        ("отказ с замером — законен",
+         {"001": {"holdable": "refused", "machine_half": "сработал бы на 109 из 143"}}, 0),
+        ("предела нет вовсе — не предмет", {"001": {"status": "active"}}, 0),
+        ("отказ без замера", {"001": {"holdable": "refused"}}, 1),
+        ("отказ с пустым замером", {"001": {"holdable": "refused", "machine_half": " "}}, 1),
+        ("слово вне словаря", {"001": {"holdable": "impossible"}}, 1),
+    ]
+    for name, rules, expected in limit_cases:
+        got = len(limits(rules))
+        if got != expected:
+            broken.append(f"предел, {name}: ожидалось находок {expected}, вышло {got}")
+        print(f"  {got} находок — предел: {name}")
+
     # Документа нет вовсе — это НЕ наш предмет: на него жалуется проверка ссылок,
     # и вторая жалоба о том же сбивала бы с толку.
     rule = {"001": {"status": "active", "where": "нет-такого.md § Ветки — проза"}}
@@ -328,6 +346,40 @@ def selftest() -> int:
         return 1
     print("самопроверка пройдена: гейт отвергает то, что обязан")
     return 0
+
+
+#: Слова предела — закрытый словарь контракта ответа каталогу (правило 213):
+#: чего машина не держит и почему. КОПИЯ НАМЕРЕННАЯ (071): словарь живёт в
+#: заготовке каталога templates/bindings.json, машинно отдельным списком он не
+#: публикуется, а подъём контракта ответа сверяет
+#: scripts/build_metrics.py::contracts_drift — тогда же перечитывается и этот
+#: список.
+LIMITS = ("no", "not-yet", "conditional", "refused")
+
+
+def limits(rules: dict[str, dict]) -> list[str]:
+    """Слова предела вне словаря и отказы без замера. Пусто — словарь соблюдён.
+
+    ЧЕТВЁРТОЕ СЛОВО ЗАКОННО ТОЛЬКО С ЧИСЛОМ. `refused` — машинная половина
+    есть, замерена, и строить её отказались, потому что сигнал бил бы по
+    разрешённому. Без замера в ``machine_half`` такой ответ неотличим от «не
+    смотрели» — и от `no`, сказанного, чтобы не строить (213).
+
+    До этой проверки словарь не спрашивал никто: запись со словом вне него или
+    `refused` без числа проходила молча, а сводка каталога считала её как есть.
+    """
+    found: list[str] = []
+    for number, binding in sorted(rules.items()):
+        word = binding.get("holdable")
+        if word is None:
+            continue
+        if word not in LIMITS:
+            found.append(f"{number}: слово предела {word!r} не из словаря "
+                         f"({', '.join(LIMITS)})")
+        elif word == "refused" and not str(binding.get("machine_half", "")).strip():
+            found.append(f"{number}: `refused` без замера в machine_half — отказ, за "
+                         f"которым нет числа, неотличим от «не смотрели» (213)")
+    return found
 
 
 def unchecked(rules: dict[str, dict]) -> list[tuple[str, str]]:
@@ -417,6 +469,7 @@ def main() -> int:
                 return None
 
         dead += dead_sections(bindings["rules"], sections)
+        vocabulary = limits(bindings["rules"])
         # Существование предмета спрашивается у дерева одной командой — без
         # сети, как и требует правило: то, что видно локально.
         alive = refuted(bindings["rules"], lambda glob: [str(p.relative_to(ROOT))
@@ -436,6 +489,15 @@ def main() -> int:
               "\nЛибо предмет появился и вердикт стал действующим, либо уберите refuted_by.",
               file=sys.stderr)
 
+    if vocabulary:
+        print(checks.annotate("error", f"слова предела вне словаря: {len(vocabulary)}"),
+              file=sys.stderr)
+        for line in vocabulary:
+            print(f"  {line}", file=sys.stderr)
+        print(f"\nСловарь закрыт: {', '.join(LIMITS)}. Отказ строить механизм законен "
+              "только с замером — что считается командой и сколько раз сигнал сработал "
+              "бы на законном.", file=sys.stderr)
+
     if dead:
         print(checks.annotate("error", f"вердикты показывают в пустоту, мёртвых ссылок: {len(dead)}"), file=sys.stderr)
         for line in dead:
@@ -446,7 +508,7 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
-    if alive:
+    if alive or vocabulary:
         return 1
 
     checkable = sum(1 for b in bindings["rules"].values() if b.get("refuted_by"))
