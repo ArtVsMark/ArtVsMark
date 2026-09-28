@@ -588,14 +588,16 @@ def reach_order(lang: Language) -> tuple[int, int, str]:
     return (-lang.repos, -lang.size, lang.name)
 
 
-def code_share(size: int, total: int) -> str:
-    """Доля кода с одним знаком после запятой; меньше видимого — «<0.1%».
+def share_text(part: int, whole: int) -> str:
+    """Доля с одним знаком после запятой; меньше видимого — «<0.1%».
 
-    ОДИН ЗНАК, А НЕ ЦЕЛЫЕ (решение владельца): «<1%» у HTML, CSS и JavaScript
-    стирал разницу, которую и показывает эта колонка. Меньше знака — не ноль:
-    «0.0%» читалось бы как «языка нет», а 980 байт Batchfile — есть.
+    ОДИН ЗНАК, А НЕ ЦЕЛЫЕ (решение владельца 28 сентября): «<1%» у HTML, CSS и
+    JavaScript стирал разницу, которую и показывает колонка. Меньше знака — не
+    ноль: «0.0%» читалось бы как «языка нет», а 980 байт Batchfile — есть.
+    Функция одна на все картинки витрины — доли кода и доли механизмов правил
+    округляются одинаково (правило 090).
     """
-    share = 100 * size / total if total else 0.0
+    share = 100 * part / whole if whole else 0.0
     return "<0.1%" if share < 0.05 else f"{share:.1f}%"
 
 
@@ -674,13 +676,10 @@ def accent_label(accents: list[dict]) -> str:
                                     for value, label in accent["made"]))
         rules = accent.get("rules")
         if rules:
-            shares = ", ".join(f"{name} {value}"
-                               for name, value in ordered_mechanisms(rules["mechanisms"]))
-            tail = f"rules held by: {shares}"
-            if rules.get("answered"):
-                tail += f"; {rules['answered']} answered"
-            if rules.get("trails"):
-                tail += f", {rules['trails']} linked to issues"
+            tail = ("rules held by: "
+                    + mechanism_legend(ordered_mechanisms(rules["mechanisms"])).replace(" · ", ", "))
+            if answered_tail(rules):
+                tail += f"; {answered_tail(rules)}"
             pieces.append(tail)
         elif "rules" in accent:
             # Пробел называется, а не выравнивается: «не подключён» и «правил
@@ -735,7 +734,7 @@ def project_made(facts: dict) -> list[tuple[str, str]]:
     return made
 
 
-def project_rules(answer: dict | None) -> dict | None:
+def project_rules(answer: dict | None, catalogue: int | None = None) -> dict | None:
     """Чем у проекта держатся правила каталога. ``None`` — он не подключён.
 
     Доли берутся как есть, вместе с их именами: словарь механизмов чужой и
@@ -750,6 +749,10 @@ def project_rules(answer: dict | None) -> dict | None:
     return {
         "answered": answer.get("answered"),
         "trails": answer.get("trails"),
+        # Сколько правил в каталоге СЕЙЧАС — знаменатель «ответил на N из M».
+        # После выпуска каталога новые правила видны разницей, а не прячутся за
+        # числом, которое само по себе ничего не говорит о полноте.
+        "catalogue": catalogue,
         "mechanisms": {str(k): int(v) for k, v in mechanisms.items() if isinstance(v, int)},
     }
 
@@ -793,22 +796,56 @@ def rules_strip(accent: dict, width: int, dark: bool, label_colour: str) -> list
             f'rx="5.5" fill="{tones.get(name, tones["_"])}"/>'
         )
         offset += span + 2
-    legend = " · ".join(f"{name} {value}" for name, value in shares)
-    tail = [f"{rules['answered']} rules answered"] if rules.get("answered") else []
-    if rules.get("trails"):
-        tail.append(f"{rules['trails']} linked to issues")
+    legend = mechanism_legend(shares)
+    tail = answered_tail(rules)
     out.insert(0, caption)
     out.append(
         f'    <text x="{left}" y="{top + 32}" fill="{label_colour}" font-family="{FONT}" '
         f'font-size="13" font-weight="600">{escape(legend)}</text>'
     )
     if tail:
+        # Правая подпись уходит строкой ниже, если с долями не помещается рядом:
+        # наложение двух строк нечитаемо, а обрезать числа нельзя (016). Ширина
+        # оценивается с запасом — 7.2 пикселя на знак при 13-м кегле и 600 весе.
+        together = (len(legend) + len(tail)) * STRIP_CHAR + STRIP_GAP <= right - left
         out.append(
-            f'    <text x="{right}" y="{top + 32}" fill="{label_colour}" font-family="{FONT}" '
-            f'font-size="13" font-weight="600" text-anchor="end">'
-            f'{escape(" · ".join(tail))}</text>'
+            f'    <text x="{right}" y="{top + (32 if together else 50)}" fill="{label_colour}" '
+            f'font-family="{FONT}" font-size="13" font-weight="600" text-anchor="end">'
+            f'{escape(tail)}</text>'
         )
     return out
+
+
+#: Оценка ширины знака подписи полосы и минимальный зазор между подписями.
+STRIP_CHAR, STRIP_GAP = 7.2, 24
+
+
+def mechanism_legend(shares: list[tuple[str, int]]) -> str:
+    """Подпись полосы: у каждого механизма счёт и доля — «gate 86 (44.8%)».
+
+    Доля — от правил, держащихся механизмами, то есть от длины самой полосы: у
+    сегмента и у числа под ним одна база. Округление — общее с карточкой
+    технологий (share_text).
+    """
+    whole = sum(value for _, value in shares)
+    return " · ".join(f"{name} {value} ({share_text(value, whole)})" for name, value in shares)
+
+
+def answered_tail(rules: dict) -> str:
+    """Правая подпись: «195 of 213 rules answered · 187 linked to issues».
+
+    Знаменатель — размер каталога сейчас. Без него «195 answered» выглядит
+    полным ответом, а после выпуска каталога 1.3 у грейдера восемнадцать правил
+    без ответа — разница и есть то, что читателю стоит видеть.
+    """
+    parts: list[str] = []
+    if rules.get("answered"):
+        whole = rules.get("catalogue")
+        parts.append(f"{rules['answered']} of {whole} rules answered" if whole
+                     else f"{rules['answered']} rules answered")
+    if rules.get("trails"):
+        parts.append(f"{rules['trails']} linked to issues")
+    return " · ".join(parts)
 
 
 #: Порог контраста текста — AA по WCAG 2.1 для обычного размера. Крупный текст
@@ -2709,7 +2746,7 @@ def render_stack(reach: list[Language], roles: list[str], total: int,
     # говорить то же, что рисует, и ни на язык меньше (правило 016).
     label = ("Technology footprint: "
              + ", ".join(f"{lang.name} in {lang.repos} of {total} repos, "
-                         f"{code_share(lang.size, code)} of code" for lang in reach)
+                         f"{share_text(lang.size, code)} of code" for lang in reach)
              + (f"; roles: {', '.join(roles)}" if roles else ""))
     out = [
         svg_open(width, height, label),
@@ -2734,7 +2771,7 @@ def render_stack(reach: list[Language], roles: list[str], total: int,
             f'font-weight="700">{escape(lang.name)}</text>',
             f'<text x="{width - pad}" y="{y}" fill="{lab}" font-family="{FONT}" '
             f'font-size="12.5" font-weight="600" text-anchor="end">'
-            f'{escape(f"{lang.repos} / {total} · {code_share(lang.size, code)}")}</text>',
+            f'{escape(f"{lang.repos} / {total} · {share_text(lang.size, code)}")}</text>',
             f'<rect x="{pad}" y="{y + 8}" width="{full}" height="6" rx="3" fill="{bar}"/>',
             f'<rect x="{pad}" y="{y + 8}" width="{filled}" height="6" rx="3" fill="url(#s)"/>',
         ]
@@ -3568,7 +3605,7 @@ def selftest() -> int:
         ("кода нет вовсе — не деление на ноль", 0, 0, "<0.1%"),
     ]
     for name, size, whole, expected in share_cases:
-        got = code_share(size, whole)
+        got = share_text(size, whole)
         if got != expected:
             broken.append(f"доля кода, {name}: ожидалось {expected!r}, вышло {got!r}")
         print(f"  {got:<8} — доля кода: {name}")
@@ -4208,6 +4245,40 @@ def selftest() -> int:
             broken.append(f"правила, {name}: ожидалось {'есть' if expected else 'нет'}")
         print(f"  {'есть' if got else 'нет '}      — правила: {name}")
 
+    # ДОЛИ И ЗНАМЕНАТЕЛЬ (решение владельца 28 сентября). Доля — от правил,
+    # держащихся механизмами, одним округлением с карточкой технологий; «из
+    # скольких» — от размера каталога, и без него подпись остаётся прежней.
+    grader = project_rules({"answered": 195, "trails": 187,
+                            "by_mechanism": {"gate": 86, "pipeline": 39, "document": 67}}, 213)
+    mechanisms = project_rules({"answered": 207, "trails": 9,
+                                "by_mechanism": {"gate": 166, "pipeline": 19,
+                                                 "document": 8, "skill": 1}}, 213)
+    lone = project_rules({"answered": 20, "by_mechanism": {"gate": 20}})
+    strip_line = " ".join(rules_strip({"rules": grader}, 1000, True, "#8B949E"))
+    long_strip = rules_strip({"rules": mechanisms}, 1000, True, "#8B949E")
+    crowded = project_rules({"answered": 207, "trails": 9, "by_mechanism": {
+        f"механизм-{i}": 10 + i for i in range(7)}}, 213)
+    crowd = rules_strip({"rules": crowded}, 1000, True, "#8B949E")
+    heights = [re.search(r'y="(\d+)"', line).group(1) for line in crowd if "rules answered" in line
+               or "механизм-0" in line and "<text" in line]
+    strip_cases = [
+        ("доля рядом со счётом", "gate 86 (44.8%)" in strip_line),
+        ("знаменатель — размер каталога", "195 of 213 rules answered" in strip_line),
+        ("без каталога подпись прежняя", answered_tail(lone) == "20 rules answered"),
+        ("меньше видимого — не ноль", "(<0.1%)" in mechanism_legend([("gate", 5000), ("skill", 1)])),
+        ("четыре механизма и хвост — одной строкой",
+         len({re.search(r'y="(\d+)"', line).group(1) for line in long_strip
+              if "<text" in line and ("gate 166" in line or "rules answered" in line)}) == 1),
+        ("не влезло — хвост строкой ниже, а не поверх", len(set(heights)) == 2),
+        ("подпись картинки говорит то же",
+         "gate 86 (44.8%)" in accent_label([{**accents[0], "rules": grader}])
+         and "195 of 213 rules answered" in accent_label([{**accents[0], "rules": grader}])),
+    ]
+    for name, ok in strip_cases:
+        if not ok:
+            broken.append(f"полоса правил: {name} — нет")
+        print(f"  {'да ' if ok else 'НЕТ'} — полоса правил: {name}")
+
     # Незнакомый механизм НЕ ТЕРЯЕТСЯ: словарь чужой и растёт, а доля, выпавшая
     # из полосы, читается как «такого у нас нет» (правило 022).
     grown = ordered_mechanisms({"gate": 3, "quantum": 1, "none": 2})
@@ -4650,7 +4721,7 @@ def main() -> int:
             "badges": project_badges(repo, project["badges"], neighbour_findings),
             "stats": stats[repo],
             "made": project_made(facts),
-            "rules": project_rules(where.get(repo)),
+            "rules": project_rules(where.get(repo), rules),
         })
     # Утверждение о соседе сверяется с соседом, а не перечитывается глазами.
     neighbour_findings += contract_findings(
