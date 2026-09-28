@@ -676,8 +676,10 @@ def accent_label(accents: list[dict]) -> str:
                                     for value, label in accent["made"]))
         rules = accent.get("rules")
         if rules:
-            tail = ("rules held by: "
-                    + mechanism_legend(ordered_mechanisms(rules["mechanisms"])).replace(" · ", ", "))
+            shares, statuses, whole = strip_parts(rules)
+            tail = "rules held by: " + share_legend(shares, whole).replace(" · ", ", ")
+            if statuses:
+                tail += "; " + share_legend(statuses, whole).replace(" · ", ", ")
             if answered_tail(rules):
                 tail += f"; {answered_tail(rules)}"
             pieces.append(tail)
@@ -702,14 +704,34 @@ MADE_FIELDS = (("tests", "functions", "tests"),
 #: доля показывается, а не исчезает из полосы молча.
 MECHANISM_TONES = {
     "dark": {"gate": "#3FB950", "pipeline": "#58A6FF", "document": "#8B949E",
-             "code": "#D2A8FF", "none": "#F85149", "_": "#6E7681"},
+             "code": "#D2A8FF", "skill": "#39C5CF", "none": "#F85149", "_": "#6E7681"},
     "light": {"gate": "#1A7F37", "pipeline": "#0969DA", "document": "#8C959F",
-              "code": "#8250DF", "none": "#CF222E", "_": "#6E7781"},
+              "code": "#8250DF", "skill": "#1B7C83", "none": "#CF222E", "_": "#6E7781"},
 }
 
 #: Порядок долей в полосе: от механизма к его отсутствию. Механизм, которого
 #: здесь нет, встаёт после известных — порядок задан, но не закрыт.
-MECHANISM_ORDER = ("gate", "pipeline", "code", "document", "none")
+MECHANISM_ORDER = ("gate", "pipeline", "code", "skill", "document", "none")
+
+#: Цвет доли по статусу — у правил, которые механизмом не держатся, потому что
+#: держать нечего или так решено. Тоны тише механизмов: полоса о том, чем
+#: держится, и остальное в ней есть, но с главным не спорит. Статусы без
+#: решения (OPEN_STATUSES) не заливаются вовсе — у них рамка.
+#:
+#: «Неприменимо» НАМЕРЕННО НИЖЕ 3:1 к подложке (2.3 и 2.0) — порога графики из
+#: 1.4.11. Он спрашивает с графики, без которой не понять содержимого, а здесь
+#: счёт и доля стоят словами во второй строке; сегмент — второй, тихий канал.
+STATUS_TONES = {
+    "dark": {"not-applicable": "#484F58", "rejected": "#D29922", "_": "#6E7681"},
+    "light": {"not-applicable": "#AFB8C1", "rejected": "#BF8700", "_": "#6E7781"},
+}
+
+#: Порядок статусов после механизмов. «Без ответа» считается здесь, а не
+#: приходит от каталога, и всегда встаёт последним: это разница между
+#: каталогом и ответом, а не решение проекта.
+STATUS_ORDER = ("not-applicable", "rejected", "unreviewed")
+UNANSWERED = "unanswered"
+OPEN_STATUSES = ("unreviewed", UNANSWERED)
 
 
 def ordered_mechanisms(mechanisms: dict[str, int]) -> list[tuple[str, int]]:
@@ -717,6 +739,15 @@ def ordered_mechanisms(mechanisms: dict[str, int]) -> list[tuple[str, int]]:
     known = [(name, mechanisms[name]) for name in MECHANISM_ORDER if name in mechanisms]
     rest = sorted((n, v) for n, v in mechanisms.items() if n not in MECHANISM_ORDER)
     return known + rest
+
+
+def ordered_statuses(statuses: dict[str, int]) -> list[tuple[str, int]]:
+    """Статусы в показанном порядке: известные, незнакомые по имени, «без ответа» последним."""
+    known = [(name, statuses[name]) for name in STATUS_ORDER if name in statuses]
+    rest = sorted((n, v) for n, v in statuses.items()
+                  if n not in STATUS_ORDER and n != UNANSWERED)
+    last = [(UNANSWERED, statuses[UNANSWERED])] if UNANSWERED in statuses else []
+    return known + rest + last
 
 
 def project_made(facts: dict) -> list[tuple[str, str]]:
@@ -746,26 +777,49 @@ def project_rules(answer: dict | None, catalogue: int | None = None) -> dict | N
     mechanisms = answer.get("by_mechanism")
     if not isinstance(mechanisms, dict) or not mechanisms:
         return None
+    # ПОЛОСА — ВЕСЬ КАТАЛОГ, А НЕ ТОЛЬКО ДЕЙСТВУЮЩЕЕ. Доли механизмов в сумме
+    # дают ровно `active`: «неприменимо», «отклонено» и правила без ответа в
+    # полосу не попадали, и проект с восемнадцатью неотвеченными выглядел
+    # полностью покрытым. Первым это заметил владелец, а не проверка.
+    by_status = answer.get("by_status")
+    statuses = ({str(k): int(v) for k, v in by_status.items()
+                 if k != "active" and isinstance(v, int) and v > 0}
+                if isinstance(by_status, dict) else {})
+    answered = answer.get("answered")
+    if isinstance(catalogue, int) and isinstance(answered, int) and catalogue > answered:
+        statuses[UNANSWERED] = catalogue - answered
     return {
-        "answered": answer.get("answered"),
+        "answered": answered,
         "trails": answer.get("trails"),
         # Сколько правил в каталоге СЕЙЧАС — знаменатель «ответил на N из M».
         # После выпуска каталога новые правила видны разницей, а не прячутся за
         # числом, которое само по себе ничего не говорит о полноте.
         "catalogue": catalogue,
         "mechanisms": {str(k): int(v) for k, v in mechanisms.items() if isinstance(v, int)},
+        "statuses": statuses,
     }
 
 
-def rules_strip(accent: dict, width: int, dark: bool, label_colour: str) -> list[str]:
-    """Полоса «чем держатся правила» и два числа под ней.
+def rules_strip(accent: dict, width: int, dark: bool, label_colour: str,
+                tail_high: bool = False) -> list[str]:
+    """Полоса «чем держатся правила» и две строки под ней.
+
+    ПОЛОСА — ВЕСЬ КАТАЛОГ. Слева механизмы действующих правил, справа от них
+    статусы: «неприменимо», «отклонено», «без ответа». Первая строка под
+    полосой — механизмы, вторая — статусы и «N of M rules answered» у правого
+    края. Раскладка одна на все кадры: подпись, прыгавшая между строками от
+    длины легенды, читалась как поломка.
+
+    ``tail_high`` поднимает правую подпись в строку заголовка — если хоть в
+    одном кадре вторая строка не вмещает её рядом со статусами. Решается за всю
+    картинку сразу (render_featured), а не покадрово, по той же причине.
 
     ПРОЕКТ БЕЗ ОТВЕТА НЕ ПРОПУСКАЕТСЯ, А НАЗЫВАЕТСЯ. «Не подключён» и «правил
     ноль» — разные состояния, и пустая полоса читалась бы вторым. Поэтому у
     неподключённого стоит строка словами, а не пустота (правило 046).
     """
-    top, left = 250, 36
-    right = width - 36
+    top, left = 250, STRIP_LEFT
+    right = width - STRIP_LEFT
     rules = accent.get("rules")
     # ЗАГОЛОВОК БЛОКА ОБЯЗАТЕЛЕН. Полоса из цветных долей без подписи не
     # объясняет свой предмет: читателю видно, что доли разные, и непонятно,
@@ -780,55 +834,94 @@ def rules_strip(accent: dict, width: int, dark: bool, label_colour: str) -> list
                 f'font-family="{FONT}" font-size="13" font-weight="600">'
                 f'not connected to the rules catalogue yet</text>']
 
-    tones = MECHANISM_TONES["dark" if dark else "light"]
-    shares = ordered_mechanisms(rules["mechanisms"])
-    total = sum(value for _, value in shares) or 1
-    track = right - left
-    out: list[str] = []
+    theme = "dark" if dark else "light"
+    shares, statuses, whole = strip_parts(rules)
+    mechanism_tones, status_tones = MECHANISM_TONES[theme], STATUS_TONES[theme]
+    painted = ([(name, value, mechanism_tones.get(name, mechanism_tones["_"]))
+                for name, value in shares]
+               + [(name, value, None if name in OPEN_STATUSES
+                   else status_tones.get(name, status_tones["_"]))
+                  for name, value in statuses])
+    # Зазоры вычитаются из дорожки ДО деления: иначе полоса из семи долей
+    # вылезала за правый край на двенадцать точек, мимо подписи под ней.
+    track = right - left - STRIP_SEGMENT_GAP * (len(painted) - 1)
+    out = [caption]
     offset = left
-    for name, value in shares:
+    for name, value, tone in painted:
         # Полоса делится по долям, но каждая доля видима: механизм с одним
         # правилом из двухсот — тоже ответ, и стереть его в ноль пикселей
         # значило бы показать, что его нет.
-        span = max(track * value / total, 3.0)
-        out.append(
-            f'    <rect x="{offset:.1f}" y="{top}" width="{span:.1f}" height="11" '
-            f'rx="5.5" fill="{tones.get(name, tones["_"])}"/>'
-        )
-        offset += span + 2
-    legend = mechanism_legend(shares)
+        span = max(track * value / (whole or 1), 3.0)
+        if tone is None:
+            # Без решения — рамка без заливки: место в каталоге есть, ответа нет.
+            out.append(
+                f'    <rect x="{offset + 0.5:.1f}" y="{top + 0.5}" width="{span - 1:.1f}" '
+                f'height="10" rx="5" fill="none" stroke="{label_colour}" '
+                f'stroke-dasharray="3 2"/>'
+            )
+        else:
+            out.append(
+                f'    <rect x="{offset:.1f}" y="{top}" width="{span:.1f}" height="11" '
+                f'rx="5.5" fill="{tone}"/>'
+            )
+        offset += span + STRIP_SEGMENT_GAP
+    text = f'fill="{label_colour}" font-family="{FONT}" font-size="13" font-weight="600"'
+    out.append(f'    <text x="{left}" y="{top + 32}" {text}>'
+               f'{escape(share_legend(shares, whole))}</text>')
+    if statuses:
+        out.append(f'    <text x="{left}" y="{top + 50}" {text}>'
+                   f'{escape(share_legend(statuses, whole))}</text>')
     tail = answered_tail(rules)
-    out.insert(0, caption)
-    out.append(
-        f'    <text x="{left}" y="{top + 32}" fill="{label_colour}" font-family="{FONT}" '
-        f'font-size="13" font-weight="600">{escape(legend)}</text>'
-    )
     if tail:
-        # Правая подпись уходит строкой ниже, если с долями не помещается рядом:
-        # наложение двух строк нечитаемо, а обрезать числа нельзя (016). Ширина
-        # оценивается с запасом — 7.2 пикселя на знак при 13-м кегле и 600 весе.
-        together = (len(legend) + len(tail)) * STRIP_CHAR + STRIP_GAP <= right - left
-        out.append(
-            f'    <text x="{right}" y="{top + (32 if together else 50)}" fill="{label_colour}" '
-            f'font-family="{FONT}" font-size="13" font-weight="600" text-anchor="end">'
-            f'{escape(tail)}</text>'
-        )
+        out.append(f'    <text x="{right}" y="{top - 12 if tail_high else top + 50}" {text} '
+                   f'text-anchor="end">{escape(tail)}</text>')
     return out
 
 
-#: Оценка ширины знака подписи полосы и минимальный зазор между подписями.
+#: Поле слева и справа от полосы, оценка ширины знака подписи, минимальный
+#: зазор между подписями и зазор между долями полосы.
+STRIP_LEFT = 36
 STRIP_CHAR, STRIP_GAP = 7.2, 24
+STRIP_SEGMENT_GAP = 2
 
 
-def mechanism_legend(shares: list[tuple[str, int]]) -> str:
-    """Подпись полосы: у каждого механизма счёт и доля — «gate 86 (44.8%)».
+def strip_parts(rules: dict) -> tuple[list[tuple[str, int]], list[tuple[str, int]], int]:
+    """Механизмы, статусы и общая база долей — длина всей полосы."""
+    shares = ordered_mechanisms(rules["mechanisms"])
+    statuses = ordered_statuses(rules.get("statuses") or {})
+    return shares, statuses, sum(v for _, v in shares) + sum(v for _, v in statuses)
 
-    Доля — от правил, держащихся механизмами, то есть от длины самой полосы: у
-    сегмента и у числа под ним одна база. Округление — общее с карточкой
-    технологий (share_text).
+
+def strip_fits(rules: dict | None, width: int) -> bool:
+    """Вмещает ли вторая строка статусы и правую подпись рядом, не внахлёст.
+
+    Ширина оценивается с запасом — 7.2 пикселя на знак при 13-м кегле и 600
+    весе. Наложение нечитаемо, а обрезать числа нельзя (016).
     """
-    whole = sum(value for _, value in shares)
-    return " · ".join(f"{name} {value} ({share_text(value, whole)})" for name, value in shares)
+    if not rules:
+        return True
+    _, statuses, whole = strip_parts(rules)
+    tail = answered_tail(rules)
+    if not statuses or not tail:
+        return True
+    left = len(share_legend(statuses, whole))
+    return (left + len(tail)) * STRIP_CHAR + STRIP_GAP <= width - 2 * STRIP_LEFT
+
+
+def share_name(name: str) -> str:
+    """Имя доли для читателя: ``not-applicable`` → «not applicable»."""
+    return name.replace("-", " ")
+
+
+def share_legend(shares: list[tuple[str, int]], whole: int | None = None) -> str:
+    """Подпись долей словами: у каждой счёт и доля — «gate 86 (40.4%)».
+
+    Доля — от длины всей полосы, то есть от каталога: у сегмента и у числа под
+    ним одна база. Округление — общее с карточкой технологий (share_text).
+    """
+    base = sum(value for _, value in shares) if whole is None else whole
+    return " · ".join(f"{share_name(name)} {value} ({share_text(value, base)})"
+                      for name, value in shares)
 
 
 def answered_tail(rules: dict) -> str:
@@ -906,6 +999,7 @@ ART_FILLS = {
         "#0E4429", "#006D32", "#26A641", "#39D353",         # клетки года
         "#3FB950", "#58A6FF", "#D2A8FF", "#F85149",         # доли полосы механизмов
         "#8B949E", "#6E7681",                               # они же: document и незнакомый
+        "#39C5CF", "#484F58", "#D29922",                    # skill, неприменимо, отклонено
         "#58A6FF22",                                        # заливка под тренда линией
     }),
     "light": frozenset({
@@ -913,6 +1007,7 @@ ART_FILLS = {
         "#9BE9A8", "#40C463", "#30A14E", "#216E39",
         "#1A7F37", "#0969DA", "#8250DF", "#CF222E",
         "#8C959F", "#6E7781",
+        "#1B7C83", "#AFB8C1", "#BF8700",
         "#0969DA1A",
     }),
 }
@@ -1055,7 +1150,9 @@ def render_featured(accents: list[dict], dark: bool) -> str:
             "  обязана говорить, что она урезана, а описание — не то место, где это уместно."
         )
 
-    width, height = 1000, 312
+    # 322, а не 312: под полосой правил у всех кадров две строки, и вторая
+    # стояла в восьми точках от нижнего края против двадцати восьми сверху.
+    width, height = 1000, 322
     cycle = ACCENT_SECONDS * len(accents)
     if dark:
         card, stroke, name_c, num_c, lab_c = "#0D1117", "#30363D", "#F0F6FC", "#58A6FF", "#7D8590"
@@ -1063,6 +1160,10 @@ def render_featured(accents: list[dict], dark: bool) -> str:
         card, stroke, name_c, num_c, lab_c = "#FFFFFF", "#D0D7DE", "#1F2328", "#0969DA", "#636C76"
 
     step = 100 / len(accents)
+    # Где стоит «N of M rules answered», решается за всю картинку: кадры
+    # сменяют друг друга на одном месте, и подпись, прыгающая между строками,
+    # читается как поломка, а не как раскладка.
+    tail_high = not all(strip_fits(accent.get("rules"), width) for accent in accents)
     lines = [
         svg_open(width, height, accent_label(accents)),
         "<style>",
@@ -1133,7 +1234,7 @@ def render_featured(accents: list[dict], dark: bool) -> str:
         # оценка его. Доля «ничем» показывается наравне с остальными и не
         # прячется: правило под гейтом и правило без механизма обязаны быть
         # различимы с одного взгляда — в этом весь смысл блока.
-        lines.extend(rules_strip(accent, width, dark, lab_c))
+        lines.extend(rules_strip(accent, width, dark, lab_c, tail_high))
         lines.append("  </g>")
     lines.append("</svg>")
     return "\n".join(lines) + "\n"
@@ -4245,34 +4346,63 @@ def selftest() -> int:
             broken.append(f"правила, {name}: ожидалось {'есть' if expected else 'нет'}")
         print(f"  {'есть' if got else 'нет '}      — правила: {name}")
 
-    # ДОЛИ И ЗНАМЕНАТЕЛЬ (решение владельца 28 сентября). Доля — от правил,
-    # держащихся механизмами, одним округлением с карточкой технологий; «из
-    # скольких» — от размера каталога, и без него подпись остаётся прежней.
+    # ДОЛИ И ЗНАМЕНАТЕЛЬ (решение владельца 28 сентября). Полоса — весь каталог:
+    # механизмы, статусы и правила без ответа; доля — от каталога, одним
+    # округлением с карточкой технологий; «из скольких» — от размера каталога,
+    # и без него подпись остаётся прежней.
     grader = project_rules({"answered": 195, "trails": 187,
+                            "by_status": {"active": 192, "not-applicable": 3},
                             "by_mechanism": {"gate": 86, "pipeline": 39, "document": 67}}, 213)
-    mechanisms = project_rules({"answered": 207, "trails": 9,
-                                "by_mechanism": {"gate": 166, "pipeline": 19,
-                                                 "document": 8, "skill": 1}}, 213)
+    mechanisms = project_rules({"answered": 213, "trails": 14,
+                                "by_status": {"active": 204, "not-applicable": 9},
+                                "by_mechanism": {"gate": 171, "pipeline": 23,
+                                                 "document": 8, "skill": 2}}, 213)
     lone = project_rules({"answered": 20, "by_mechanism": {"gate": 20}})
-    strip_line = " ".join(rules_strip({"rules": grader}, 1000, True, "#8B949E"))
-    long_strip = rules_strip({"rules": mechanisms}, 1000, True, "#8B949E")
-    crowded = project_rules({"answered": 207, "trails": 9, "by_mechanism": {
-        f"механизм-{i}": 10 + i for i in range(7)}}, 213)
-    crowd = rules_strip({"rules": crowded}, 1000, True, "#8B949E")
-    heights = [re.search(r'y="(\d+)"', line).group(1) for line in crowd if "rules answered" in line
-               or "механизм-0" in line and "<text" in line]
+    grader_strip = rules_strip({"rules": grader}, 1000, True, "#8B949E")
+    strip_line = " ".join(grader_strip)
+    crowded = project_rules({"answered": 150, "trails": 1234, "by_status": {
+        "active": 70, **{f"статус-{i}": 10 for i in range(8)}},
+        "by_mechanism": {"gate": 70}}, 213)
+
+    def rows(strip: list[str], *marks: str) -> set[str]:
+        """Высоты строк подписи, где встречается хоть одна из меток."""
+        return {re.search(r' y="([\d.]+)"', line).group(1) for line in strip
+                if "<text" in line and any(mark in line for mark in marks)}
+
+    def painted_total(strip: list[str]) -> float:
+        """Правый край последней доли полосы."""
+        edges = [float(x) + float(w) for x, w in
+                 re.findall(r'<rect x="([\d.]+)" y="[\d.]+" width="([\d.]+)"', " ".join(strip))]
+        return max(edges)
+
+    tails = [rows(frame.split("\n"), "rules answered") for frame in
+             render_featured([{**accents[0], "rules": grader},
+                              {**accents[1], "rules": crowded}], True).split('class="accent"')[1:]]
     strip_cases = [
-        ("доля рядом со счётом", "gate 86 (44.8%)" in strip_line),
+        ("доля рядом со счётом — от каталога", "gate 86 (40.4%)" in strip_line),
         ("знаменатель — размер каталога", "195 of 213 rules answered" in strip_line),
         ("без каталога подпись прежняя", answered_tail(lone) == "20 rules answered"),
-        ("меньше видимого — не ноль", "(<0.1%)" in mechanism_legend([("gate", 5000), ("skill", 1)])),
-        ("четыре механизма и хвост — одной строкой",
-         len({re.search(r'y="(\d+)"', line).group(1) for line in long_strip
-              if "<text" in line and ("gate 166" in line or "rules answered" in line)}) == 1),
-        ("не влезло — хвост строкой ниже, а не поверх", len(set(heights)) == 2),
+        ("меньше видимого — не ноль", "(<0.1%)" in share_legend([("gate", 5000), ("skill", 1)])),
+        ("неприменимое в полосе, а не выпало", "not applicable 3 (1.4%)" in strip_line),
+        ("без ответа — разница с каталогом", "unanswered 18 (8.5%)" in strip_line),
+        ("полоса — весь каталог", sum(v for part in strip_parts(grader)[:2]
+                                      for _, v in part) == 213),
+        ("без ответа — рамка, а не заливка", 'fill="none" stroke="#8B949E"' in strip_line),
+        ("полоса не шире дорожки", painted_total(grader_strip) <= 1000 - STRIP_LEFT),
+        ("механизмы первой строкой, статусы и хвост — второй",
+         rows(grader_strip, "gate 86") == {"282"}
+         and rows(grader_strip, "unanswered", "rules answered") == {"300"}),
+        ("всё отвечено — хвост всё равно второй строкой",
+         rows(rules_strip({"rules": mechanisms}, 1000, True, "#8B949E"),
+              "rules answered") == {"300"}),
+        ("не влезло — хвост в строке заголовка у всех кадров, а не поверх",
+         not strip_fits(crowded, 1000) and tails == [{"238"}, {"238"}]),
         ("подпись картинки говорит то же",
-         "gate 86 (44.8%)" in accent_label([{**accents[0], "rules": grader}])
-         and "195 of 213 rules answered" in accent_label([{**accents[0], "rules": grader}])),
+         all(part in accent_label([{**accents[0], "rules": grader}]) for part in
+             ("gate 86 (40.4%)", "not applicable 3 (1.4%)", "unanswered 18 (8.5%)",
+              "195 of 213 rules answered"))),
+        ("картинка с полосой остаётся XML",
+         _parses(render_featured([{**accents[0], "rules": grader}], True))),
     ]
     for name, ok in strip_cases:
         if not ok:
