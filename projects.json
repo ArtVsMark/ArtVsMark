@@ -131,7 +131,7 @@
           "workflow": "ci.yml"
         },
         "coverage": {
-          "none": "покрытие не считается: ни в одном из прогонов проекта нет шага с coverage — линтер, формат, типы и тесты без него"
+          "facts": "coverage_percent"
         },
         "version": {
           "none": "пакета нет: на PyPI имени engineering-pipeline-mechanisms нет, а версионируется здесь не пакет, а договор — файлом CONTRACT_VERSION"
