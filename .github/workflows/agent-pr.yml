@@ -92,6 +92,8 @@ jobs:
           # изменений не больше одного, и вопрос здесь «есть ли», а не «сколько».
           out=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" \
             --state open --json number --jq 'length' 2>&1) && rc=0 || rc=$?
+          # слова ok/state/broken — договор scripts/gh_outcome.py::classify; case ниже
+          # повторяет их буквами: оболочка питон не импортирует (071).
           verdict=$(printf '%s\n' "$out" | python3 scripts/gh_outcome.py --code "$rc") \
             || verdict="broken: разбор исходов не отработал — scripts/gh_outcome.py"
           case "$verdict" in
@@ -191,6 +193,8 @@ jobs:
           # там стоп-кран навсегда. Решение живёт в scripts/hold.py — рядом с
           # тем, кто этот маркер потом читает (правило 090), и у него есть
           # набор.
+          # ответ yes/no — договор scripts/hold.py::marker_needed, сравнение ниже
+          # повторяет его буквами (071).
           marker=$(printf '%s\n' "$body" | python3 scripts/hold.py --marker-needed) \
             || { echo "::error::Решение о маркере не отработало — scripts/hold.py"; exit 1; }
 
@@ -223,6 +227,8 @@ jobs:
           out=$(gh pr create --repo "$GITHUB_REPOSITORY" --base main --head "$BRANCH" \
             --title "$title" --body-file "$RUNNER_TEMP/pr-body.md" 2>&1) && rc=0 || rc=$?
           if [ "$rc" -ne 0 ]; then
+            # слова ok/state/broken — договор scripts/gh_outcome.py::classify; case ниже
+            # повторяет их буквами: оболочка питон не импортирует (071).
             verdict=$(printf '%s\n' "$out" | python3 scripts/gh_outcome.py --code "$rc") \
               || verdict="broken: разбор исходов не отработал — scripts/gh_outcome.py"
             if [ "${verdict%%:*}" = state ]; then

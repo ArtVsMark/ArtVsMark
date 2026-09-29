@@ -61,7 +61,9 @@ STUCK_MINUTES = 5
 
 #: Обязательная проверка. Имя РАБОТЫ, а не прогона: в защите ветки правило
 #: записано именно по нему, и расхождение этих имён однажды сделало несливаемым
-#: каждое изменение.
+#: каждое изменение. Копия имени работы из .github/workflows/pr-check.yml:
+#: объявляет его прогон, питон YAML не импортирует; переименуют работу — меняется
+#: и эта строка, и `workflows:` в release-hold.yml (071).
 REQUIRED = "PR check"
 
 #: Метка «придержано намеренно» — scripts/checks.py::HOLD_LABEL. Придержанное
@@ -126,8 +128,8 @@ def required_verdict(number: int) -> str | None:
     entries = [r for r in runs if r.get("name") == REQUIRED]
     if not entries:
         return None
-    latest = max(entries, key=lambda r: r.get("started_at") or "")
-    return latest.get("conclusion")
+    # Последняя запись — общая свёртка scripts/checks.py (214).
+    return checks.latest_by_name(entries)[0].get("conclusion")
 
 
 def body(found: list[str], minutes: int) -> str:

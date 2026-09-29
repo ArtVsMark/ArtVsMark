@@ -21,6 +21,8 @@ name: release-hold
 
 on:
   workflow_run:
+    # имя — копия прогона .github/workflows/pr-check.yml; его же читает
+    # scripts/stuck_prs.py::REQUIRED. Переименуют — меняются все три (071).
     workflows: ["PR check"]
     types: [completed]
   # ВТОРОЙ ПОВОД ПРОСНУТЬСЯ: ТЕЛО ОТРЕДАКТИРОВАЛИ.
@@ -151,6 +153,8 @@ jobs:
             --jq .body > "$RUNNER_TEMP/body.md"
           labels=$(gh pr view "$number" --repo "$GITHUB_REPOSITORY" --json labels \
                      --jq '[.labels[].name] | join(",")')
+          # слова release/keep/nothing — договор scripts/hold.py::decide; case ниже
+          # повторяет их буквами (071).
           verdict=$(python3 scripts/hold.py --body-file "$RUNNER_TEMP/body.md" \
                       --labels "$labels" --checks "$result")
           rc=$?
@@ -187,6 +191,8 @@ jobs:
               out=$(GH_TOKEN="$OWNER_TOKEN" gh pr merge "$number" \
                       --repo "$GITHUB_REPOSITORY" --auto --squash 2>&1) && rc=0 || rc=$?
               if [ "$rc" -ne 0 ]; then
+                # слова ok/state/broken — договор scripts/gh_outcome.py::classify; case ниже
+                # повторяет их буквами: оболочка питон не импортирует (071).
                 v=$(printf '%s\n' "$out" | python3 scripts/gh_outcome.py --code "$rc") \
                   || v="broken: разбор исходов не отработал — scripts/gh_outcome.py"
                 case "$v" in

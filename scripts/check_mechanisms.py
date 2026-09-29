@@ -1516,6 +1516,122 @@ def unreached_names(sources: dict[str, str],
     return found
 
 
+#: Вызовы `re`, чей первый аргумент — образец. Образец, записанный литералом.
+REGEX_CALLS = ("compile", "search", "match", "fullmatch", "findall", "finditer",
+               "sub", "subn", "split")
+
+#: Намеренные копии образца между модулями — с причиной (071). Пусто: 29
+#: сентября литеральных копий в рабочем коде ноль.
+SIGNED_COPIES: dict[str, str] = {}
+
+
+def regex_copies(sources: dict[str, str],
+                 signed: dict[str, str] | None = None) -> list[str]:
+    """Один образец в двух модулях рабочего кода — второй разбор предмета (214).
+
+    Вторая реализация, даже совпадающая сегодня буква в букву, расходится с
+    первой при первой правке одной из них, и расходится молча: каждая исправна и
+    покрыта своим набором. 28 сентября так разошлись три разбора — последней
+    записи проверки, фрагмента журнала и строки ответа гейту, — но почти
+    копиями, а не литералом.
+
+    ГРАНИЦА ПРАВИЛА, И ОНА НАЗВАНА: машинно видна только ЛИТЕРАЛЬНАЯ копия —
+    одна строка-образец в `re.*` двух модулей. Почти копия (другая группа
+    захвата) и дубль предиката, написанного кодом, гейту не видны по
+    построению; их сводят починками. Замер 29 сентября: литеральных образцов в
+    рабочем коде 82, все различные, повторов между модулями ноль — поэтому гейт
+    зелёный и дёшев.
+    """
+    signed = SIGNED_COPIES if signed is None else signed
+    seen: dict[str, set[str]] = {}
+    for name, source in sorted(sources.items()):
+        tree = ast.parse(source)
+        imports = _import_table(tree)
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call) or not node.args:
+                continue
+            head, _, tail = _called(node, imports).rpartition(".")
+            first = node.args[0]
+            if head == "re" and tail in REGEX_CALLS and isinstance(first, ast.Constant) \
+                    and isinstance(first.value, str):
+                seen.setdefault(first.value, set()).add(name)
+    return [f"образец {checks.clip(pattern, 60)!r} стоит в {', '.join(sorted(modules))} — "
+            f"второй разбор одного предмета разойдётся молча; второй модуль зовёт "
+            f"первый, а намеренная копия вносится в SIGNED_COPIES с причиной (214)"
+            for pattern, modules in sorted(seen.items())
+            if len(modules) > 1 and pattern not in signed]
+
+
+#: Живые маркеры — тексты, по которым механизм находит своё: задачу сторожа,
+#: заготовку тела. Закрытый набор, где «узнаёт» объявлено (209): текст берётся
+#: у владельца, а не пишется буквами в другом модуле или прогоне. Функция в
+#: наборе — маркер с переменной частью; сверяется его постоянная часть.
+LIVE_MARKERS = {
+    "hold.py::TEMPLATE_MARKER": "заготовка тела изменения; agent-pr берёт её ключом",
+    "stuck_prs.py::MARKER": "задача сторожа застрявших изменений",
+    "staleness.py::marker": "задача сторожа свежести, своя на каждый прогон",
+}
+
+
+def _marker_text(source: str, name: str) -> str:
+    """Текст маркера: значение константы или постоянное начало f-строки функции."""
+    consts = _module_strings(source)
+    if name in consts:
+        return consts[name]
+    for node in ast.parse(source).body:
+        if isinstance(node, ast.FunctionDef) and node.name == name:
+            for sub in ast.walk(node):
+                if isinstance(sub, ast.JoinedStr) and sub.values \
+                        and isinstance(sub.values[0], ast.Constant):
+                    return str(sub.values[0].value)
+    return ""
+
+
+def marker_copies(sources: dict[str, str], flows: dict[str, str],
+                  markers: dict[str, str] | None = None) -> list[str]:
+    """Живой маркер, переписанный буквами вне своего владельца (209).
+
+    Рукописная копия букв расходится с константой молча при первой её правке,
+    и набор, сверяющий с той же копией, этого не увидит. Так жил маркер
+    заготовки: его писал буквами .github/workflows/agent-pr.yml, а узнавал
+    scripts/hold.py (сведено #236).
+
+    ГРАНИЦА ПРАВИЛА: общего гейта «цитата константы» нет и не будет — отличить
+    её от совпавшего по словам текста можно только смыслом. Поэтому набор
+    закрытый и маленький: маркеры, по которым механизм находит своё. Владелец в
+    счёт не идёт — там текст меняется вместе с константой; набор другого модуля
+    — тоже, образцы в нём данные, а не узнавание.
+    """
+    markers = LIVE_MARKERS if markers is None else markers
+    found: list[str] = []
+    for place in sorted(markers):
+        owner, _, name = place.partition("::")
+        if owner not in sources:
+            continue
+        text = _marker_text(sources[owner], name)
+        if len(text) < 8:
+            found.append(f"{place}: текст маркера не прочитан — сверять копии не с чем")
+            continue
+        for module, source in sorted(sources.items()):
+            if module == owner:
+                continue
+            tree = ast.parse(source)
+            skip = {id(n) for f in tree.body if isinstance(f, ast.FunctionDef)
+                    and f.name == "selftest" for n in ast.walk(f)}
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Constant) and isinstance(node.value, str) \
+                        and text in node.value and id(node) not in skip:
+                    found.append(f"{module}: маркер {place} переписан буквами — берите "
+                                 f"его у владельца (209)")
+                    break
+        for flow, body in sorted(flows.items()):
+            for number, line in enumerate(body.splitlines(), 1):
+                if text in line and not line.lstrip().startswith("#"):
+                    found.append(f"{flow}:{number}: маркер {place} переписан буквами в "
+                                 f"прогоне — берите его у владельца ключом (209)")
+    return found
+
+
 #: Путь к СПИСКУ площадки: последнее звено до запроса — имя коллекции. Одиночный
 #: объект (изменение, задача, выпуск `latest`, файл по пути) кончается номером
 #: или именем и сюда не попадает. Правила ветки — список, хотя и под `branches`.
@@ -2478,6 +2594,57 @@ def selftest() -> int:
                           f"{'отказ' if must_reject else 'пропуск'}, вышло {unreached_names(srcs, exempt)}")
         print(f"  {'отвергнут' if found else 'пропущен '} — рабочий путь: {name}")
 
+    # ── один образец — один модуль (214), живой маркер — у владельца (209) ─
+    copy_cases = [
+        ("один образец в двух модулях",
+         {"a.py": "import re\nX = re.compile(r'^Соседи:')\n",
+          "b.py": "import re\nY = re.search(r'^Соседи:', t)\n"}, {}, True),
+        ("под псевдонимом модуля — тоже", {"a.py": "import re\nX = re.compile('ab+c')\n",
+                                           "b.py": "import re as rx\nY = rx.match('ab+c', t)\n"},
+         {}, True),
+        ("второй модуль зовёт первый", {"a.py": "import re\nX = re.compile('ab+c')\n",
+                                        "b.py": "import a\nY = a.X.search(t)\n"}, {}, False),
+        ("образец в одном модуле дважды — не предмет",
+         {"a.py": "import re\nX = re.compile('ab+c')\nY = re.search('ab+c', t)\n"}, {}, False),
+        ("подписанная копия", {"a.py": "import re\nX = re.compile('ab+c')\n",
+                               "b.py": "import re\nY = re.match('ab+c', t)\n"},
+         {"ab+c": "граница процессов"}, False),
+    ]
+    for name, srcs, signed, must_reject in copy_cases:
+        found = bool(regex_copies(srcs, signed))
+        if found != must_reject:
+            broken.append(f"копии образца, {name}: ожидалось "
+                          f"{'отказ' if must_reject else 'пропуск'}, вышло {found}")
+        print(f"  {'отвергнут' if found else 'пропущен '} — копии образца: {name}")
+
+    OWNER = {"m.py": 'MARK = "<!-- m-marker: не удаляйте -->"\n'}
+    FN_OWNER = {"s.py": 'def marker(w):\n    return f"<!-- s-marker:{w}: не удаляйте -->"\n'}
+    marker_cases = [
+        ("маркер буквами в другом модуле",
+         {**OWNER, "a.py": 'X = "<!-- m-marker: не удаляйте -->"\n'}, {}, {"m.py::MARK": ""}, True),
+        ("маркер буквами в прогоне",
+         OWNER, {"f.yml": 'run: printf "<!-- m-marker: не удаляйте -->"'}, {"m.py::MARK": ""}, True),
+        ("маркер импортом", {**OWNER, "a.py": "import m\nX = m.MARK\n"}, {},
+         {"m.py::MARK": ""}, False),
+        ("образец в наборе другого модуля — данные",
+         {**OWNER, "a.py": 'def selftest():\n    x = "<!-- m-marker: не удаляйте -->"\n'},
+         {}, {"m.py::MARK": ""}, False),
+        ("маркер-функция без копий — чисто", {**FN_OWNER, "a.py": "import s\nX = s.marker('x')\n"},
+         {}, {"s.py::marker": ""}, False),
+        ("маркер-функция: постоянная часть буквами",
+         {**FN_OWNER, "a.py": 'X = "<!-- s-marker:snake.yml: не удаляйте -->"\n'}, {},
+         {"s.py::marker": ""}, True),
+        ("упоминание в комментарии прогона — не копия",
+         OWNER, {"f.yml": '# маркер <!-- m-marker: не удаляйте --> ставит m.py'},
+         {"m.py::MARK": ""}, False),
+    ]
+    for name, srcs, flws, markers, must_reject in marker_cases:
+        found = bool(marker_copies(srcs, flws, markers))
+        if found != must_reject:
+            broken.append(f"маркеры, {name}: ожидалось "
+                          f"{'отказ' if must_reject else 'пропуск'}, вышло {found}")
+        print(f"  {'отвергнут' if found else 'пропущен '} — маркеры: {name}")
+
     # ── списки читаются до конца (правило 212) ─────────────────────────────
     # Обе стороны (140): находка на одной странице без предела и пропуск у
     # обходчика, у названного предела, у одиночного объекта и у записи.
@@ -2564,6 +2731,7 @@ def main() -> int:
              + gate_really_blocks(rules, flows)
              + audit_harness(sources, flows) + audit_charter(ROOT)
              + list_reads(sources, flows) + unreached_names(sources)
+             + regex_copies(sources) + marker_copies(sources, flows)
              + audit_sparse(sources, flows) + audit_verdicts(sources)
              + audit_pipeline_labels(sources, flows) + shell_names(flows) + env_defaults(sources)
              + silent_truncation(sources) + own_output_readers(sources)
