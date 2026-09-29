@@ -63,22 +63,41 @@ RUSSIAN_SECTION = "По-русски"
 #: сборка. Остальное — значки объявленных хостов.
 ALLOWED_IMAGE_HOSTS = ("img.shields.io", "raw.githubusercontent.com")
 
-#: Ссылка на НОМЕРНУЮ задачу или изменение. Адрес трекера целиком не запрещён.
-NUMBERED_TRACKER = re.compile(r"github\.com/[\w.-]+/[\w.-]+/(?:issues|pull)/\d+")
+#: ФОРМЫ ПРЕДМЕТОВ СТРАНИЦЫ ВЗЯТЫ ЗАМЕРОМ И ЧИТАЮТСЯ ВСЕ (правило 206). Замер 29
+#: сентября по README.md: `<img src="` — 18, `<source srcset="` — 36; markdown-
+#: картинок `![](…)`, картинок по сноске `![][ref]`, атрибутов в одинарных
+#: кавычках, `<details>` в любом регистре и коротких ссылок `#N` — ноль. Прежде
+#: гейт читал две формы из семи — ровно те, что стоят сегодня, — и
+#: `![demo](https://github.com/user-attachments/…)` проходил его целиком.
+
+#: Ссылка на НОМЕРНУЮ задачу или изменение — полным адресом или коротко `#N`:
+#: площадка превращает `#42` на странице профиля в ссылку на задачу 42 этого же
+#: репозитория. Адрес трекера целиком не запрещён.
+NUMBERED_TRACKER = re.compile(r"github\.com/[\w.-]+/[\w.-]+/(?:issues|pull)/\d+"
+                              r"|(?<![&\w/#])#\d+\b")
+
+#: Спойлер — в любом регистре: HTML его не различает.
+DETAILS = re.compile(r"<details\b", re.I)
 
 #: Источники изображений: и `src`, и `srcset` — второй легко забыть, а картинка
-#: приезжает через него ровно так же.
-IMAGE_SRC = re.compile(r'(?:src|srcset)="([^"]+)"')
+#: приезжает через него ровно так же. Кавычки любые, пробелы у `=` допустимы.
+IMAGE_SRC = re.compile(r"""(?:src|srcset)\s*=\s*["']([^"']+)["']""", re.I)
+
+#: Картинка разметкой Markdown: `![подпись](адрес)` и по сноске `![подпись][метка]`
+#: с определением `[метка]: адрес` ниже.
+MD_IMAGE = re.compile(r"!\[[^\]]*\]\(\s*<?([^)\s>]+)")
+MD_IMAGE_REF = re.compile(r"!\[[^\]]*\]\[([^\]]*)\]")
+MD_REF_DEF = re.compile(r"^[ \t]*\[([^\]]+)\]:\s*<?(\S+?)>?(?:\s|$)", re.M)
 
 #: Картинка на странице и её атрибуты. Разбирается тег целиком, а не отдельные
 #: атрибуты по всему тексту: у соседних картинок они перепутались бы местами.
-IMAGE_TAG = re.compile(r"<img\b[^>]*>")
-ATTR_SRC = re.compile(r'\bsrc="([^"]*)"')
-ATTR_ALT = re.compile(r'\balt="([^"]*)"')
+IMAGE_TAG = re.compile(r"<img\b[^>]*>", re.I)
+ATTR_SRC = re.compile(r"""\bsrc\s*=\s*["']([^"']*)["']""", re.I)
+ATTR_ALT = re.compile(r"""\balt\s*=\s*["']([^"']*)["']""", re.I)
 
 #: Подпись ВНУТРИ картинки. Она же — источник alt для собранных картинок, и
 #: другого у него нет.
-ARIA_LABEL = re.compile(r'\baria-label="([^"]*)"')
+ARIA_LABEL = re.compile(r"""\baria-label\s*=\s*["']([^"']*)["']""")
 
 #: Порог доли кириллицы. Обоснование — в докстроке: замер развёл языки на 6% и
 #: 70–94%, и порог стоит между ними, а не «на глаз».
@@ -98,7 +117,7 @@ def audit_page(page: str) -> list[str]:
     """Находки на витрине: спойлер, чужие картинки, номерные задачи, язык."""
     found: list[str] = []
 
-    if "<details" in page:
+    if DETAILS.search(page):
         found.append("на витрине <details>: там, где страницу читают текстом, "
                      "он схлопывается в заголовок без содержимого")
 
@@ -106,7 +125,11 @@ def audit_page(page: str) -> list[str]:
         found.append("на витрине гифка: решение владельца — гифки и картинки "
                      "самого проекта на витрину не берутся")
 
-    for src in IMAGE_SRC.findall(page):
+    refs = {label.lower(): url for label, url in MD_REF_DEF.findall(page)}
+    sources = (IMAGE_SRC.findall(page) + MD_IMAGE.findall(page)
+               + [refs.get((label or "").lower(), f"[{label}]")
+                  for label in MD_IMAGE_REF.findall(page)])
+    for src in sources:
         first = src.split()[0].split("?")[0]
         if first.startswith(("./assets/", "assets/")):
             continue
@@ -231,6 +254,15 @@ def selftest() -> int:
          ok_page + "см. https://github.com/ArtVsMark/ArtVsMark/pull/7", True),
         ("адрес трекера целиком — законен", ok_page, False),
         ("русский раздел пропал", ok_page.replace("### По-русски", "### In Russian"), True),
+        # Формы, которых прежний гейт не видел (206): картинка проходила целиком.
+        ("спойлер заглавными", ok_page + "<DETAILS><summary>x</summary>y</DETAILS>", True),
+        ("картинка разметкой", ok_page + "![demo](https://github.com/user-attachments/assets/x)", True),
+        ("картинка по сноске", ok_page + "![demo][d]\n\n[d]: https://example.com/a.png\n", True),
+        ("атрибут в одинарных кавычках", ok_page + "<img src='https://example.com/a.png' alt='a'>", True),
+        ("пробелы вокруг знака равенства", ok_page + '<img src = "https://example.com/a.png" alt="a">', True),
+        ("короткая ссылка на задачу", ok_page + "Closed in #42.", True),
+        ("своя картинка разметкой — законна", ok_page + "![шапка](./assets/header-dark.svg)", False),
+        ("цвет и якорь — не ссылка на задачу", ok_page + "color #58A6FF, see [x](#section)", False),
         ("витрина написана по-русски",
          '<img src="./assets/h.svg" alt="ш">\n### По-русски\nВся страница по-русски, целиком и полностью.', True),
     ]

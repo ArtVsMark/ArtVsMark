@@ -65,7 +65,19 @@ SECTIONS = {
 #: бы в журнал как «- internal: …» под заголовком «Внутреннее». Спрашивается
 #: именно ПРЕФИКС — слово секции внутри фразы («починка internal-гейта»)
 #: законно и находкой не является.
-SECTION_PREFIX = re.compile(rf"^(?P<name>{'|'.join(SECTIONS)})\s*:\s*", re.I)
+#:
+#: ФОРМЫ ВЗЯТЫ ИЗ СОГЛАШЕНИЙ, А НЕ ИЗ ДЕРЕВА (206): по всем 59 фрагментам
+#: истории префикса нет ни в одной форме, и замер по дереву дал бы одну форму
+#: из шести. Секцию пишут именем файла («internal:»), подписью журнала
+#: («Внутреннее:»), жирным («**fixed:**», «**Fixed**:»), в скобках
+#: («[added]») и типом conventional commits («fix:», «feat(gate):»); прежде
+#: читалась только первая. Слово без двоеточия и скобки не читается: «**fixed**
+#: навсегда» — выделение, а не подпись.
+CONVENTIONAL = ("feat", "fix", "chore", "docs", "refactor", "perf", "test", "ci", "build")
+_LABEL = "|".join((*SECTIONS, *SECTIONS.values(), *CONVENTIONAL))
+SECTION_PREFIX = re.compile(
+    rf"^(?:\*\*|__)?[\[(]?\s*(?P<name>{_LABEL})\b(?:\([^)]*\))?\s*"
+    rf"(?::\s*(?:\*\*|__)?|(?:\*\*|__)\s*:|[\])]\s*:?)\s*", re.I)
 
 
 def is_fragment(path: str) -> bool:
@@ -111,7 +123,7 @@ def parse(path: pathlib.Path) -> tuple[str, str, list[str]]:
     prefix = SECTION_PREFIX.match(body)
     if prefix:
         rest = body[prefix.end():]
-        found.append(f"{path.name}: имя секции «{prefix['name']}:» в начале строки "
+        found.append(f"{path.name}: подпись секции «{prefix['name']}» в начале строки "
                      f"подставит сборка из имени файла — оставьте «{checks.clip(rest, 60)}»")
     return section, text, found
 
@@ -170,11 +182,21 @@ def selftest() -> int:
          "internal-гейт починен (#1)", 0),
         ("длиннее имени секции — не префикс", "gate.changed.md",
          "addedness: слово длиннее имени секции", 0),
+        # Формы подписи, которых прежний образец не видел (206).
+        ("подпись журнала по-русски", "opus.internal.md", "Внутреннее: трейлер соавтора", 1),
+        ("подпись жирным, двоеточие внутри", "opus.fixed.md", "**fixed:** починили", 1),
+        ("подпись жирным, двоеточие снаружи", "opus.fixed.md", "**Fixed**: починили", 1),
+        ("подпись в скобках", "opus.added.md", "[added] новый гейт", 1),
+        ("тип conventional commits", "opus.fixed.md", "fix(gate): починили", 1),
+        ("выделение без двоеточия — не подпись", "opus.fixed.md",
+         "**починено** навсегда: гейт читает все формы (#1)", 0),
+        ("слово-тип внутри слова — не подпись", "opus.fixed.md",
+         "fixture гейта: подделка стала честной (#1)", 0),
         # Тот же разбор, что у дефиса: обе находки за один прогон, а не по одной.
         ("дефис и префикс вместе", "opus.internal.md", "- internal: трейлер соавтора", 2),
     ]
     import tempfile                                            # noqa: PLC0415
-    with tempfile.TemporaryDirectory() as tmp:
+    with tempfile.TemporaryDirectory(dir=checks.runner_temp()) as tmp:
         for name, filename, body, expected in name_cases:
             path = pathlib.Path(tmp) / filename
             path.write_text(body, encoding="utf-8")

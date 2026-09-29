@@ -12,8 +12,8 @@
 недостающая половина. Место ей уровнем выше — в том же действии каталога,
 параметром; предложено там же. Пока не переехало — живёт тут.
 
-ПОЧЕМУ ПРОВЕРКА УЗКАЯ. Спрашивается ровно одно запрещённое написание, а не
-«правильные имена». У владельца есть свои коммиты из веб-интерфейса с его
+ПОЧЕМУ ПРОВЕРКА УЗКАЯ. Спрашиваются подписи исполнителя — контейнерное
+умолчание и приложение площадки, — а не «правильные имена». У владельца есть свои коммиты из веб-интерфейса с его
 noreply-адресом, и объявлять их дефектом неверно; список согласованных имён —
 предмет гейта атрибуции, а не этого (правило 051: ложный отказ дороже пропуска).
 
@@ -48,6 +48,14 @@ import checks
 #: Умолчание, которое облачный контейнер проставляет в глобальной настройке.
 #: Оно попадало в main пять раз, пока соглашение держалось памятью окна.
 FORBIDDEN = {"Claude <noreply@anthropic.com>"}
+
+#: Вторая форма того же предмета — исполнитель автором через приложение
+#: площадки: коммит, сделанный её инструментами, а не git окна, подписан
+#: ``claude[bot] <N+claude[bot]@users.noreply.github.com>``. Сверяется ИМЯ:
+#: номер в адресе у приложения свой. Замер 29 сентября по main: контейнерное
+#: умолчание — 5 коммитов, подпись приложения — 2 (#19, #67), и прежний гейт
+#: видел только первую (206).
+FORBIDDEN_NAMES = {"claude[bot]"}
 
 #: Что писать, а не «добавьте атрибуцию»: имя сверяется со списком в
 #: .github/authors.txt гейтом каталога, поэтому образец здесь — из него, а не
@@ -140,7 +148,8 @@ def body_attribution(body: str, author: str = "", branch: str = "") -> str:
 
 def offenders(authors: list[str]) -> list[str]:
     """Подписи из списка запрещённых, встретившиеся среди авторов."""
-    return [a for a in authors if a.strip() in FORBIDDEN]
+    return [a for a in authors
+            if a.strip() in FORBIDDEN or checks.author_name(a) in FORBIDDEN_NAMES]
 
 
 
@@ -184,6 +193,8 @@ def selftest() -> int:
          ["Artem Markitanov <86671904+ArtVsMark@users.noreply.github.com>"], False),
         ("соавтор-исполнитель автором не притворяется",
          ["Claude Opus 5.5 <noreply@anthropic.com>"], False),
+        ("исполнитель через приложение площадки",
+         ["claude[bot] <209825114+claude[bot]@users.noreply.github.com>"], True),
         ("бот площадки — не предмет этой проверки",
          ["github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>"], False),
         ("коммитов нет", [], False),
@@ -404,7 +415,7 @@ def main() -> int:
     silent = unattributed(records)
 
     if bad:
-        print(checks.annotate("error", f"подписано контейнерным умолчанием коммитов: {len(bad)} из {len(records)}"), file=sys.stderr)
+        print(checks.annotate("error", f"подписано исполнителем, а не владельцем, коммитов: {len(bad)} из {len(records)}"), file=sys.stderr)
         for author, sha, subject, _ in bad:
             print(f"  • {sha} {checks.clip(subject, 60)}\n        автор: {author}", file=sys.stderr)
         print(

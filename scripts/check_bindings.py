@@ -58,6 +58,14 @@ REFERENCE = re.compile(
     r"(?<![\w./-])(?P<path>\.?[\w][\w./-]*\.(?:py|ya?ml|json|md))(?:::(?P<anchor>\w+))?"
 )
 
+# Якорь-продолжение: «scripts/checks.py::clip и ::tail» — второе имя ищется в
+# ПОСЛЕДНЕМ названном файле. ФОРМА ВЗЯТА ЗАМЕРОМ (206): 29 сентября в
+# вердиктах 250 якорей с путём и 30 без, и последние не проверял никто.
+# Из тридцати четыре — команды площадки `::error::`, их отсекает `::` сразу
+# за именем; из остальных двадцати шести четыре показывали не туда: якорь
+# стоял после чужого файла (072, 144, 180).
+CONTINUED = re.compile(r"(?<![\w.:])::(?P<anchor>\w+)\b(?!::)")
+
 
 def locate(path: str) -> pathlib.Path | None:
     """Файл, на который показывает ссылка, или ``None``.
@@ -210,12 +218,24 @@ def audit(rules: dict[str, dict]) -> tuple[list[str], int]:
         # отрицательного. Причина «этого у нас нет» устаревает от появления
         # артефакта так же, как ссылка — от переименования.
         claim = " ".join(str(binding.get(field, "")) for field in ("where", "why"))
-        for match in REFERENCE.finditer(claim):
-            path, anchor = match.group("path"), match.group("anchor")
+        # Ссылки и продолжения — в порядке текста: продолжение берёт файл у
+        # ближайшей ссылки слева.
+        found = sorted([*REFERENCE.finditer(claim), *CONTINUED.finditer(claim)],
+                       key=lambda m: m.start())
+        path = None
+        for match in found:
             checked += 1
+            anchor = match.group("anchor")
+            if match.re is REFERENCE:
+                path = match.group("path")
+            elif path is None:
+                dead.append(f"{number}: имя ::{anchor} без файла — продолжению не "
+                            f"к чему относиться")
+                continue
             file = locate(path)
             if file is None:
-                dead.append(f"{number}: нет файла — {path}")
+                if match.re is REFERENCE:
+                    dead.append(f"{number}: нет файла — {path}")
             elif anchor and anchor not in declared(file):
                 dead.append(f"{number}: нет имени {anchor} в {file.relative_to(ROOT)}")
 
@@ -253,6 +273,14 @@ def selftest() -> int:
         # раздел судит dead_sections, не эта проверка.
         ("ссылка на раздел: путь разбирается, раздел судит другая проверка",
          {"022": {"where": "CLAUDE.md § Источники истины"}}, False),
+        # Продолжение якоря (206): второе имя ищется в последнем названном файле.
+        ("продолжение живое", {"016": {"where": "scripts/checks.py::clip и ::tail"}}, False),
+        ("продолжение мёртвое", {"016": {"where": "scripts/checks.py::clip и ::nope"}}, True),
+        ("продолжение после чужого файла",
+         {"016": {"where": "scripts/checks.py::clip; README.md, как ::clip"}}, True),
+        ("продолжение без файла", {"016": {"where": "держит ::clip"}}, True),
+        ("команда площадки — не якорь",
+         {"151": {"where": "печатают через ::error:: и ::warning::"}}, False),
     ]
     broken = []
     for name, rules, must_reject in cases:

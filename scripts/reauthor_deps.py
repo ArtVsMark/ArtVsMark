@@ -184,7 +184,7 @@ def reauthor(change: dict, dry_run: bool) -> tuple[int, str]:
     # составляла площадка по кнопке владельца, а не бот.
     original = _git("log", "--no-merges", "--format=%B", f"origin/main..{source}").strip()
     with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".txt",
-                                     delete=False) as message:
+                                     dir=checks.runner_temp(), delete=False) as message:
         message.write(compose(number, original))
     _git("-c", f"user.name={OWNER_NAME}", "-c", f"user.email={OWNER_EMAIL}",
          "commit", "--quiet", "-F", message.name)
