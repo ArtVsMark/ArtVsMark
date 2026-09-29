@@ -197,6 +197,8 @@ jobs:
               echo "::error::Метки #$PR не прочитаны: ${verdict#broken: }"
               exit 1 ;;
           esac
+          # Метка `hold` — копия scripts/checks.py::HOLD_LABEL — оболочка питон не импортирует;
+          # меняется вместе с константой (071).
           if printf '%s\n' "$out" | grep -qx hold; then
             echo "#$PR: метка hold — пропуск"
             echo "SKIP=1" >> "$GITHUB_ENV"
