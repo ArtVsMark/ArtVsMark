@@ -47,7 +47,6 @@ import urllib.error
 
 REPO = os.environ.get("SHOWCASE_REPO", "ArtVsMark/ArtVsMark")
 OWNER = REPO.split("/")[0]
-API = "https://api.github.com"
 
 # Разрешительный список: классификацией считается только то, что здесь.
 # Запретительный («всё, кроме hold») не знает о метках, которые появятся

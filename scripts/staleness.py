@@ -51,7 +51,6 @@ import urllib.error
 import checks
 
 REPO = os.environ.get("SHOWCASE_REPO", "ArtVsMark/ArtVsMark")
-API = "https://api.github.com"
 
 #: За чем сторож ходит. Прогонов у витрины два, и молчат они о РАЗНОМ: один
 #: приносит числа, второй — змейку на полотне активности. Свести их в один

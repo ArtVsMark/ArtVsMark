@@ -65,7 +65,6 @@ import json
 import os
 import pathlib
 import re
-import subprocess
 import sys
 import urllib.error
 import urllib.parse
@@ -240,11 +239,6 @@ SHOWCASE = "ArtVsMark/ArtVsMark"
 #: отдельный репозиторий, а инженерную работу целиком.
 OWNER = "ArtVsMark"
 
-#: Сколько дней календаря вкладов показывает витрина. Год — не круглое число, а
-#: то, что отдаёт сама площадка: `contributionsCollection` без дат возвращает
-#: последние 365 дней, и брать другой отрезок значило бы считать самим.
-CONTRIB_DAYS = 365
-
 
 def _graphql(query: str) -> dict:
     """Ответ GraphQL-API площадки. Второй вход, и он назван (правило 001).
@@ -301,22 +295,6 @@ def repo_meta(repo: str) -> dict:
     карточка за её время не меняется.
     """
     return _api(f"/repos/{repo}")
-
-
-def badge(name: str) -> str:
-    """Значение живого бейджа грейдера из ветки ``badges``.
-
-    Бейджи публикуются отдельной веткой (issue #1235 грейдера), а не в ``main``,
-    поэтому берутся не из клона рабочего дерева, а по ссылке на ветку.
-
-    Читается через contents-API, а НЕ через ``raw.githubusercontent.com``:
-    raw отвечает 404 на запрос с заголовком ``Authorization`` — токен для него
-    чужой, и вместо содержимого приходит «нет такого файла». Отладка этого
-    стоит дорого: URL в браузере открывается, а сборка падает. Заодно contents
-    отдаёт свежий файл, тогда как raw держит свой кэш.
-    """
-    payload = _api(f"/repos/{REPO}/contents/.github/badges/{name}.json?ref=badges")
-    return json.loads(base64.b64decode(payload["content"]))["message"]
 
 
 
@@ -4885,7 +4863,6 @@ def main() -> int:
     # молодого проекта, а не молчание источника. Молчание здесь ловится иначе —
     # отказом самого запроса и сторожем курсорной разбивки в _count.
     stats = {project["repo"]: project_stats(project["repo"]) for project in config["projects"]}
-    titles = {project["repo"]: project["title"] for project in config["projects"]}
     by_repo = {project["repo"]: project for project in config["projects"]}
     accents = []
     # Находки о соседях копятся, а не роняют пересчёт. Ронять его чужой правкой
@@ -4926,13 +4903,6 @@ def main() -> int:
         + ")"
         for a in accents))
 
-    # Чьи числа на плитке: закреплённый проект, а при его отсутствии — первый
-    # по свежести. Берётся из данных, а не вписывается: витрина не называет
-    # проект по памяти автора.
-    flagship = next(
-        (p["title"] for p in config["projects"] if p.get("pin")),
-        config["projects"][0]["title"] if config["projects"] else "",
-    )
 
     # РИСУЕТСЯ ВСЕГДА, ПИШЕТСЯ НА ДИСК — ТОЛЬКО В БОЕВОМ ПРОГОНЕ. Раньше при
     # проверке плитки не рисовались вовсе, и это сходило с рук ровно потому, что
