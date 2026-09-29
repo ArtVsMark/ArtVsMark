@@ -79,6 +79,9 @@ import checks
 # Адрес ветки с производными картинками берётся у сборки, которая их туда и
 # кладёт: вторая копия адреса разъехалась бы молча (правило 090).
 from build_metrics import ASSETS_BRANCH
+# Словарь слов предела — один на витрину: вторая копия разъехалась бы молча
+# (правило 090). Законность слова держит сам check_bindings; здесь — наличие.
+from check_bindings import LIMITS
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SCRIPTS = ROOT / "scripts"
@@ -96,7 +99,14 @@ GAP_WORDS = ("механизма нет", "механизма не", "гейта
 
 #: Цикл ожидания в шаге прогона. Опрос чужого сервера держит исполнителя и
 #: платится минутами за то, что событие отдаёт даром.
-POLL_LOOP = re.compile(r"(while\s+(true|:)|for\s+\w+\s+in\s+\$\(seq)[\s\S]{0,400}?\bsleep\b")
+#:
+#: ФОРМЫ ВЗЯТЫ ИЗ СПРАВКИ, А НЕ ИЗ ДЕРЕВА (206, 210): в прогонах 29 сентября
+#: `sleep` не стоит ни разу, и замер по дереву дал бы ноль форм. Циклов у
+#: bash четыре — `while`, `until`, `for` во всех записях (`$(seq …)`,
+#: `{1..N}`, `((…))`, список) и `select`; прежний образец читал две записи из
+#: семи — `while true|:` и `for … in $(seq`. Теперь читается любой цикл, за
+#: которым в пределах шага стоит `sleep`.
+POLL_LOOP = re.compile(r"\b(?:while|until|for|select)\b[\s\S]{0,400}?\bsleep\b")
 
 
 def can_fail(source: str) -> bool:
@@ -127,9 +137,49 @@ def outcomes_declared(source: str) -> bool:
 
 
 def gap_named(binding: dict) -> bool:
-    """Вердикт без механизма называет, почему механизма нет."""
+    """Вердикт без механизма называет, почему механизма нет.
+
+    ФОРМЫ ПРИЗНАНИЯ ДВЕ, И ЧИТАЮТСЯ ОБЕ (206). Словами — в ``where`` или ``why``,
+    и структурно — словом предела ``holdable`` из закрытого словаря контракта:
+    это и есть машинная форма того же «чего машина не держит». Прежде гейт
+    читал только прозу, и вердикт 206 с ``holdable: not-yet`` прошёл лишь
+    потому, что был переписан под список слов. Сверка 29 сентября: из двух
+    действующих вердиктов без механизма признание словами у обоих,
+    структурное — у одного. Законность самого слова держит
+    scripts/check_bindings.py::limits — здесь спрашивается только, что оно есть.
+    """
+    if binding.get("holdable") in LIMITS:
+        return True
     claim = " ".join(str(binding.get(f, "")) for f in ("where", "why")).lower()
     return any(word in claim for word in GAP_WORDS)
+
+
+def script_polls(sources: dict[str, str]) -> list[str]:
+    """Цикл ожидания в скрипте — тот же опрос, что в шаге, другой формой (011).
+
+    Шаг прогона зовёт скрипты витрины, и ``time.sleep`` в цикле держит
+    исполнителя ровно так же, как ``sleep`` в bash. Замер 29 сентября — ноль
+    таких мест; форма взята из справки, а не из дерева (206).
+    """
+    found: list[str] = []
+    for name, source in sorted(sources.items()):
+        tree = ast.parse(source)
+        bare = {alias.asname or alias.name
+                for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)
+                and node.module == "time" for alias in node.names if alias.name == "sleep"}
+        # Вложенные циклы видят один и тот же вызов дважды — строка одна.
+        lines = sorted({node.lineno
+                        for loop in ast.walk(tree)
+                        if isinstance(loop, (ast.While, ast.For, ast.AsyncFor))
+                        for node in ast.walk(loop) if isinstance(node, ast.Call)
+                        and (isinstance(node.func, ast.Attribute) and node.func.attr == "sleep"
+                             and isinstance(node.func.value, ast.Name)
+                             and node.func.value.id == "time"
+                             or isinstance(node.func, ast.Name) and node.func.id in bare)})
+        found += [f"{name}: строка {line} — ожидание в цикле: скрипт опрашивает "
+                  f"вместо того, чтобы дождаться события или расписания (011)"
+                  for line in lines]
+    return found
 
 
 def audit_scripts(sources: dict[str, str]) -> list[str]:
@@ -212,6 +262,54 @@ def cancellation_groups(sources: dict[str, str]) -> list[str]:
 #: не помешает; ``$RUNNER_TEMP`` площадка выдаёт каждому прогону свой (149).
 SHARED_TMP = re.compile(r"(?<![\w$/])/tmp/")
 
+#: Вызовы модуля ``tempfile``, которые кладут файл в каталог по умолчанию, —
+#: без ``dir=`` это общий ``/tmp`` исполнителя: ``$TMPDIR`` раннер не задаёт.
+#: ``gettempdir`` каталога не принимает вовсе и потому не законен никогда.
+TEMP_MAKERS = frozenset({"NamedTemporaryFile", "TemporaryFile", "SpooledTemporaryFile",
+                         "TemporaryDirectory", "mkstemp", "mkdtemp"})
+
+
+def shared_temp(sources: dict[str, str]) -> list[str]:
+    """Скрипт, кладущий временный файл в общий каталог исполнителя (149).
+
+    ФОРМЫ ВЗЯТЫ ЗАМЕРОМ (206). Гейт над прогонами читал одну форму записи во
+    временный каталог — строку ``/tmp/`` в тексте прогона. Замер 29 сентября:
+    в прогонах ``/tmp/`` — 0, ``mktemp`` — 0, а вызовов ``tempfile`` без
+    ``dir=`` в скриптах — два, и оба бегут на исполнителе: переавторство
+    правок бота и набор журнала в PR check. Прогон забирал себе
+    ``$RUNNER_TEMP``, а скрипт, которого он зовёт, писал мимо него.
+
+    Разбор по дереву, а не по буквам: и ``tempfile.mkdtemp(...)``, и
+    ``from tempfile import mkdtemp``. Каталог спрашивается ключом ``dir=`` —
+    его значение гейт не судит: ``os.environ.get("RUNNER_TEMP")`` на машине
+    окна даёт ``None`` и умолчание, и так и должно быть.
+    """
+    found: list[str] = []
+    for name, source in sorted(sources.items()):
+        tree = ast.parse(source)
+        # Прямое имя — под своим псевдонимом: сверяется настоящее.
+        bare = {alias.asname or alias.name: alias.name
+                for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)
+                and node.module == "tempfile" for alias in node.names}
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            if (isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name)
+                    and func.value.id == "tempfile"):
+                called = func.attr
+            elif isinstance(func, ast.Name) and func.id in bare:
+                called = bare[func.id]
+            else:
+                continue
+            if called == "gettempdir" or (
+                    called in TEMP_MAKERS
+                    and not any(k.arg == "dir" for k in node.keywords)):
+                found.append(f"{name}: строка {node.lineno} — tempfile.{called} без "
+                             f"dir=: файл ляжет в общий /tmp исполнителя, а площадка "
+                             f"выдаёт $RUNNER_TEMP каждому прогону свой (149)")
+    return found
+
 
 #: Ключ верхнего уровня и ключ работы. Разбор по отступам, а не библиотекой:
 #: у витрины нет ни одной сторонней зависимости, и заводить первую ради четырёх
@@ -226,7 +324,13 @@ PY_VERSION = re.compile(r"^\s*python-version:\s*[\"']?([\d.]+)", re.M)
 
 #: Ссылка на чужое действие в шаге. Берётся вся строка `uses:`, включая форму
 #: без дефиса: шаг может начинаться и с `- uses:`, и с `uses:` после имени.
-ACTION_USES = re.compile(r"^[ \t]*(?:-[ \t]+)?uses:[ \t]*(?P<ref>[^\s#]+)", re.M)
+#:
+#: ФОРМЫ ВЗЯТЫ ЗАМЕРОМ (206). 29 сентября в прогонах: `- uses:` — 12, `uses:`
+#: после имени — 15; в кавычках — 0, `docker://` — 0. Кавычки YAML допускает, и
+#: без их снятия ссылка `"a/b@<sha>"` читалась бы меткой `<sha>"` — ложный
+#: отказ; `docker://` без дайджеста остаётся находкой «без версии», и это
+#: верно: тег образа переезжает так же, как тег действия.
+ACTION_USES = re.compile(r"""^[ \t]*(?:-[ \t]+)?uses:[ \t]*["']?(?P<ref>[^\s#"']+)""", re.M)
 
 #: Прибитая версия — сорок шестнадцатеричных знаков. Ни `v7`, ни `main`, ни
 #: `v7.0.1` таковой не являются, как бы точно они ни выглядели.
@@ -663,9 +767,18 @@ def required_job_conditions(flows: dict[str, str]) -> list[str]:
 #: Объявление правила в прозе механизма: «правило 083», «правила 168 и 171».
 #: Форма закрытая НАРОЧНО. Голое число в скобках — «(039)» — здесь тоже
 #: объявление, но такой образец ловит номера строк, версии и годы, а ложный
-#: отказ дороже пропуска (051). Замер по дереву: закрытая форма даёт 152
-#: объявления на 60 правил — этого хватило, чтобы найти все три расхождения.
-RULE_CLAIM = re.compile(r"правил[оауе]м?\s+(\d{3})")
+#: отказ дороже пропуска (051). Так же нарочно не читается «правил N»: в
+#: дереве единственная такая строка — счёт «число правил 193», а не объявление.
+#:
+#: ФОРМЫ ВЗЯТЫ ЗАМЕРОМ (206). 29 сентября по скриптам и прогонам: строчная
+#: форма — 245 объявлений, с заглавной «Правило 145» — ещё 22, вторые номера
+#: перечислений «правила 131, 135» и «Правила 140 и 145» — ещё 10. До замера
+#: образец читал первую форму и первый номер: 32 объявления из 277 — мимо, и
+#: пример из этой самой строки, «168 и 171», читался наполовину. Номер из
+#: перечисления разбирает NUMBER — образец отдаёт перечень целиком.
+RULE_CLAIM = re.compile(r"правил[оауе]м?\s+(\d{3}\b(?:(?:\s*,\s*|\s+(?:и|или)\s+|/)\d{3}\b)*)",
+                        re.I)
+NUMBER = re.compile(r"\d{3}")
 
 #: Ответы, которые механизм опровергает самим своим существованием.
 DENIED = frozenset({"not-applicable", "rejected"})
@@ -711,7 +824,8 @@ def claimed_rules(sources: dict[str, str], rules: dict[str, dict]) -> list[str]:
             if number in skip:
                 continue
             for match in RULE_CLAIM.finditer(line):
-                seen.setdefault(match.group(1), number)
+                for rule_id in NUMBER.findall(match.group(1)):
+                    seen.setdefault(rule_id, number)
         for rule_id, line_no in sorted(seen.items()):
             # Правило, на которое ответа НЕТ вовсе, здесь не предмет: это долг
             # разбора, и его считает другой механизм (177). Молчим.
@@ -936,6 +1050,14 @@ def silent_truncation(sources: dict[str, str]) -> list[str]:
     многоточие к хешам (правило 051).
 
     Вызов помощника срезом не считается: у ``checks.clip`` знак обрыва внутри.
+
+    ФОРМЫ ВЗЯТЫ ЗАМЕРОМ (206). Путь к читателю — два: f-строка и аргумент
+    печати (``print``, ``annotate``, ``write``). Срез — тоже два: голова
+    ``[:N]`` и хвост ``[-N:]``, у которого обрубок начала выглядит целым ровно
+    так же. Прежде читалась одна пара из четырёх — голова в f-строке. Замер 29
+    сентября по скриптам: все четыре пары — ноль, то есть гейт стоит против
+    завтрашней правки. Граница ИМЕНЕМ (``[:width]``) не читается нарочно: так
+    режет сам помощник ``checks.tail``, и имя от числа читателю не отличить.
     """
     found = []
     for name, source in sorted(sources.items()):
@@ -943,18 +1065,45 @@ def silent_truncation(sources: dict[str, str]) -> list[str]:
             tree = ast.parse(source)
         except SyntaxError:
             continue
-        for shown in (n for n in ast.walk(tree) if isinstance(n, ast.JoinedStr)):
-            for node in ast.walk(shown):
-                if not isinstance(node, ast.Subscript) or not isinstance(node.slice, ast.Slice):
+        shown = [n for n in ast.walk(tree) if isinstance(n, ast.JoinedStr)]
+        shown += [arg for call in ast.walk(tree) if isinstance(call, ast.Call)
+                  and _called_name(call) in PRINTERS for arg in call.args]
+        seen: set[int] = set()
+        for place in shown:
+            for node in ast.walk(place):
+                if (not isinstance(node, ast.Subscript) or not isinstance(node.slice, ast.Slice)
+                        or id(node) in seen):
                     continue
-                upper = node.slice.upper
-                if not isinstance(upper, ast.Constant) or not isinstance(upper.value, int):
-                    continue
-                found.append(
-                    f"{name}: строка {node.lineno} — вывод режется срезом [:{upper.value}] "
-                    f"без знака обрыва, и обрубок выглядит целым; режьте через "
-                    f"{' или '.join(CLIPPERS)} (016)")
+                cut = _constant_cut(node.slice)
+                if cut:
+                    seen.add(id(node))
+                    found.append(
+                        f"{name}: строка {node.lineno} — вывод режется срезом {cut} "
+                        f"без знака обрыва, и обрубок выглядит целым; режьте через "
+                        f"{' или '.join(CLIPPERS)} (016)")
     return found
+
+
+#: Вызовы, чьи аргументы уходят читателю. Имя берётся последним звеном:
+#: ``sys.stderr.write`` и ``checks.annotate`` — то же, что голые имена.
+PRINTERS = frozenset({"print", "annotate", "write"})
+
+
+def _called_name(call: ast.Call) -> str:
+    """Последнее звено имени вызываемого: ``a.b.c(...)`` → ``c``."""
+    func = call.func
+    return func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
+
+
+def _constant_cut(cut: ast.Slice) -> str:
+    """Срез числом: голова ``[:N]`` или хвост ``[-N:]``. Пусто — не такой срез."""
+    upper, lower = cut.upper, cut.lower
+    if isinstance(upper, ast.Constant) and isinstance(upper.value, int):
+        return f"[:{upper.value}]"
+    if (upper is None and isinstance(lower, ast.UnaryOp) and isinstance(lower.op, ast.USub)
+            and isinstance(lower.operand, ast.Constant) and isinstance(lower.operand.value, int)):
+        return f"[-{lower.operand.value}:]"
+    return ""
 
 
 def audit_runners(flows: dict[str, str]) -> list[str]:
@@ -1062,10 +1211,14 @@ def audit_harness(sources: dict[str, str], flows: dict[str, str]) -> list[str]:
     check = flows.get("pr-check.yml", "")
     if not check:
         return ["pr-check.yml: прогона проверок нет — наборы не бегут нигде (014)"]
-    return [f"{name}: самопроверка есть, а pr-check.yml её не зовёт — "
-            f"набор держит до первой правки (014)"
+    # Вызов — живой и в блокирующем шаге: набор из комментария не бежит, а из
+    # шага с continue-on-error бежит и не отказывает. Разбор общий — live_calls.
+    running = {script for script, args, blocked in live_calls(check)
+               if blocked and "--selftest" in args.split()}
+    return [f"{name}: самопроверка есть, а pr-check.yml её не зовёт блокирующим "
+            f"шагом — набор держит до первой правки (014)"
             for name, source in sorted(sources.items())
-            if "def selftest" in source and f"scripts/{name} --selftest" not in check]
+            if "def selftest" in source and name not in running]
 
 
 def _own(fn: ast.FunctionDef) -> list[ast.AST]:
@@ -1807,6 +1960,30 @@ SCRIPT_CALL = re.compile(r"python3?\s+(?:-\S+\s+)*scripts/(?P<script>[\w]+\.py)(
 #: пустыми для этого разбора.
 LIST_ITEM = re.compile(r"\n(?=\s{4,}- )")
 
+#: Строка-комментарий — YAML или bash, всё равно: вызова в ней нет.
+COMMENT_LINE = re.compile(r"^[ \t]*#.*$", re.M)
+
+
+def live_calls(flow: str) -> list[tuple[str, str, bool]]:
+    """Вызовы скриптов витрины в шагах прогона: (скрипт, аргументы, блокирует ли).
+
+    ОДИН РАЗБОР НА ДВА ГЕЙТА (206, 214): «набор бежит» (audit_harness) и
+    «`gate` отказывает» (gate_really_blocks) спрашивают один предмет — живой
+    вызов в блокирующем шаге. Прежде первый искал подстроку по всему тексту
+    прогона и засчитывал вызов из комментария и из шага с
+    ``continue-on-error``, а при флаге перед ``--selftest`` давал ложный
+    отказ. Замер 29 сентября по pr-check.yml: вызовов `python scripts/…` — 33,
+    из них наборов — 19; `python3` — 0, иных форм (``./scripts/…``, ``-m``) —
+    0, вызовов в комментариях — 0, наборов в неблокирующем шаге — 0;
+    неблокирующий шаг один, и зовёт он подсказку соседей без набора.
+    """
+    calls = []
+    for step in LIST_ITEM.split(flow):
+        blocked = "continue-on-error: true" not in step
+        for call in SCRIPT_CALL.finditer(COMMENT_LINE.sub("", step)):
+            calls.append((call.group("script"), call.group("args"), blocked))
+    return calls
+
 
 def gate_really_blocks(rules: dict[str, dict], flows: dict[str, str]) -> list[str]:
     """Слово `gate` в вердикте означает отказ изменению, а не просто прогон.
@@ -1833,14 +2010,11 @@ def gate_really_blocks(rules: dict[str, dict], flows: dict[str, str]) -> list[st
     блокирует) молчит: вердикт при этом говорит о себе МЕНЬШЕ, чем правда, и
     красное на нём стоило бы дороже пропуска (правило 051).
     """
-    steps = LIST_ITEM.split(flows.get("pr-check.yml", ""))
     live: dict[str, bool] = {}
-    for step in steps:
-        blocked = "continue-on-error: true" not in step
-        for call in SCRIPT_CALL.finditer(step):
-            if "--selftest" in call.group("args"):
-                continue
-            live[call.group("script")] = live.get(call.group("script"), False) or blocked
+    for script, args, blocked in live_calls(flows.get("pr-check.yml", "")):
+        if "--selftest" in args.split():
+            continue
+        live[script] = live.get(script, False) or blocked
 
     found: list[str] = []
     for key, binding in sorted(rules.items()):
@@ -1977,6 +2151,29 @@ def selftest() -> int:
                   "where": "механизма нет и быть не может: возраст окна изнутри не виден"}}, False),
         ("пробел не назван", audit_gaps,
          {"001": {"status": "active", "mechanism": "none", "where": "соблюдается устройством"}}, True),
+        ("временный файл в своём каталоге", shared_temp,
+         {"a.py": "import os, tempfile\n"
+                  "tempfile.mkdtemp(dir=os.environ.get('RUNNER_TEMP'))\n"}, False),
+        ("временный файл в общем /tmp", shared_temp,
+         {"a.py": "import tempfile\ntempfile.NamedTemporaryFile('w')\n"}, True),
+        ("временный каталог без dir= по прямому имени", shared_temp,
+         {"a.py": "from tempfile import TemporaryDirectory as T\nT()\n"}, True),
+        ("gettempdir — всегда общий каталог", shared_temp,
+         {"a.py": "import tempfile\ntempfile.gettempdir()\n"}, True),
+        ("tempfile в комментарии — не вызов", shared_temp,
+         {"a.py": "# tempfile.mkdtemp() так нельзя\n"}, False),
+        ("ожидание в цикле скрипта", script_polls,
+         {"a.py": "import time\nwhile True:\n    time.sleep(30)\n"}, True),
+        ("ожидание по прямому имени", script_polls,
+         {"a.py": "from time import sleep\nfor _ in range(9):\n    sleep(30)\n"}, True),
+        ("ожидание вне цикла — не опрос", script_polls,
+         {"a.py": "import time\ntime.sleep(1)\nfor x in y:\n    print(x)\n"}, False),
+        ("пробел назван словом предела", audit_gaps,
+         {"001": {"status": "active", "mechanism": "none", "holdable": "not-yet",
+                  "where": "соблюдается устройством"}}, False),
+        ("слово предела вне словаря — не признание", audit_gaps,
+         {"001": {"status": "active", "mechanism": "none", "holdable": "later",
+                  "where": "соблюдается устройством"}}, True),
         ("гейт есть — причина не требуется", audit_gaps,
          {"001": {"status": "active", "mechanism": "gate", "where": "scripts/x.py"}}, False),
         ("вердикт неприменим — не предмет", audit_gaps,
@@ -2047,6 +2244,15 @@ def selftest() -> int:
         ("цикл ожидания в шаге", audit_workflows,
          {"agent-pr.yml": "on:\n  push:\n    branches-ignore: [main]\n",
           "x.yml": "run: |\n  while true; do\n    sleep 30\n  done\n"}, True),
+        ("цикл ожидания через until", audit_workflows,
+         {"agent-pr.yml": "on:\n  push:\n    branches-ignore: [main]\n",
+          "x.yml": "run: |\n  until gh pr view 1; do\n    sleep 30\n  done\n"}, True),
+        ("цикл ожидания по диапазону", audit_workflows,
+         {"agent-pr.yml": "on:\n  push:\n    branches-ignore: [main]\n",
+          "x.yml": "run: |\n  for i in {1..10}; do\n    sleep 30\n  done\n"}, True),
+        ("цикл без ожидания — законен", audit_workflows,
+         {"agent-pr.yml": "on:\n  push:\n    branches-ignore: [main]\n",
+          "x.yml": "run: |\n  for zone in $derived; do\n    echo $zone\n  done\n"}, False),
         ("переключатель по имени ветки", audit_workflows,
          {"agent-pr.yml": "on:\n  push:\n    branches: ['agent/**']\n"}, True),
 
@@ -2126,6 +2332,15 @@ def selftest() -> int:
          silent_truncation, {"a.py": 'print(f"{items[1:]}")'}, False),
         ("срез переменной длины гейту не виден — молчим, а не гадаем",
          silent_truncation, {"a.py": 'print(f"{text[:width]}")'}, False),
+        # Формы, которых прежний разбор не видел (206).
+        ("вывод режется с хвоста", silent_truncation,
+         {"a.py": 'print(f"{log[-200:]}")'}, True),
+        ("срез прямо в аргументе печати", silent_truncation,
+         {"a.py": 'print(subject[:60])'}, True),
+        ("срез в аргументе annotate", silent_truncation,
+         {"a.py": 'print(checks.annotate("error", why[:96]))'}, True),
+        ("срез вне печати — не вывод", silent_truncation,
+         {"a.py": 'key = digest[-8:]'}, False),
         ("файл не разобрался — молчим", silent_truncation, {"a.py": "def broken(:"}, False),
 
         # ── группа отмены называет голову (правило 179) ───────────────────
@@ -2160,6 +2375,11 @@ def selftest() -> int:
          {"a.yml": "      - uses: ./.github/actions/local\n"}, False),
         ("хвост комментарием версией не считается", pinned_actions,
          {"a.yml": "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n"}, False),
+        # Формы, которых прежний образец не видел (206).
+        ("ссылка в кавычках, прибита по SHA", pinned_actions,
+         {"a.yml": '      - uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"\n'}, False),
+        ("ссылка в кавычках, взята по метке", pinned_actions,
+         {"a.yml": "      - uses: 'actions/checkout@v7'\n"}, True),
 
         # ── ветку дали входом — голову берут у неё (правило 104) ─────────
         ("голова берётся у названной ветки", dispatch_head,
@@ -2235,6 +2455,15 @@ def selftest() -> int:
         ("набора нет — звать нечего", {"a.py": "def f():\n    pass\n"},
          {"pr-check.yml": "run: python scripts/a.py\n"}, False),
         ("прогона проверок нет вовсе", {"a.py": "def selftest():\n    pass\n"}, {}, True),
+        # Формы, которых подстрока не различала (206).
+        ("набор зовётся только в комментарии", {"a.py": "def selftest():\n    pass\n"},
+         {"pr-check.yml": "      # python scripts/a.py --selftest\n"
+                          "      - run: python scripts/a.py\n"}, True),
+        ("набор зовётся неблокирующим шагом", {"a.py": "def selftest():\n    pass\n"},
+         {"pr-check.yml": "steps:\n      - name: x\n        continue-on-error: true\n"
+                          "        run: python scripts/a.py --selftest\n"}, True),
+        ("флаг перед набором — всё равно набор", {"a.py": "def selftest():\n    pass\n"},
+         {"pr-check.yml": "run: python scripts/a.py --verbose --selftest\n"}, False),
     ]
     # ── механизм против ответа «этого у нас нет» (правило 184) ────────
     # Отказ ОДНОСТОРОННИЙ: противоречие красное, отсутствие ответа — молчание.
@@ -2255,6 +2484,16 @@ def selftest() -> int:
          {"a.py": "url = 'https://x/078'\n"}, False),
         ("номер в отрицательном наборе — данные, а не объявление",
          {"a.py": "def selftest():\n    return '# правило 078'\n"}, False),
+        # Формы, которых прежний образец не видел (206).
+        ("объявление с заглавной", {"a.py": "# Правило 078: отмена — отдельный исход\n"}, True),
+        ("второй номер перечисления через «и»",
+         {"a.py": "# правила 011 и 078\n"}, True),
+        ("второй номер перечисления через запятую",
+         {"a.py": "# правила 011, 078\n"}, True),
+        ("число после перечисления — не номер",
+         {"a.py": "# правило 011, 78 строк\n"}, False),
+        ("счёт «число правил» — не объявление",
+         {"a.py": "# число правил 078 при 195 живых\n"}, False),
     ]
     broken: list[str] = []
     for name, srcs, flws, must_reject in sparse:
@@ -2463,6 +2702,9 @@ def selftest() -> int:
         # не по чему.
         ("разметки проверки нет вовсе",
          {"1": {"mechanism": "gate", "where": "scripts/gate.py — проверяет"}}, {}, True),
+        ("вызов только в комментарии — не вызов (206)",
+         {"1": {"mechanism": "gate", "where": "scripts/gate.py — проверяет"}},
+         {"pr-check.yml": "      # python scripts/gate.py\n      - run: echo\n"}, True),
     ]
     for name, rules_case, flows_case, must_reject in gate_cases:
         found = gate_really_blocks(rules_case, flows_case)
@@ -2728,6 +2970,7 @@ def main() -> int:
     found = (audit_scripts(sources) + audit_calls(sources) + audit_voice(sources)
              + single_catalogue_address(sources)
              + audit_gaps(rules) + audit_workflows(flows) + audit_runners(flows)
+             + shared_temp(sources) + script_polls(sources)
              + gate_really_blocks(rules, flows)
              + audit_harness(sources, flows) + audit_charter(ROOT)
              + list_reads(sources, flows) + unreached_names(sources)

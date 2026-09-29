@@ -159,6 +159,17 @@ def merge_commit(parents: int) -> bool:
     return parents >= 2
 
 
+def runner_temp() -> str | None:
+    """Свой временный каталог прогона — для ``dir=`` у ``tempfile`` (149).
+
+    На исполнителе это ``$RUNNER_TEMP``, у каждого прогона свой; ``$TMPDIR``
+    раннер не задаёт, и без ``dir=`` файл ложится в общий ``/tmp``. На машине
+    окна переменной нет — ``None`` и значит умолчание. Держит
+    scripts/check_mechanisms.py::shared_temp.
+    """
+    return os.environ.get("RUNNER_TEMP")
+
+
 def touched(paths: list[str]) -> list[str]:
     """Файлы поведения среди изменённых."""
     return [p for p in paths if any(rx.match(p) for rx in BEHAVIOUR)]
@@ -182,10 +193,15 @@ def machine_made(author: str) -> bool:
     имени, и адрес у одного и того же бота уже бывал разным (у `github-actions`
     площадка пишет то с адресом, то без — замер в .github/authors.txt).
     """
+    return author_name(author) in MACHINE_AUTHORS
+
+
+def author_name(author: str) -> str:
+    """Имя из подписи — голой (``%an``) или с адресом (``%an <%ae>``)."""
     name = author.strip()
     if name.endswith(">") and " <" in name:
         name = name[:name.rindex(" <")].strip()
-    return name in MACHINE_AUTHORS
+    return name
 
 
 #: Знак обрыва. Один на весь репозиторий: восемь мест обрезали вывод каждое
