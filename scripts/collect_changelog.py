@@ -21,11 +21,23 @@
 Соглашение общее с грейдером, каталогом правил и ``Claude-Code_Usage-Token``:
 одно на четыре проекта дешевле четырёх (то же решение, что у имён веток).
 
+ЕДИНИЦА — МЕСЯЦ, КАК У ЖУРНАЛА РЕШЕНИЙ. Раздел ``## Сентябрь 2026``; повторный
+сбор за тот же месяц дописывает в существующий раздел, новый месяц ложится
+выше прежних. Записи внутри секции идут по номеру изменения, а не по имени
+файла: слаг говорит о теме, номер — о порядке слияния.
+
+ПОЧЕМУ СОБИРАЕТ ПРОГОН, А НЕ «КОГДА НАКОПИТСЯ». Здесь стояло: раздел
+закрывается, когда накопленное перестаёт помещаться в обозримое, — решением
+владельца. Решения не случилось ни разу: за три недели легли 62 фрагмента, а
+в журнале не было ни одной строки. Шаг, который держится памятью, механизмом
+не является — тот же вывод, что у стоп-крана. Сбор запускает
+.github/workflows/changelog.yml первого числа, за прошедший месяц.
+
 Запуск::
 
-    python scripts/collect_changelog.py --check     # формат фрагментов
-    python scripts/collect_changelog.py --preview   # как соберётся
-    python scripts/collect_changelog.py --collect   # перенести и удалить файлы
+    python scripts/collect_changelog.py --check                  # формат фрагментов
+    python scripts/collect_changelog.py --preview --month 2026-09 # как соберётся
+    python scripts/collect_changelog.py --collect --month 2026-09 # перенести и удалить
 
 Исходы: 0 — чисто или собрано; 1 — находка: фрагмент не по формату; 2 — проверка
 не отработала (нет каталога, нет раздела в журнале, запись не удалась).
@@ -44,10 +56,11 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 FRAGMENTS = ROOT / "changelog.d"
 CHANGELOG = ROOT / "CHANGELOG.md"
 
-#: Раздел, куда уезжают фрагменты. У витрины нет выпусков, и версии здесь не
-#: выдумываются: раздел закрывается датой, когда накопленное перестаёт
-#: помещаться в обозримое, — решением владельца, а не расписанием.
-UNRELEASED = "## [Не выпущено]"
+#: Месяц сбора — ``ГГГГ-ММ``: его считает прогон, и в имени нет языка.
+MONTH = re.compile(r"^(?P<year>\d{4})-(?P<month>0[1-9]|1[0-2])$")
+
+#: Номер изменения в записи. По нему записи идут в порядке слияния.
+ENTRY_NUMBER = re.compile(r"\(#(\d+)\)")
 
 #: Секции и их подписи в журнале. Список ЗАКРЫТ: секция, которой здесь нет, —
 #: находка, а не новая секция. Иначе `fix` и `fixed` разъедутся молча.
@@ -152,12 +165,64 @@ def render(by_section: dict[str, list[str]]) -> str:
     return "\n".join(block).rstrip("\n")
 
 
-def merge(text: str, block: str) -> str:
-    """Вставляет блок сразу под заголовок «не выпущено», сохраняя прежнее."""
-    if UNRELEASED not in text:
-        raise ValueError(f"в {CHANGELOG.name} нет раздела {UNRELEASED!r}")
-    head, tail = text.split(UNRELEASED, 1)
-    return f"{head}{UNRELEASED}\n\n{block}\n{tail.lstrip(chr(10))}"
+def month_title(month: str) -> str:
+    """Заголовок раздела по ``ГГГГ-ММ``: ``## Сентябрь 2026``.
+
+    Названия месяцев — те же, по которым журнал решений узнаёт свои разделы
+    (scripts/checks.py::MONTHS): два журнала одной витрины не расходятся в
+    том, как зовут месяц.
+    """
+    found = MONTH.match(month)
+    if not found:
+        raise ValueError(f"месяц {month!r} — не в форме ГГГГ-ММ")
+    return f"## {checks.MONTHS[int(found['month']) - 1].capitalize()} {found['year']}"
+
+
+def by_number(entry: str) -> tuple[int, str]:
+    """Ключ порядка: номер изменения; запись без номера — в конец секции."""
+    found = ENTRY_NUMBER.search(entry)
+    return (int(found.group(1)) if found else sys.maxsize, entry)
+
+
+def section_entries(body: str) -> dict[str, list[str]]:
+    """Записи раздела по секциям — обратный разбор того, что пишет ``render``.
+
+    Строка вне формы — отказ, а не пропуск: молча выброшенная при пересборке
+    раздела запись пропала бы из журнала навсегда.
+    """
+    titles = {title: key for key, title in SECTIONS.items()}
+    entries: dict[str, list[str]] = {}
+    current = None
+    for line in body.splitlines():
+        if line.startswith("### "):
+            current = titles.get(line[4:].strip())
+            if current is None:
+                raise ValueError(f"секция «{line[4:].strip()}» не из списка")
+            entries.setdefault(current, [])
+        elif line.startswith("- ") and current:
+            entries[current].append(line[2:])
+        elif line.strip():
+            raise ValueError(f"строка вне формы раздела: {checks.clip(line, 60)}")
+    return entries
+
+
+def merge(text: str, title: str, by_section: dict[str, list[str]]) -> str:
+    """Записи ложатся в раздел месяца. Есть раздел — дописываются в него, нет —
+    он заводится выше прежних. Журнал растёт, прежнее не теряется."""
+    lines = text.rstrip("\n").split("\n")
+    heads = [i for i, line in enumerate(lines) if line.startswith("## ")]
+    start = next((i for i in heads if lines[i].strip() == title), None)
+    if start is None:
+        at = heads[0] if heads else len(lines)
+        block = [title, "", render({k: sorted(v, key=by_number) for k, v in by_section.items()}), ""]
+        lines[at:at] = block if heads else ["", *block[:-1]]
+        return "\n".join(lines) + "\n"
+    end = next((i for i in heads if i > start), len(lines))
+    old = section_entries("\n".join(lines[start + 1:end]))
+    combined = {key: sorted(old.get(key, []) + by_section.get(key, []), key=by_number)
+                for key in SECTIONS if key in old or key in by_section}
+    lines[start:end] = [title, "", render(combined), *([""] if end < len(lines) else [])]
+    return "\n".join(lines) + "\n"
 
 
 def selftest() -> int:
@@ -213,18 +278,38 @@ def selftest() -> int:
         broken.append(f"порядок секций не по списку:\n{block}")
     print("  порядок   — секции идут по списку, а не по алфавиту")
 
-    # Вставка сохраняет прежнее содержимое: журнал не переписывается, он растёт.
-    merged = merge(f"# Ж\n\n{UNRELEASED}\n\n### Починено\n- прежнее\n", "### Добавлено\n- новое")
-    if "прежнее" not in merged or "новое" not in merged:
-        broken.append(f"вставка потеряла записи:\n{merged}")
-    print("  вставка   — прежние записи на месте")
-
+    # Раздел месяца: заводится, дописывается, прежнее не теряется (обе стороны).
+    head = "# Ж\n\n<!-- соглашение -->\n"
+    sept = month_title("2026-09")
+    first = merge(head, sept, {"fixed": ["второе (#12)", "первое (#3)"]})
+    if not (sept in first and first.index("первое (#3)") < first.index("второе (#12)")):
+        broken.append(f"раздел месяца не заведён или записи не по номеру:\n{first}")
+    print("  заведён   — раздел месяца, записи по номеру изменения")
+    again = merge(first, sept, {"fixed": ["между (#7)"], "added": ["новое (#20)"]})
+    if (again.count(sept) != 1 or "первое (#3)" not in again
+            or not again.index("первое (#3)") < again.index("между (#7)") < again.index("второе (#12)")
+            or again.index("Добавлено") > again.index("Починено")):
+        broken.append(f"повторный сбор за месяц не дописал в раздел:\n{again}")
+    print("  дописан   — тот же месяц: один раздел, прежние записи на месте")
+    octo = merge(again, month_title("2026-10"), {"changed": ["позже (#30)"]})
+    if not (octo.index("## Октябрь 2026") < octo.index(sept) and "первое (#3)" in octo):
+        broken.append(f"новый месяц лёг не выше прежнего:\n{octo}")
+    print("  выше      — новый месяц ложится над прежним")
+    if month_title("2026-09") != "## Сентябрь 2026":
+        broken.append(f"заголовок месяца: {month_title('2026-09')!r}")
+    for wrong in ("2026-13", "09-2026", "сентябрь"):
+        try:
+            month_title(wrong)
+        except ValueError:
+            continue
+        broken.append(f"месяц {wrong!r} принят")
+    print("  отвергнут — месяц не в форме ГГГГ-ММ")
     try:
-        merge("# Журнал без раздела\n", "### Добавлено\n- новое")
+        merge(first.replace("- первое", "* первое"), sept, {"fixed": ["x (#1)"]})
     except ValueError:
-        print("  отвергнут — журнал без раздела «не выпущено»")
+        print("  отвергнут — строка вне формы раздела не выбрасывается молча")
     else:
-        broken.append("журнал без раздела принят — записи ушли бы в никуда")
+        broken.append("строка вне формы раздела выброшена молча при пересборке")
 
     if broken:
         print(checks.annotate("error", "самопроверка провалена"), file=sys.stderr)
@@ -240,11 +325,21 @@ def main() -> int:
     parser.add_argument("--check", action="store_true", help="только проверить формат")
     parser.add_argument("--preview", action="store_true", help="показать сборку, не меняя файлов")
     parser.add_argument("--collect", action="store_true", help="перенести в журнал и удалить")
+    parser.add_argument("--month", help="месяц раздела, ГГГГ-ММ: обязателен для --collect")
     parser.add_argument("--selftest", action="store_true")
     args = parser.parse_args()
 
     if args.selftest:
         return selftest()
+    try:
+        title = month_title(args.month) if args.month else ""
+    except ValueError as err:
+        print(checks.annotate("error", str(err)), file=sys.stderr)
+        return 2
+    if args.collect and not title:
+        print(checks.annotate("error", "--collect без --month: раздел месяца не назван"),
+              file=sys.stderr)
+        return 2
     if not FRAGMENTS.is_dir():
         print(checks.annotate("error", f"каталога {FRAGMENTS.name}/ нет — "
                               f"проверять нечего"), file=sys.stderr)
@@ -262,12 +357,15 @@ def main() -> int:
               file=sys.stderr)
         return 1
 
+    # Порядок — по номеру изменения сразу после разбора: предпросмотр обязан
+    # показывать ровно то, что ляжет в журнал.
+    by_section = {key: sorted(lines, key=by_number) for key, lines in by_section.items()}
     block = render(by_section)
     if args.check:
         print(f"фрагменты в порядке: {sum(len(v) for v in by_section.values())}")
         return 0
     if args.preview:
-        print(block if block else "фрагментов нет — собирать нечего")
+        print(f"{title or '## <месяц>'}\n\n{block}" if block else "фрагментов нет — собирать нечего")
         return 0
     if not args.collect:
         print(f"фрагментов: {sum(len(v) for v in by_section.values())}. "
@@ -278,7 +376,7 @@ def main() -> int:
         print("фрагментов нет — журнал не тронут")
         return 0
     try:
-        CHANGELOG.write_text(merge(CHANGELOG.read_text(encoding="utf-8"), block),
+        CHANGELOG.write_text(merge(CHANGELOG.read_text(encoding="utf-8"), title, by_section),
                              encoding="utf-8")
         for path in fragments():
             path.unlink()

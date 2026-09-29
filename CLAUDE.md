@@ -235,8 +235,9 @@
 [`CHANGELOG.md`](CHANGELOG.md) — **что изменилось**, по строке на изменение.
 Новая запись кладётся **файлом**: `changelog.d/<слаг>.<секция>.md`, одна строка
 без ведущего дефиса, номер изменения в тексте. Секции: `added`, `changed`,
-`fixed`, `removed`, `internal`. Собирает `scripts/collect_changelog.py`,
-соглашение — [`changelog.d/README.md`](changelog.d/README.md).
+`fixed`, `removed`, `internal`. Собирает `scripts/collect_changelog.py` —
+раз в месяц прогоном `changelog.yml`, руками не зовут; соглашение —
+[`changelog.d/README.md`](changelog.d/README.md).
 
 **Файлом, а не строкой в общем журнале** — предмет живой: 8 сентября две ветки
 подряд встали с конфликтом, потому что обе дописывали в конец `HISTORY.md`.

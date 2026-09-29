@@ -29,10 +29,22 @@ changelog.d/<слаг>.<секция>.md
 ## Команды
 
 ```bash
-python scripts/collect_changelog.py --check     # проверка формата, бежит в pr-check
-python scripts/collect_changelog.py --preview   # как соберётся, ничего не меняя
-python scripts/collect_changelog.py --collect   # перенести в CHANGELOG и удалить файлы
+python scripts/collect_changelog.py --check                   # формат, бежит в pr-check
+python scripts/collect_changelog.py --preview --month 2026-09  # как соберётся, ничего не меняя
+python scripts/collect_changelog.py --collect --month 2026-09  # перенести в CHANGELOG и удалить
 ```
+
+## Когда собирается
+
+**Раз в месяц, прогоном, а не руками.** `.github/workflows/changelog.yml`
+первого числа переносит фрагменты прошедшего месяца в раздел
+`## <Месяц> <год>` журнала и открывает изменение обычным путём. Фрагменты,
+влитые после сбора, дописываются в тот же раздел следующим прогоном. Руками
+`--collect` не зовут: сбор в рабочей ветке столкнулся бы с фрагментами,
+которые в это время кладут другие ветки.
+
+Единица — месяц, как у журнала решений `HISTORY.md`. Прежде сбор ждал
+решения «когда накопится» — и за три недели не случился ни разу.
 
 ## Язык
 
