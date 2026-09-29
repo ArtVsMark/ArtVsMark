@@ -50,14 +50,12 @@
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import re
 import subprocess
 import sys
 import tempfile
 import urllib.error
-import urllib.request
 
 import checks
 
@@ -89,21 +87,6 @@ JOURNAL_WAIVER = "Журнал: не требуется — пины сдвин�
 NEIGHBOURS = "Соседи: нет — сдвиг пинов действий, признаков витрины не менялось"
 
 EXIT_OK, EXIT_FINDING, EXIT_BROKEN = 0, 1, 2
-
-
-def _api(path: str) -> object:
-    """GET к площадке; токен — из окружения, как у соседних сторожей."""
-    token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
-    request = urllib.request.Request(
-        f"{API}{path}",
-        headers={
-            "Accept": "application/vnd.github+json",
-            "X-GitHub-Api-Version": "2022-11-28",
-            **({"Authorization": f"Bearer {token}"} if token else {}),
-        },
-    )
-    with urllib.request.urlopen(request, timeout=30) as response:
-        return json.load(response)
 
 
 def _git(*args: str, stdin: str | None = None) -> str:
@@ -306,7 +289,7 @@ def main() -> int:
         return selftest()
 
     try:
-        changes = _api(f"/repos/{REPO}/pulls?state=open&per_page=100")
+        changes = checks.rest_list(f"/repos/{REPO}/pulls?state=open&per_page=100")
     except (urllib.error.URLError, OSError, ValueError) as silent:
         print(checks.annotate("error", f"не отработал: список изменений не прочитан — {silent}"),
               file=sys.stderr)

@@ -37,7 +37,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 import re
 import subprocess
@@ -45,7 +44,6 @@ import sys
 
 import checks
 import urllib.error
-import urllib.request
 
 REPO = os.environ.get("SHOWCASE_REPO", "ArtVsMark/ArtVsMark")
 OWNER = REPO.split("/")[0]
@@ -112,35 +110,16 @@ ZONES = (
 )
 
 
-def _api(path: str) -> object:
-    token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
-    request = urllib.request.Request(
-        f"{API}{path}",
-        headers={
-            "Accept": "application/vnd.github+json",
-            "X-GitHub-Api-Version": "2022-11-28",
-            **({"Authorization": f"Bearer {token}"} if token else {}),
-        },
-    )
-    with urllib.request.urlopen(request, timeout=30) as response:
-        return json.load(response)
-
-
 def changed_files(number: int) -> list[str]:
     """Все изменённые файлы, а не первая страница.
 
-    Страница берётся по сотне, и остановиться на первой значило бы считать
-    полноту по обрезанной выдаче, не сказав об этом (правило 016). Здесь обрыв
-    невозможен: страницы читаются до пустой.
+    Остановиться на первой странице значило бы считать полноту по обрезанной
+    выдаче, не сказав об этом (правило 016). Страницы обходит общий
+    ``checks.rest_list``: здесь был свой цикл до короткой страницы — вторая
+    реализация того же обхода (214).
     """
-    files: list[str] = []
-    page = 1
-    while True:
-        batch = _api(f"/repos/{REPO}/pulls/{number}/files?per_page=100&page={page}")
-        files += [entry["filename"] for entry in batch]
-        if len(batch) < 100:
-            return files
-        page += 1
+    return [entry["filename"] for entry in
+            checks.rest_list(f"/repos/{REPO}/pulls/{number}/files?per_page=100")]
 
 
 def is_doc(path: str) -> bool:
@@ -419,7 +398,7 @@ def main() -> int:
     number = int(sys.argv[1])
 
     try:
-        pull = _api(f"/repos/{REPO}/pulls/{number}")
+        pull = checks.rest(f"/repos/{REPO}/pulls/{number}")
         labels = {label["name"] for label in pull["labels"]}
         complaints, content, zones = verdict(labels, changed_files(number))
     except (urllib.error.URLError, OSError, ValueError, KeyError) as e:

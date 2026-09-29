@@ -131,6 +131,8 @@ jobs:
             fi
             echo "::notice::Проверки #$number: $result (спрашивающий «$JOB_NAME» не в счёт)"
           else
+            # предел: умолчание gh — 30 записей; с фильтром по ветке открытое
+            # изменение одно, и берётся первое — другого у ветки не бывает.
             number=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" \
                        --state open --json number --jq '.[0].number // empty')
             result="$RESULT"

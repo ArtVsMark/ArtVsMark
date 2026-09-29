@@ -88,6 +88,8 @@ jobs:
           GH_TOKEN: ${{ env.MERGE_QUEUE_TOKEN }}
         run: |
           set -uo pipefail
+          # предел: умолчание gh — 30 записей; с фильтром по ветке открытых
+          # изменений не больше одного, и вопрос здесь «есть ли», а не «сколько».
           out=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" \
             --state open --json number --jq 'length' 2>&1) && rc=0 || rc=$?
           verdict=$(printf '%s\n' "$out" | python3 scripts/gh_outcome.py --code "$rc") \

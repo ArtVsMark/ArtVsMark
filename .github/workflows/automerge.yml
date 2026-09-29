@@ -215,9 +215,12 @@ jobs:
           BASE: ${{ steps.pr.outputs.base }}
         run: |
           set -uo pipefail
-          out=$(gh api "repos/$GITHUB_REPOSITORY/rules/branches/$BASE" \
-            --jq '[.[] | select(.type=="required_status_checks")
-                       | .parameters.required_status_checks[].context] | length' 2>&1) && rc=0 || rc=$?
+          # ВСЕ СТРАНИЦЫ ПРАВИЛ (212). `--jq` gh применяет к каждой странице
+          # отдельно, поэтому `length` здесь печатал бы по числу на страницу:
+          # фильтр отдаёт имена проверок строками, а число — счёт строк.
+          out=$(gh api --paginate "repos/$GITHUB_REPOSITORY/rules/branches/$BASE" \
+            --jq '.[] | select(.type=="required_status_checks")
+                      | .parameters.required_status_checks[].context' 2>&1) && rc=0 || rc=$?
           verdict=$(printf '%s\n' "$out" | python3 scripts/gh_outcome.py --code "$rc") \
             || verdict="broken: разбор исходов не отработал — scripts/gh_outcome.py"
           case "$verdict" in
@@ -230,12 +233,13 @@ jobs:
               echo "::error::Состояние защиты ветки $BASE не прочитано: ${verdict#broken: }"
               exit 1 ;;
           esac
-          if [ "$out" -eq 0 ]; then
+          required=$(printf '%s\n' "$out" | grep -c .)
+          if [ "$required" -eq 0 ]; then
             echo "::warning::У ветки $BASE нет обязательных проверок — автомерж слил бы мимо гейтов, поэтому не включается. Settings -> Rules -> Require status checks to pass."
             echo "SKIP=1" >> "$GITHUB_ENV"
             exit 0
           fi
-          echo "обязательных проверок на $BASE: $out"
+          echo "обязательных проверок на $BASE: $required"
 
       - name: включить автомерж
         if: env.SKIP != '1'
