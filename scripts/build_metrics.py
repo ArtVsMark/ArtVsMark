@@ -74,6 +74,7 @@ from xml.sax.saxutils import escape
 # Путь добавляется явно: без него `import checks` держится на том, из какого
 # каталога запустили, и ломается, едва модуль импортируют, а не запускают.
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import check_bindings  # noqa: E402
 import checks  # noqa: E402
 
 REPO = "ArtVsMark/Stepik-Python-Grader"
@@ -2662,14 +2663,15 @@ def sync_bindings(export: dict, write: bool = True) -> str:
             answer["answers_to"] = raise_to
         answer["rules"] = {key: rules[key] for key in sorted(rules)}
         BINDINGS.write_text(json.dumps(answer, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    unreviewed = sum(1 for binding in rules.values() if binding["status"] == "unreviewed")
+    # Долг считает ОДНО место — scripts/check_bindings.py::debt (214): здесь было
+    # своё выражение того же счёта, и развилка «отказ по замеру не в долг» (213)
+    # развела бы их при первой правке одного.
+    unreviewed, unheld = check_bindings.debt(rules)
     # Правил каталога, на которые ответа нет вовсе. Это число знает только
     # сборка — check_bindings живёт без сети и печатать его не вправе. До
     # записи файла оно ненулевое, после — сходится к нулю: дописанное
     # становится «не рассмотрено», то есть долг переезжает, а не исчезает (177).
     unanswered = len(added) if not write else 0
-    unheld = sum(1 for binding in rules.values()
-                 if binding["status"] == "active" and binding.get("mechanism") == "none")
     left = orphaned(export, rules)
     tail = f", ответ без правила: {', '.join(left)}" if left else ""
     # Долг называется ПЕРВЫМ, до числа записей: незакрытая работа по правилам

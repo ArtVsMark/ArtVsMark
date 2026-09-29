@@ -111,12 +111,27 @@ def git_paths(*args: str, cwd=None) -> list[str]:
 #: сам и может сменить формат, а учётная запись площадки устойчива и видна
 #: и гейту журнала (у него есть коммиты), и гейту имени (у него есть только
 #: ветка) — второму через префикс ниже.
-MACHINE_AUTHORS = ("dependabot[bot]", "github-actions[bot]")
+DEPENDABOT = "dependabot[bot]"
+PLATFORM_BOT = "github-actions[bot]"
+MACHINE_AUTHORS = (DEPENDABOT, PLATFORM_BOT)
 
-#: Приставки веток, которые заводит не человек. `chore/deps-` — ветки, куда
-#: scripts/reauthor_deps.py кладёт правку dependabot от имени владельца: слага
-#: задачи и следа сессии у неё нет по той же причине, что у суточной пересборки.
-MACHINE_BRANCHES = ("dependabot/", "chore/metrics", "chore/deps-")
+#: Приставки веток, которые заводит не человек. Имена отдельными константами:
+#: их ПЕЧАТАЮТ другие места — scripts/reauthor_deps.py заводит ветку
+#: `chore/deps-<номер>` и узнаёт ветки бота, — и берут отсюда, а не буквами
+#: (209). `chore/deps-` — ветки, куда кладётся правка dependabot от имени
+#: владельца: слага задачи и следа сессии у неё нет по той же причине, что у
+#: суточной пересборки. `chore/metrics` пишет буквами .github/workflows/metrics.yml
+#: — оболочка питон не импортирует, копия подписана там (071).
+DEPENDABOT_BRANCH = "dependabot/"
+METRICS_BRANCH = "chore/metrics"
+DEPS_BRANCH = "chore/deps-"
+MACHINE_BRANCHES = (DEPENDABOT_BRANCH, METRICS_BRANCH, DEPS_BRANCH)
+
+
+def machine_branch(branch: str) -> bool:
+    """Ветку завела машина. Один признак на все гейты (214): здесь он был
+    записан заново пять раз — в check_branch, check_author и reauthor_deps."""
+    return bool(branch) and branch.startswith(MACHINE_BRANCHES)
 
 #: ЧТО СЧИТАЕТСЯ ПРАВКОЙ ПОВЕДЕНИЯ. Список короткий намеренно: `.rules/` сюда не
 #: входит — ответ каталогу меняется и от чужой правки, а `README.md` собирается
@@ -127,8 +142,21 @@ MACHINE_BRANCHES = ("dependabot/", "chore/metrics", "chore/deps-")
 #: записи о решении, соседи — перечня того, что решал изменённый признак. Две
 #: копии одного списка разошлись бы на первой же правке, и разошлись бы молча
 #: (правило 090).
-BEHAVIOUR = (re.compile(r"^scripts/.*\.py$"),
-             re.compile(r"^\.github/workflows/.*\.ya?ml$"))
+#: Файл прогона — то, что площадка исполняет: `.yml` или `.yaml` ВЕРХНЕГО
+#: уровня `.github/workflows/`, вложенные площадка не читает. Один разбор на
+#: все вопросы к нему (214): здесь было `.*` с вложенными, а у
+#: scripts/reauthor_deps.py — своё выражение только верхнего уровня.
+WORKFLOW_FILE = re.compile(r"^\.github/workflows/[^/]+\.ya?ml$")
+
+BEHAVIOUR = (re.compile(r"^scripts/.*\.py$"), WORKFLOW_FILE)
+
+
+def merge_commit(parents: int) -> bool:
+    """Коммит слияния правки не привносит: всё в нём уже лежит в базовой ветке.
+    Одно правило для гейтов журнала и соседей (214); гейт автора отсекает
+    слияния ключом git `--no-merges` — то же правило другой формой, подписано
+    у вызова."""
+    return parents >= 2
 
 
 def touched(paths: list[str]) -> list[str]:
@@ -271,6 +299,62 @@ def annotate(level: str, text: str) -> str:
         raise ValueError(f"уровень {level!r} вне набора {LEVELS}")
     prefix = f"::{level}::" if os.environ.get("GITHUB_ACTIONS") == "true" else ""
     return f"{prefix}{text}"
+
+
+#: Имя трейлера соавторства. Узнают его scripts/hold.py (кому нужен маркер) и
+#: scripts/check_author.py (атрибуция тела) — здесь было две константы (209).
+COAUTHOR = "co-authored-by"
+
+#: Тире в строке ответа гейту: длинное, короткое, дефис.
+DASHES = "—–-"
+
+
+def answer_line(key: str) -> re.Pattern:
+    """Строка ответа гейту в сообщении коммита: «Ключ: текст».
+
+    ОДНА ГРАММАТИКА НА ВСЕ ЖЕСТЫ (214). Гейт журнала и гейт соседей разбирали
+    её порознь и уже разошлись: один брал строку только с начала, с регистром и
+    двумя тире, другой — с отступом, без регистра и с тремя, а сам называл свою
+    форму «взятой у журнала дословно». Отступ допускается, регистр ключа не
+    важен, текст после двоеточия обязателен.
+    """
+    return re.compile(rf"^[ \t]*{re.escape(key)}:[ \t]*(?P<said>\S.*)$", re.M | re.I)
+
+
+def with_reason(words: str) -> re.Pattern:
+    """«слова — причина»: ответ-отказ обязан назвать причину тем же тире."""
+    return re.compile(rf"^{re.escape(words)}\b\s*[{DASHES}]\s*(?P<why>\S.+)$", re.I)
+
+
+def latest_by_name(runs: list[dict]) -> list[dict]:
+    """По одной записи проверки на имя — запущенная последней (правило 009).
+
+    Площадка отдаёт ВСЕ записи проверки на коммите, включая переигранные, а в
+    защите ветки считает последнюю по имени. Ради этой свёртки модуль и
+    заводился, потом потребитель остался один — и свёртка снова разошлась на
+    две: scripts/hold.py сравнивал по времени ЗАВЕРШЕНИЯ, падая на время начала
+    у бегущей, а scripts/stuck_prs.py — по времени начала. Смешанный ключ
+    отдавал победу старому завершённому провалу над идущим перезапуском.
+
+    Ключ — время запуска, затем создания, затем завершения; при равенстве —
+    позже в списке, как отдаёт площадка. Оба написания полей — GraphQL и REST.
+    Безымянная запись не схлопывается ни с чем: имя здесь ключ.
+    """
+    def when(run: dict) -> str:
+        for key in ("startedAt", "started_at", "createdAt", "created_at",
+                    "completedAt", "completed_at"):
+            if run.get(key):
+                return str(run[key])
+        return ""
+
+    latest: dict[object, dict] = {}
+    for position, run in enumerate(runs):
+        name = (run.get("name") or run.get("context") or "").strip()
+        key: object = name or (position, None)
+        known = latest.get(key)
+        if known is None or when(run) >= when(known):
+            latest[key] = run
+    return list(latest.values())
 
 
 #: Метка конвейера «придержано». Одна на все места, которые её ставят, снимают
@@ -516,9 +600,49 @@ def selftest() -> int:
     finally:
         globals()["_request"] = real
 
+    # ── последняя запись проверки: по запуску, а не по смешанному ключу ──────
+    old_fail = {"name": "PR check", "startedAt": "10:00", "completedAt": "10:10",
+                "conclusion": "FAILURE"}
+    rerun = {"name": "PR check", "startedAt": "10:08", "completedAt": None, "status": "IN_PROGRESS"}
+    latest_cases = [
+        ("идущий перезапуск побеждает старый провал", [old_fail, rerun], [rerun]),
+        ("порядок ввода не важен", [rerun, old_fail], [rerun]),
+        ("форма REST", [{"name": "x", "started_at": "1"}, {"name": "x", "started_at": "2"}],
+         [{"name": "x", "started_at": "2"}]),
+        ("безымянные не схлопываются", [{"conclusion": "a"}, {"conclusion": "b"}],
+         [{"conclusion": "a"}, {"conclusion": "b"}]),
+        ("равное время — позже в списке", [{"name": "x", "startedAt": "1", "id": 1},
+                                          {"name": "x", "startedAt": "1", "id": 2}],
+         [{"name": "x", "startedAt": "1", "id": 2}]),
+    ]
+    for name, runs, expected in latest_cases:
+        if latest_by_name(runs) != expected:
+            broken.append(f"последняя запись, {name}: вышло {latest_by_name(runs)}")
+
+    # ── строка ответа гейту: одна грамматика ─────────────────────────────────
+    line_cases = [
+        ("с начала строки", "Соседи: нет — причина", True),
+        ("с отступом", "  Соседи: нет — причина", True),
+        ("другой регистр ключа", "соседи: нет — причина", True),
+        ("пусто после двоеточия", "Соседи:   ", False),
+        ("ключ внутри строки — не ответ", "про Соседи: не ответ", False),
+    ]
+    for name, text, expected in line_cases:
+        if bool(answer_line("Соседи").search(text)) != expected:
+            broken.append(f"строка ответа, {name}: ожидалось {expected}")
+    for dash in DASHES:
+        if not with_reason("нет").match(f"нет {dash} причина"):
+            broken.append(f"строка ответа: тире {dash!r} не принято")
+    if with_reason("нет").match("нет —   "):
+        broken.append("строка ответа: отказ без причины принят")
+    if not machine_branch("chore/deps-209") or machine_branch("my-chore/metrics") \
+            or machine_branch(""):
+        broken.append("машинная ветка: признак отвечает не то")
+
     for line in broken:
         print(f"  {line}")
-    print("  свёртка имён, разметка находок и обход страниц проверены" if not broken else "")
+    print("  свёртка имён, разметка находок, обход страниц, строка ответа и последняя "
+          "запись проверены" if not broken else "")
     return 1 if broken else 0
 
 

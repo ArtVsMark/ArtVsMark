@@ -81,8 +81,7 @@ def verdict(branch: str) -> str:
     Вынесено из ``main``, чтобы набор ЗВАЛ проверку, а не повторял её условие
     (правило 150).
     """
-    if any(branch == name or branch.startswith(name)
-           for name in checks.MACHINE_BRANCHES):
+    if checks.machine_branch(branch):
         return ""
     if not branch.startswith(PREFIX):
         return (f"ветка {branch!r} не начинается с {PREFIX!r}. Имя ветки называет "
@@ -169,8 +168,7 @@ def main() -> int:
               "\n  О ЧЁМ работа, а не кто её делал.", file=sys.stderr)
         return 1
 
-    if any(branch == name or branch.startswith(name)
-           for name in checks.MACHINE_BRANCHES):
+    if checks.machine_branch(branch):
         # Исход называет ПРИЧИНУ пропуска: «имя годится» и «спрашивать не с
         # кого» — разные состояния, и склеивать их в одну строку значит терять
         # то единственное, что скажет читателю, почему гейт промолчал (039).

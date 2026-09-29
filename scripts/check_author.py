@@ -125,8 +125,7 @@ def body_attribution(body: str, author: str = "", branch: str = "") -> str:
     """
     if author and checks.machine_made(author):
         return ""
-    if branch and any(branch == name or branch.startswith(name)
-                      for name in checks.MACHINE_BRANCHES):
+    if checks.machine_branch(branch):
         return ""
     found = _body_trailers(body)
     if "co-authored-by" not in found:
@@ -144,9 +143,6 @@ def offenders(authors: list[str]) -> list[str]:
     return [a for a in authors if a.strip() in FORBIDDEN]
 
 
-#: Имя трейлера исполнителя. Разбор живёт в scripts/checks.py: тот же приём
-#: нужен решению о стоп-кране, и второй копии не заводится (правило 090).
-COAUTHOR = "co-authored-by"
 
 
 def unattributed(records: list[tuple[str, str, str, str]]) -> list[tuple[str, str]]:
@@ -174,7 +170,7 @@ def unattributed(records: list[tuple[str, str, str, str]]) -> list[tuple[str, st
     """
     return [(sha, subject) for author, sha, subject, body in records
             if not checks.machine_made(author)
-            and COAUTHOR not in checks.trailers(body)]
+            and checks.COAUTHOR not in checks.trailers(body)]
 
 
 def selftest() -> int:
@@ -382,8 +378,7 @@ def main() -> int:
             return 1
         print("тело изменения несёт атрибуцию: соавтор и след сессии на месте"
               if not (body_author and checks.machine_made(body_author)
-                      or body_branch and any(body_branch.startswith(n)
-                                             for n in checks.MACHINE_BRANCHES))
+                      or checks.machine_branch(body_branch))
               else "тело составила машина — хвостового блока с неё не спрашивают")
         return 0
 
@@ -392,6 +387,8 @@ def main() -> int:
         # Тело нужно второму предмету — трейлеру; записи разделяет \x1e,
         # потому что тело многострочное и по строкам его не разобрать.
         out = subprocess.run(
+            # `--no-merges` — правило scripts/checks.py::merge_commit другой
+            # формой: git отбирает сам, и числа родителей здесь не нужно.
             ["git", "log", "--no-merges", "--format=%an <%ae>%x00%h%x00%s%x00%b%x1e", rng],
             capture_output=True, text=True, encoding="utf-8", check=True).stdout
     except (subprocess.CalledProcessError, OSError) as e:

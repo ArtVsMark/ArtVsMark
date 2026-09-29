@@ -57,33 +57,41 @@ import sys
 import tempfile
 import urllib.error
 
+import check_journal
+import check_neighbours
 import checks
 
 REPO = os.environ.get("GITHUB_REPOSITORY", "ArtVsMark/ArtVsMark")
 
-#: Кто предлагает правку и как он назван в трейлере. Адрес — тот, что в
-#: .github/authors.txt: гейт каталога сверяет строку целиком.
-BOT = "dependabot[bot]"
-COAUTHOR = "dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>"
+#: Кто предлагает правку и как он назван в трейлере. Имя — из
+#: scripts/checks.py::DEPENDABOT, по нему бота узнают гейты (209). Адрес — тот,
+#: что в .github/authors.txt: гейт каталога сверяет строку целиком.
+BOT = checks.DEPENDABOT
+COAUTHOR = f"{BOT} <49699333+{BOT}@users.noreply.github.com>"
 
 #: Автор коммита — владелец, та же подпись, что у суточной пересборки.
 OWNER_NAME = "ArtVsMark"
 OWNER_EMAIL = "arvs.markitanov@gmail.com"
 
-#: Ветка переоформленной правки. Префикс обязан стоять в
-#: scripts/checks.py::MACHINE_BRANCHES — иначе гейты спросят с машины слаг задачи
-#: и след сессии; самопроверка сверяет это, а не надеется.
-BRANCH_PREFIX = "chore/deps-"
+#: Ветка переоформленной правки — приставка из scripts/checks.py: по ней
+#: гейты узнают машину и не спрашивают слаг задачи и след сессии. Берётся
+#: оттуда, а не буквами (209).
+BRANCH_PREFIX = checks.DEPS_BRANCH
 
 #: Что правка бота вправе трогать. Бот настроен на одну экосистему —
-#: github-actions (.github/dependabot.yml), — и его правка это пины в прогонах.
-ALLOWED = re.compile(r"^\.github/workflows/[^/]+\.ya?ml$")
+#: github-actions (.github/dependabot.yml), — и его правка это пины в прогонах,
+#: то есть файлы прогонов, которые площадка исполняет, — общий разбор
+#: scripts/checks.py::WORKFLOW_FILE (214).
+ALLOWED = checks.WORKFLOW_FILE
 
 #: Строки, которые гейты спрашивают с коммита, трогающего поведение. Пишутся
 #: здесь один раз и за всех: решения за сдвигом пинов нет, и это верно ровно в
 #: границе ALLOWED.
-JOURNAL_WAIVER = "Журнал: не требуется — пины сдвинул dependabot, решения за правкой нет"
-NEIGHBOURS = "Соседи: нет — сдвиг пинов действий, признаков витрины не менялось"
+#: Ключи и слова — у гейтов, которые их узнают (209).
+JOURNAL_WAIVER = (f"{check_journal.WAIVER_KEY}: {check_journal.WAIVER_WORDS} — "
+                  f"пины сдвинул dependabot, решения за правкой нет")
+NEIGHBOURS = (f"{check_neighbours.KEY}: {check_neighbours.NONE_WORD} — "
+              f"сдвиг пинов действий, признаков витрины не менялось")
 
 EXIT_OK, EXIT_FINDING, EXIT_BROKEN = 0, 1, 2
 
@@ -102,7 +110,7 @@ def bot_changes(changes: list[dict]) -> list[dict]:
     """
     return [c for c in changes
             if (c.get("user") or {}).get("login") == BOT
-            and str((c.get("head") or {}).get("ref", "")).startswith("dependabot/")]
+            and str((c.get("head") or {}).get("ref", "")).startswith(checks.DEPENDABOT_BRANCH)]
 
 
 def outside(paths: list[str]) -> list[str]:
@@ -258,12 +266,11 @@ def selftest() -> int:
         ("стоп-кран снимается без тела: дописывать некому",
          hold.marker_needed(message) is False),
         ("журнал освобождён строкой с причиной",
-         bool(check_journal.WAIVER.search(message))),
+         bool(check_journal.waiver_reason(message))),
         ("о соседях сказано ровно одной строкой, и она наша",
          [m.group("said") for m in check_neighbours.ANSWER.finditer(message)]
          == [NEIGHBOURS.split(":", 1)[1].strip()]),
-        ("ветка машинная для гейтов",
-         any(f"{BRANCH_PREFIX}209".startswith(n) for n in checks.MACHINE_BRANCHES)),
+        ("ветка машинная для гейтов", checks.machine_branch(f"{BRANCH_PREFIX}209")),
     ]
     for name, ok in message_cases:
         if not ok:

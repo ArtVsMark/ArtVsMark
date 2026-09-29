@@ -68,9 +68,22 @@ SECTIONS = {
 SECTION_PREFIX = re.compile(rf"^(?P<name>{'|'.join(SECTIONS)})\s*:\s*", re.I)
 
 
+def is_fragment(path: str) -> bool:
+    """Путь от корня — фрагмент журнала: `.md` прямо в changelog.d/, кроме соглашения.
+
+    ОДИН ОТВЕТ НА ВОПРОС ДЛЯ СБОРЩИКА И ДЛЯ ГЕЙТА ЖУРНАЛА (214). Гейт засчитывал
+    любой путь под changelog.d/, а сборщик читал только `.md` верхнего уровня:
+    правка, приложившая `changelog.d/x.txt` или вложенный файл, проходила гейт
+    и в журнал не попадала. Узнаёт фрагмент тот, кто его собирает, — здесь.
+    """
+    parent, _, name = path.rpartition("/")
+    return parent == FRAGMENTS.name and name.endswith(".md") and name != "README.md"
+
+
 def fragments() -> list[pathlib.Path]:
-    """Файлы фрагментов, кроме соглашения. Порядок — по имени, он же в выводе."""
-    return sorted(p for p in FRAGMENTS.glob("*.md") if p.name != "README.md")
+    """Файлы фрагментов. Порядок — по имени, он же в выводе."""
+    return sorted(p for p in FRAGMENTS.glob("*")
+                  if is_fragment(p.relative_to(ROOT).as_posix()))
 
 
 def parse(path: pathlib.Path) -> tuple[str, str, list[str]]:

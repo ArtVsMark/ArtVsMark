@@ -21,7 +21,7 @@
 попал в починку, — о нём не спросили. Ненаписанное неотличимо от неспрошенного
 (правило 026).
 
-ФОРМА ОТВЕТА взята у гейта журнала дословно — строка в сообщении коммита; второе
+ФОРМА ОТВЕТА общая с гейтом журнала — scripts/checks.py::answer_line; второе
 соглашение для того же жеста стоило бы дороже, чем польза от его отдельности
 (правило 090). А вот ОБЛАСТЬ спроса другая: журнал спрашивают с захода, соседей
 — с КОММИТА. «Почему так решили» — свойство изменения целиком; соседи — свойство
@@ -44,7 +44,6 @@
 
 from __future__ import annotations
 
-import re
 import subprocess
 import sys
 
@@ -53,12 +52,16 @@ import checks
 #: Жест. Двоеточие обязательно, текст после него — тоже: строка «Соседи» без
 #: содержания ничего не сообщает. Регистр не важен, отступ допускается — сообщение
 #: коммита пишет человек, и придираться к пробелу значило бы ловить не тот предмет.
-ANSWER = re.compile(r"^[ \t]*Соседи:[ \t]*(?P<said>\S.*)$", re.M | re.I)
+#: Ключ печатает и scripts/reauthor_deps.py — берёт его отсюда (209); грамматика
+#: строки общая с гейтом журнала — scripts/checks.py::answer_line (214).
+KEY = "Соседи"
+ANSWER = checks.answer_line(KEY)
 
 #: Ответ «их нет» обязан назвать причину — тем же тире, что и отказ от журнала.
 #: Без причины это подписанное молчание, а оно хуже отсутствующей строки: строку
 #: видно, что её нет, а «нет —» без продолжения выглядит как ответ.
-NONE_GIVEN = re.compile(r"^нет\b\s*[—–-]\s*(?P<why>\S.+)$", re.I)
+NONE_WORD = "нет"
+NONE_GIVEN = checks.with_reason(NONE_WORD)
 
 
 def audit(commits: list[tuple[str, str, int, list[str]]]) -> tuple[list[str], list[str]]:
@@ -93,7 +96,7 @@ def audit(commits: list[tuple[str, str, int, list[str]]]) -> tuple[list[str], li
     said: list[str] = []
     for message, author, parents, paths in commits:
         behaviour = checks.touched(paths)
-        if parents >= 2 or checks.machine_made(author) or not behaviour:
+        if checks.merge_commit(parents) or checks.machine_made(author) or not behaviour:
             continue
         answer = ANSWER.search(message)
         title = checks.clip(message.strip().splitlines()[0] if message.strip() else "?", 50)

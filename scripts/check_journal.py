@@ -70,6 +70,7 @@ import subprocess
 import sys
 
 import checks
+import collect_changelog
 
 #: Что считается правкой поведения — общий признак, а не своя копия: его
 #: спрашивает ещё и гейт соседей (scripts/checks.py::BEHAVIOUR).
@@ -78,10 +79,23 @@ JOURNAL = "HISTORY.md"
 #: Фрагмент журнала изменений. Он и есть запись «что изменилось»: файл на
 #: изменение, потому что строка в общем файле конфликтует всегда, если её пишут
 #: две ветки. Предмет живой — 8 сентября так встали две ветки подряд.
-FRAGMENTS = "changelog.d/"
+FRAGMENTS = f"{collect_changelog.FRAGMENTS.name}/"
 
-#: Осознанный отказ от записи — с причиной, которая остаётся в истории.
-WAIVER = re.compile(r"^Журнал:\s*не требуется\s*[—-]\s*(?P<why>\S.*)$", re.M)
+#: Осознанный отказ от записи — с причиной, которая остаётся в истории:
+#: «Журнал: не требуется — причина». Ключ и слова узнаёт этот гейт, а печатает
+#: и scripts/reauthor_deps.py — берёт их отсюда, а не буквами (209). Грамматика
+#: строки общая с гейтом соседей: scripts/checks.py::answer_line (214).
+WAIVER_KEY = "Журнал"
+WAIVER_WORDS = "не требуется"
+
+
+def waiver_reason(messages: str) -> str:
+    """Причина осознанного отказа от записи. Пусто — отказа нет."""
+    for line in checks.answer_line(WAIVER_KEY).finditer(messages):
+        said = checks.with_reason(WAIVER_WORDS).match(line.group("said"))
+        if said:
+            return said.group("why").strip()
+    return ""
 
 
 #: Потолок на РАЗДЕЛ, добавленный этим изменением. Замер на семи вехах, в которые
@@ -264,7 +278,7 @@ def audit(paths: list[str], messages: str,
 
     Вынесено из ``main``, чтобы проверять на подставных наборах, не ходя в git.
     """
-    waiver = WAIVER.search(messages)
+    waiver = waiver_reason(messages)
     behaviour = checks.touched(paths)
     if not behaviour:
         return [], ""
@@ -272,12 +286,11 @@ def audit(paths: list[str], messages: str,
     # разные вопросы, и требовать оба значило бы требовать причину там, где её
     # нет. «Что изменилось» есть у каждой правки; «почему так решили» — не у
     # каждой, и выдуманное «почему» хуже отсутствующего (правило 046).
-    if JOURNAL in paths or any(path.startswith(FRAGMENTS) and not path.endswith("README.md")
-                               for path in paths):
+    if JOURNAL in paths or any(collect_changelog.is_fragment(path) for path in paths):
         return [], ""
     if waiver:
-        return [], waiver.group("why").strip()
-    made = [author for author, parents in (commits or []) if parents < 2]
+        return [], waiver
+    made = [author for author, parents in (commits or []) if not checks.merge_commit(parents)]
     if made and all(checks.machine_made(author) for author in made):
         return [], "правку сделала машина: решения она не принимает, записывать нечего"
     return [f"поведение правится без записи: ни фрагмента в {FRAGMENTS}, ни "
