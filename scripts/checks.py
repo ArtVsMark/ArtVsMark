@@ -125,7 +125,16 @@ MACHINE_AUTHORS = (DEPENDABOT, PLATFORM_BOT)
 DEPENDABOT_BRANCH = "dependabot/"
 METRICS_BRANCH = "chore/metrics"
 DEPS_BRANCH = "chore/deps-"
-MACHINE_BRANCHES = (DEPENDABOT_BRANCH, METRICS_BRANCH, DEPS_BRANCH)
+#: Ветка помесячного сбора журнала изменений: её пишет буквами
+#: .github/workflows/changelog.yml, копия подписана там (071).
+CHANGELOG_BRANCH = "chore/changelog"
+MACHINE_BRANCHES = (DEPENDABOT_BRANCH, METRICS_BRANCH, DEPS_BRANCH, CHANGELOG_BRANCH)
+
+#: Месяцы — по ним журнал решений узнаёт свои разделы, а журнал изменений
+#: называет свои. Один список на оба журнала (209): разойдись они — раздел,
+#: заведённый одним, другой не узнал бы.
+MONTHS = ("январь", "февраль", "март", "апрель", "май", "июнь", "июль", "август",
+          "сентябрь", "октябрь", "ноябрь", "декабрь")
 
 
 def machine_branch(branch: str) -> bool:
