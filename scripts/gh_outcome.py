@@ -78,6 +78,42 @@ REAL_REFUSAL: tuple[tuple[str, str], ...] = (
 )
 
 
+#: Отказ площадки ВКЛЮЧИТЬ АВТОМЕРЖ — второй вопрос к тому же выводу, после
+#: ``classify``: источник ответил, и ответил отказом, но отказом разным. Разбор
+#: жил выражением ``case "$out"`` в шаге automerge.yml, где набора не бывает,
+#: и одну форму из трёх читал неверно (206, 214).
+#:
+#: ФОРМЫ — ИЗ ПЕРЕЧНЯ СОСТОЯНИЙ ПЛОЩАДКИ, а не из дерева: ``MergeStateStatus``
+#: называет восемь, и включить автомерж площадка отказывает на тех, где
+#: изменение сливаемо УЖЕ СЕЙЧАС, — ``clean``, ``unstable``, ``has_hooks``, — и
+#: на ``dirty``. Прежний разбор знал только ``clean``; ``unstable`` пришёл
+#: живьём 28 сентября на #233, и стоп-кран снятый, автомерж не вооружённый,
+#: изменение стояло до ручной кнопки.
+MERGE_REFUSAL: tuple[tuple[str, str, str], ...] = (
+    (r"is in (?:clean|unstable|has_hooks) status", "mergeable",
+     "изменение сливаемо уже сейчас — ждать нечего, автомерж не нужен"),
+    (r"is in dirty status", "conflict", "конфликт с общей веткой — её нужно влить"),
+    (r"already enabled", "armed", "автомерж уже включён"),
+    (r"already merged", "merged", "изменение уже слито"),
+    (r"head branch was modified|head sha|expected head", "moved",
+     "голова сдвинулась, пока решали, — решит следующий прогон"),
+    (r"auto[- ]merge|not enabled for this repository",
+     "disallowed", "автомерж в репозитории не разрешён: Settings -> General -> Allow auto-merge"),
+    (r"squash[^\n]*not allowed", "disallowed",
+     "squash запрещён: Settings -> General -> Allow squash merging — именно squash "
+     "атрибутирует коммит автору изменения"),
+)
+
+
+def merge_refusal(output: str) -> tuple[str, str]:
+    """Какой отказ площадка дала на включение автомержа. Пусто — не разобран."""
+    text = output.lower()
+    for pattern, word, reason in MERGE_REFUSAL:
+        if re.search(pattern, text):
+            return word, reason
+    return "", "отказ не разобран"
+
+
 def classify(code: int, output: str) -> tuple[str, str]:
     """Исход обращения и его причина.
 
@@ -146,6 +182,32 @@ def selftest() -> int:
     if verdict != "state":
         broken.append("403 с лимитом прочитан отказом в правах — списки переставлены местами")
 
+    # Отказы включения автомержа. Первый — дословно тот, что пришёл на #233.
+    refusals = (
+        ("сливаемо: unstable — живой отказ с #233",
+         "GraphQL: Pull request Pull request is in unstable status (enablePullRequestAutoMerge)",
+         "mergeable"),
+        ("сливаемо: clean", "GraphQL: Pull request Pull request is in clean status "
+         "(enablePullRequestAutoMerge)", "mergeable"),
+        ("сливаемо: has_hooks", "Pull request is in has_hooks status", "mergeable"),
+        ("конфликт", "GraphQL: Pull request Pull request is in dirty status "
+         "(enablePullRequestAutoMerge)", "conflict"),
+        ("уже включён", "Pull request auto merge is already enabled", "armed"),
+        ("автомерж запрещён", "Pull request Auto merge is not allowed for this repository",
+         "disallowed"),
+        ("squash запрещён", "Squash merges are not allowed on this repository.", "disallowed"),
+        ("голова сдвинулась", "Head branch was modified. Review and try the merge again.",
+         "moved"),
+        # Имя мутации в хвосте есть у КАЖДОГО такого отказа: слово AutoMerge
+        # в нём не должно читаться запретом автомержа.
+        ("имя мутации — не запрет", "GraphQL: something else (enablePullRequestAutoMerge)", ""),
+    )
+    for name, output, expected in refusals:
+        word, reason = merge_refusal(output)
+        if word != expected:
+            broken.append(f"отказ слияния, {name}: ожидалось {expected!r}, вышло {word!r} — {reason}")
+        print(f"  {word or '—':<10} — отказ слияния: {name}")
+
     if broken:
         print("\nсамопроверка провалена:", file=sys.stderr)
         for line in broken:
@@ -159,10 +221,16 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--code", type=int, default=0, help="код возврата gh")
     parser.add_argument("--selftest", action="store_true", help="прогнать самопроверку")
+    parser.add_argument("--merge-refusal", action="store_true",
+                        help="разобрать отказ включения автомержа: слово и причина")
     args = parser.parse_args()
 
     if args.selftest:
         return selftest()
+    if args.merge_refusal:
+        word, reason = merge_refusal(sys.stdin.read())
+        print(f"{word or 'unknown'}: {reason}")
+        return 0
 
     verdict, reason = classify(args.code, sys.stdin.read())
     print(f"{verdict}: {reason}")

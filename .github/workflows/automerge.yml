@@ -41,8 +41,10 @@
 # Включать рано мы всё равно продолжаем, но по другой причине — по той, которая
 # проверяема: изменение обычно и приходит незелёным, и ждать зелёного значило бы
 # держать отдельный механизм ожидания там, где площадка ждёт сама. Ветка
-# «уже в чистом состоянии» из шага не убрана: она разбирает исход, который здесь
-# не воспроизвёлся, но и опровергнутым одним замером не считается.
+# «уже в чистом состоянии» из шага не убиралась — исход не воспроизводился, но
+# и опровергнутым одним замером не считался. 28 сентября он пришёл живьём, в
+# другой форме: #233, «Pull request is in unstable status». Теперь такой отказ
+# означает «сливаемо уже сейчас», и сливает конвейер — шаг «включить автомерж».
 #
 # ОТСЮДА ЖЕ: ЗАЩИТА ВЕТКИ — УСЛОВИЕ РАБОТЫ, А НЕ УДОБСТВО. Без обязательной
 # проверки изменение становится «чистым» сразу, и автомерж сольёт его, НЕ
@@ -142,9 +144,10 @@ jobs:
         run: |
           set -uo pipefail
           out=$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" \
-            --json isDraft,state,baseRefName,autoMergeRequest \
+            --json isDraft,state,baseRefName,autoMergeRequest,headRefOid,headRefName \
             --jq '"draft=\(.isDraft)", "state=\(.state)", "base=\(.baseRefName)",
-                  "armed=\(.autoMergeRequest != null)"' 2>&1) && rc=0 || rc=$?
+                  "armed=\(.autoMergeRequest != null)", "head=\(.headRefOid)",
+                  "branch=\(.headRefName)"' 2>&1) && rc=0 || rc=$?
           # слова ok/state/broken — договор scripts/gh_outcome.py::classify; case ниже
           # повторяет их буквами: оболочка питон не импортирует (071).
           verdict=$(printf '%s\n' "$out" | python3 scripts/gh_outcome.py --code "$rc") \
@@ -171,6 +174,21 @@ jobs:
            steps.pr.outputs.armed == 'true')
         run: |
           echo "#$PR: черновик, закрыто или автомерж уже включён — пропуск"
+          echo "SKIP=1" >> "$GITHUB_ENV"
+
+      # ИЗМЕНЕНИЕ БОТА НЕ ВООРУЖАЕТСЯ НИКОГДА. Его правку переоформляет
+      # владелец (deps-reauthor.yml), а само оно закрывается ботом, когда
+      # обновление окажется в main: слитое, оно легло бы в main за подписью
+      # бота (123). До кнопки из release-hold это держалось совпадением —
+      # событию от бота площадка секретов не выдаёт, и шаг «токен владельца
+      # задан» уводил в пропуск. Прогон, вызванный кнопкой, секреты получает, и
+      # совпадение перестало держать: вырез назван явно.
+      # Приставка `dependabot/` — копия scripts/checks.py::DEPENDABOT_BRANCH:
+      # оболочка питон не импортирует, меняется вместе с константой (071).
+      - name: пропустить изменения бота
+        if: env.SKIP != '1' && startsWith(steps.pr.outputs.branch, 'dependabot/')
+        run: |
+          echo "::notice::#$PR — изменение dependabot: переоформляет владелец, само не вооружается"
           echo "SKIP=1" >> "$GITHUB_ENV"
 
       # Метка `hold` — стоп-кран владельца, и она сильнее всего остального.
@@ -256,6 +274,7 @@ jobs:
           # становится автор изменения, и включать должен тот, чью личность этот
           # коммит обязан нести (правила 131, 135).
           GH_TOKEN: ${{ env.MERGE_QUEUE_TOKEN }}
+          HEAD_SHA: ${{ steps.pr.outputs.head }}
         run: |
           set -uo pipefail
           # Включение автомержа умеет только GraphQL — REST такого не отдаёт.
@@ -279,15 +298,57 @@ jobs:
             echo "::warning::Автомерж на #$PR не включился: ${verdict#state: }. С изменением всё в порядке — включится следующим прогоном."
             exit 0
           fi
-          case "$out" in
-            *"lean status"*|*"already enabled"*)
-              echo "::warning::#$PR уже в чистом состоянии — ждать нечего, автомерж включить нельзя. Слить должен человек."
-              exit 0 ;;
-            *uto-merge*|*"not enabled"*)
-              echo "::error::Автомерж в репозитории не разрешён. Settings -> General -> Allow auto-merge."
+          # Какой именно отказ, разбирает скрипт с набором, а не `case` по
+          # буквам вывода: здесь стояло выражение, знавшее `clean` и не знавшее
+          # `unstable`, — и тот пришёл живьём на #233 (206, 214).
+          # слова mergeable/conflict/armed/merged/moved/disallowed — договор
+          # scripts/gh_outcome.py::merge_refusal; case ниже повторяет их буквами (071).
+          refusal=$(printf '%s\n' "$out" | python3 scripts/gh_outcome.py --merge-refusal) \
+            || refusal="unknown: разбор отказа не отработал — scripts/gh_outcome.py"
+          case "$refusal" in
+            mergeable:*)
+              # СЛИВАЕМО УЖЕ СЕЙЧАС — И СЛИВАЕТ КОНВЕЙЕР, А НЕ ЧЕЛОВЕК. Здесь
+              # стояло «слить должен человек», и так изменение и стояло:
+              # стоп-кран снят, автомерж не вооружён, событий больше не будет.
+              # Гонка живая: gh читает состояние `blocked` и зовёт включение,
+              # а к приходу вызова последняя проверка уже досчиталась (#233).
+              # Сливать при `unstable` — ровно то, что сделал бы сам автомерж:
+              # он ждёт обязательных проверок, а `unstable` — это красное или
+              # незаконченное среди НЕобязательных.
+              #
+              # Голова закрепляется: сливается та, что была прочитана шагом
+              # состояния, — пуш между чтением и слиянием даст отказ, а не
+              # слияние непроверенного.
+              out=$(gh pr merge "$PR" --repo "$GITHUB_REPOSITORY" --squash \
+                      --match-head-commit "$HEAD_SHA" 2>&1) && rc=0 || rc=$?
+              if [ "$rc" -eq 0 ]; then
+                echo "::notice::#$PR сливаемо уже сейчас — слито конвейером (squash): ${refusal#mergeable: }"
+                exit 0
+              fi
+              # слова ok/state/broken — договор scripts/gh_outcome.py::classify (071).
+              verdict=$(printf '%s\n' "$out" | python3 scripts/gh_outcome.py --code "$rc") \
+                || verdict="broken: разбор исходов не отработал — scripts/gh_outcome.py"
+              if [ "${verdict%%:*}" = state ]; then
+                echo "::warning::#$PR не слито: ${verdict#state: }. Слияние придёт следующим прогоном."
+                exit 0
+              fi
+              # Голова сдвинулась или изменение уже слито — это состояние, а не
+              # поломка: новый пуш сам принесёт события (тот же договор слов).
+              again=$(printf '%s\n' "$out" | python3 scripts/gh_outcome.py --merge-refusal) \
+                || again="unknown: разбор отказа не отработал — scripts/gh_outcome.py"
+              case "$again" in
+                moved:*|merged:*)
+                  echo "::notice::#$PR: ${again#*: }"
+                  exit 0 ;;
+              esac
+              echo "::error::#$PR сливаемо, но не слито: $out"
               exit 1 ;;
-            *quash*)
-              echo "::error::Squash запрещён. Settings -> General -> Allow squash merging. Именно squash атрибутирует коммит автору изменения, а не тому, кто нажал."
+            armed:*|merged:*|moved:*)
+              echo "::notice::#$PR: ${refusal#*: }" ;;
+            conflict:*)
+              echo "::warning::#$PR: ${refusal#conflict: }. Автомерж включится следующим пушем." ;;
+            disallowed:*)
+              echo "::error::${refusal#disallowed: }"
               exit 1 ;;
             *)
               echo "::error::Автомерж не включился: ${verdict#broken: }"
