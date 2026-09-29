@@ -168,12 +168,18 @@ def naming(url: str):
         raise
 
 
-def _get(url: str, authenticated: bool = True) -> bytes:
-    """Загрузка. ``authenticated=False`` — для не-API источников.
+def _fetch(url: str, authenticated: bool = True) -> tuple[bytes, str]:
+    """Загрузка вместе с заголовком ``Link``. ЕДИНСТВЕННОЕ место, где сборка
+    открывает соединение: ``_get``, ``_api``, ``_api_list`` и ``_count`` идут
+    через него.
 
     Заголовок ``Authorization`` посылается не всюду: ``raw.githubusercontent.com``
     отвечает на него 404 — токен для него чужой, и вместо содержимого приходит
     «нет такого файла».
+
+    ``_count`` раньше открывал соединение сам, мимо ``_api``, — ему нужен был
+    ``Link``, а ``_get`` отдавал только тело. Гейт обращений к площадке этой
+    формы не видел (206); теперь заголовок отдаёт общий вход.
     """
     request = urllib.request.Request(
         url,
@@ -188,12 +194,42 @@ def _get(url: str, authenticated: bool = True) -> bytes:
         },
     )
     with naming(url), urllib.request.urlopen(request, timeout=30) as response:
-        return response.read()
+        return response.read(), response.headers.get("Link", "") or ""
+
+
+def _get(url: str, authenticated: bool = True) -> bytes:
+    """Загрузка тела. ``authenticated=False`` — для не-API источников."""
+    return _fetch(url, authenticated)[0]
 
 
 def _api(path: str) -> object:
+    """Одиночный объект площадки. Список через него читают только намеренным
+    пределом, названным рядом строкой ``# предел: …`` — иначе ``_api_list``."""
     with naming(f"{API}{path}"):
         return json.loads(_get(f"{API}{path}"))
+
+
+def _api_list(path: str, key: str | None = None) -> list:
+    """Список площадки целиком: страницы по ``rel="next"``, пока ссылка есть.
+
+    Разбор ссылки общий со сторожами — ``checks.next_page``, — а вход свой:
+    сборка различает сетевые исходы (``naming``). ``key`` — у списков,
+    завёрнутых в объект (``workflows``). Страница не того вида — отказ, а не
+    пустой список (212).
+    """
+    url, items = f"{API}{path}", []
+    while url:
+        body, link = _fetch(url)
+        with naming(url):
+            page = json.loads(body)
+            if key is not None:
+                page = page.get(key) if isinstance(page, dict) else None
+            if not isinstance(page, list):
+                raise ValueError(f"{url}: ожидался список"
+                                 f"{f' в поле {key!r}' if key else ''}, пришло иное")
+        items.extend(page)
+        url = checks.next_page(link)
+    return items
 
 
 #: Сама витрина. В списке проектов её нет — она их показывает, — но её код
@@ -323,17 +359,8 @@ def _count(path: str) -> int:
     роняет сборку: посчитать нельзя, а правдоподобное число хуже отказа
     (правила 039 и 075).
     """
-    request = urllib.request.Request(
-        f"{API}{path}",
-        headers={
-            "Accept": "application/vnd.github+json",
-            "X-GitHub-Api-Version": "2022-11-28",
-            **({"Authorization": f"Bearer {t}"} if (t := os.environ.get("GH_TOKEN")) else {}),
-        },
-    )
-    with naming(f"{API}{path}"), urllib.request.urlopen(request, timeout=30) as response:
-        link = response.headers.get("Link", "")
-        body = json.loads(response.read())
+    raw, link = _fetch(f"{API}{path}")
+    body = json.loads(raw)
     last = re.search(r'[?&]page=(\d+)>;\s*rel="last"', link)
     if last:
         return int(last.group(1))
@@ -456,7 +483,8 @@ def owned_repos(login: str = OWNER) -> list[tuple[str, int]]:
     Форки исключены намеренно: их звёзды принадлежат исходному проекту, и
     складывать их значило бы приписывать себе чужое. Постранично, потому что
     страница по умолчанию — тридцать записей, а витрина не знает заранее,
-    сколько их будет завтра.
+    сколько их будет завтра; страницы обходит общий ``_api_list``, а не свой
+    цикл до короткой страницы (214).
 
     ИМЕНА ВОЗВРАЩАЮТСЯ, А НЕ ВЫБРАСЫВАЮТСЯ, и это правка по живому пробелу.
     Прежде здесь считались только две суммы — звёзды и число, — а имена
@@ -469,18 +497,9 @@ def owned_repos(login: str = OWNER) -> list[tuple[str, int]]:
     приватных репозиториев не видит вовсе. Их отсутствие в ответе — не «их
     нет», а «отсюда не видно», и требовать по ним заявления нельзя.
     """
-    found: list[tuple[str, int]] = []
-    page = 1
-    while True:
-        chunk = _api(f"/users/{login}/repos?per_page=100&type=owner&page={page}")
-        if not chunk:
-            break
-        found += [(repo["full_name"], repo.get("stargazers_count", 0))
-                  for repo in chunk if not repo.get("fork")]
-        if len(chunk) < 100:
-            break
-        page += 1
-    return found
+    return [(repo["full_name"], repo.get("stargazers_count", 0))
+            for repo in _api_list(f"/users/{login}/repos?per_page=100&type=owner")
+            if not repo.get("fork")]
 
 
 #: Ответ «этот репозиторий на витрину не берём» живёт данными рядом с составом
@@ -1332,6 +1351,7 @@ def verify_absence(repo: str, kind: str, why: str) -> str:
     назван здесь, а не выровнен.
     """
     if kind == "release":
+        # предел: одна запись — вопрос «есть ли выпуск», а не «сколько их».
         if _api(f"/repos/{repo}/releases?per_page=1"):
             found = "выпуски есть, хотя бы один — возможно, предварительный"
         else:
@@ -1348,7 +1368,8 @@ def verify_absence(repo: str, kind: str, why: str) -> str:
         # Появится у соседа настоящий CI — имени его в причине не окажется, и
         # ответ покраснеет, как и должен (правило 158: отказ называет предмет).
         names = {w["path"].rsplit("/", 1)[-1]
-                 for w in _api(f"/repos/{repo}/actions/workflows").get("workflows", [])}
+                 for w in _api_list(f"/repos/{repo}/actions/workflows?per_page=100",
+                                    key="workflows")}
         unnamed = {name for name in names if name not in why}
         if unnamed:
             found = f"прогоны в репозитории есть и в причине не названы: {', '.join(sorted(unnamed))}"
@@ -1502,9 +1523,10 @@ def latest_tag(repo: str) -> str | None:
 
     ``releases/latest`` не видит черновиков и предварительных выпусков: у
     каталога правил единственный релиз был помечен предварительным, и эндпойнт
-    отдавал 404 при существующем выпуске. Отсюда запасной путь по полному
-    списку — иначе плашка говорила бы «нет выпусков» рядом с числом «1 releases»
-    в той же картинке.
+    отдавал 404 при существующем выпуске. Отсюда запасной путь — первая запись
+    списка выпусков, включая предварительные, — иначе плашка говорила бы «нет
+    выпусков» рядом с числом «1 releases» в той же картинке. Здесь стояло «по
+    полному списку», а читалась одна запись: проза называла не то поведение.
     """
     try:
         tag = _api(f"/repos/{repo}/releases/latest").get("tag_name")
@@ -1517,6 +1539,8 @@ def latest_tag(repo: str) -> str | None:
         tag = None
     if tag:
         return tag
+    # предел: одна запись — самый свежий выпуск; площадка отдаёт выпуски от
+    # новых к старым, и первый в списке он и есть.
     releases = _api(f"/repos/{repo}/releases?per_page=1")
     return releases[0]["tag_name"] if releases else None
 
@@ -1802,6 +1826,8 @@ def project_badges(repo: str, answers: dict,
                 badges.append((BADGE_LABELS["release"], latest_tag(repo) or "—",
                                "info" if latest_tag(repo) else "muted"))
         elif kind == "ci":
+            # предел: одна запись — последний завершённый прогон на main;
+            # площадка отдаёт прогоны от новых к старым.
             runs = _api(
                 f"/repos/{repo}/actions/workflows/{answer['workflow']}"
                 "/runs?branch=main&status=completed&per_page=1"
@@ -2331,7 +2357,7 @@ def protection_facts() -> tuple[int, int, int]:
     состоится.
     """
     contexts = []
-    for rule in _api(f"/repos/{REPO}/rules/branches/main"):
+    for rule in _api_list(f"/repos/{REPO}/rules/branches/main?per_page=100"):
         if rule.get("type") == "required_status_checks":
             contexts = [c["context"] for c in rule["parameters"]["required_status_checks"]]
     matrix = [re.match(r"test \(([^,]+), ([^,)]+)", context) for context in contexts]
@@ -2341,7 +2367,8 @@ def protection_facts() -> tuple[int, int, int]:
 
 
 def release_count() -> int:
-    return len(_api(f"/repos/{REPO}/releases?per_page=100"))
+    # Счёт по номеру последней страницы, а не длина первой сотни (212).
+    return _count(f"/repos/{REPO}/releases?per_page=1")
 
 
 #: За сколько дней считается подпись работы. Скользящее окно, а не вся история:
@@ -2370,8 +2397,14 @@ def signed_commits(days: int = SIGNED_WINDOW_DAYS) -> tuple[int, int]:
     Молчание источника ловится сторожем пустых метрик: ноль рабочих коммитов за
     месяц — это не «никто не подписывает», а «список не прочитан».
     """
-    since = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=days)).isoformat()
-    commits = _api(f"/repos/{SHOWCASE}/commits?sha=main&since={since}&per_page=100")
+    # Время в форме с «Z»: смещение «+00:00» уходило в адрес сырым плюсом и так
+    # же возвращалось в ссылке на следующую страницу.
+    since = (dt.datetime.now(dt.timezone.utc)
+             - dt.timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    # ВСЕ СТРАНИЦЫ, А НЕ ПЕРВАЯ. Здесь стояла одна страница по сотне, а за 30
+    # дней к 28 сентября коммитов набралось 118: доля на витрине считалась без
+    # восемнадцати самых старых, и прогон был зелёным (212).
+    commits = _api_list(f"/repos/{SHOWCASE}/commits?sha=main&since={since}&per_page=100")
     signed = total = 0
     for item in commits if isinstance(commits, list) else []:
         commit = item.get("commit") or {}
@@ -2490,7 +2523,7 @@ def renamed_repos(census: dict[str, list[str]]) -> list[str]:
 def protection_names(repo: str = "ArtVsMark/ArtVsMark") -> list[str]:
     """Имена обязательных проверок в защите ветки — как их видит площадка."""
     contexts: list[str] = []
-    for rule in _api(f"/repos/{repo}/rules/branches/main"):
+    for rule in _api_list(f"/repos/{repo}/rules/branches/main?per_page=100"):
         if rule.get("type") == "required_status_checks":
             contexts = [c["context"] for c in rule["parameters"]["required_status_checks"]]
     return contexts

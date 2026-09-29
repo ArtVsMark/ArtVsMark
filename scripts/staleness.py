@@ -44,11 +44,9 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
-import json
 import os
 import sys
 import urllib.error
-import urllib.request
 
 import checks
 
@@ -116,22 +114,6 @@ def marker(workflow: str) -> str:
 DEFAULT_HOURS = 36
 
 
-def _api(path: str, method: str = "GET", payload: dict | None = None) -> object:
-    token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
-    request = urllib.request.Request(
-        f"{API}{path}",
-        data=json.dumps(payload).encode() if payload else None,
-        method=method,
-        headers={
-            "Accept": "application/vnd.github+json",
-            "X-GitHub-Api-Version": "2022-11-28",
-            **({"Authorization": f"Bearer {token}"} if token else {}),
-        },
-    )
-    with urllib.request.urlopen(request, timeout=30) as response:
-        return json.load(response) if response.status != 204 else None
-
-
 def last_success(workflow: str) -> dt.datetime | None:
     """Время последнего успешного прогона, либо ``None``.
 
@@ -139,7 +121,9 @@ def last_success(workflow: str) -> dt.datetime | None:
     вызывающий: у молодого прогона это норма, у живущего месяц — поломка
     (правило 010).
     """
-    runs = _api(f"/repos/{REPO}/actions/workflows/{workflow}"
+    # предел: одна запись — последний успешный прогон; площадка отдаёт
+    # прогоны от новых к старым, и свежий стоит первым.
+    runs = checks.rest(f"/repos/{REPO}/actions/workflows/{workflow}"
                 f"/runs?status=success&per_page=1")
     entries = runs.get("workflow_runs", []) if isinstance(runs, dict) else []
     if not entries:
@@ -196,16 +180,16 @@ def body(reason: str, workflow: str, hours: int) -> str:
 
 def sync_issue(reason: str, workflow: str, hours: int, dry: bool) -> str:
     """Заводит или обновляет ОДНУ задачу. Возвращает, что сделано."""
-    found = _api(f"/repos/{REPO}/issues?state=open&per_page=100")
+    found = checks.rest_list(f"/repos/{REPO}/issues?state=open&per_page=100")
     own = marker(workflow)
     existing = next((i for i in found if own in (i.get("body") or "")), None)
     text = body(reason, workflow, hours)
     if dry:
         return f"вхолостую: {'обновил бы' if existing else 'завёл бы'} задачу"
     if existing:
-        _api(f"/repos/{REPO}/issues/{existing['number']}", "PATCH", {"body": text})
+        checks.rest(f"/repos/{REPO}/issues/{existing['number']}", "PATCH", {"body": text})
         return f"задача #{existing['number']} обновлена"
-    made = _api(f"/repos/{REPO}/issues", "POST",
+    made = checks.rest(f"/repos/{REPO}/issues", "POST",
                 {"title": WATCHED[workflow]["title"].format(hours=hours),
                  "body": text, "labels": ["bug"]})
     return f"задача #{made['number']} заведена"

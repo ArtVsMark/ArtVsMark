@@ -27,6 +27,15 @@ GitHub отдаёт по одному имени столько записей, 
 стоило витрине неверной цифры на странице, и место, где оно названо по имени,
 дороже трёх строк экономии.
 
+**Транспорт сторожей — тоже здесь** (правила 212 и 214). Четыре скрипта
+держали по своей копии запроса к REST площадки, почти буква в букву, и ни одна
+не обходила страницы: списки задач, изменений и проверок читались первой
+страницей молча. Обход страниц, написанный в четырёх местах, разошёлся бы с
+первой правки, поэтому он написан один раз — ``rest_list``, — а скрипты зовут
+``rest``. У сборки метрик вход свой: она различает сетевые исходы и ходит в
+``raw`` без токена, — но разбор ссылки на следующую страницу и у неё общий,
+``next_page``.
+
 Запуск::  python scripts/checks.py --selftest
 Исходы: 0 — чисто; 1 — самопроверка провалена; 2 — запустить не удалось
 (модуль не разобрался — это видно трассировкой импорта, а не кодом).
@@ -34,10 +43,12 @@ GitHub отдаёт по одному имени столько записей, 
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
 import sys
+import urllib.request
 
 
 #: Сводка каталога о своих потребителях: чем у каждого держится каждое правило.
@@ -262,6 +273,76 @@ def annotate(level: str, text: str) -> str:
     return f"{prefix}{text}"
 
 
+#: REST площадки. Один адрес на всех сторожей.
+API = "https://api.github.com"
+
+#: Следующая страница списка — ссылка ``rel="next"`` в заголовке ``Link``.
+#: КОНЕЦ СПИСКА — ОТСУТСТВИЕ ЭТОЙ ССЫЛКИ, А НЕ КОРОТКАЯ СТРАНИЦА: площадка
+#: вправе отдать страницу короче ``per_page`` не последней, а последнюю —
+#: ровно полной, и счёт по длине страницы ошибается в обе стороны (212).
+NEXT_PAGE = re.compile(r'<([^>]+)>\s*;\s*rel="next"')
+
+
+def next_page(link: str | None) -> str:
+    """Адрес следующей страницы из заголовка ``Link``. Пусто — страниц больше нет."""
+    found = NEXT_PAGE.search(link or "")
+    return found.group(1) if found else ""
+
+
+def _request(url: str, method: str = "GET",
+             payload: dict | None = None) -> tuple[object, str]:
+    """Один запрос к площадке: разобранное тело и заголовок ``Link``.
+
+    Токен — из окружения прогона: ``GH_TOKEN``, иначе ``GITHUB_TOKEN``. Ответ
+    без тела (204) — ``None``, а не пустой разбор. Сетевые отказы не
+    глотаются: исход решает вызывающий, у каждого сторожа их три (039).
+    """
+    token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
+    request = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode() if payload is not None else None,
+        method=method,
+        headers={
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+            **({"Authorization": f"Bearer {token}"} if token else {}),
+        },
+    )
+    with urllib.request.urlopen(request, timeout=30) as response:
+        body = json.load(response) if response.status != 204 else None
+        return body, response.headers.get("Link", "") or ""
+
+
+def rest(path: str, method: str = "GET", payload: dict | None = None) -> object:
+    """Запрос к REST площадки по пути от корня API. Список этим не читают.
+
+    Одиночный объект — изменение, задача, файл по пути — страниц не имеет, и
+    для него это верный вход. Список через него читается только намеренным
+    пределом, названным рядом строкой ``# предел: …`` (212).
+    """
+    return _request(f"{API}{path}", method, payload)[0]
+
+
+def rest_list(path: str, key: str | None = None) -> list:
+    """Список площадки целиком: страницы по ``rel="next"``, пока ссылка есть.
+
+    ``key`` — у списков, которые площадка заворачивает в объект: прогоны
+    (``workflow_runs``), проверки коммита (``check_runs``). Страница не того
+    вида — отказ, а не пустой список: «не прочитали» и «пусто» различаются.
+    """
+    url, items = f"{API}{path}", []
+    while url:
+        page, link = _request(url)
+        if key is not None:
+            page = page.get(key) if isinstance(page, dict) else None
+        if not isinstance(page, list):
+            raise ValueError(f"{url}: ожидался список"
+                             f"{f' в поле {key!r}' if key else ''}, пришло иное")
+        items.extend(page)
+        url = next_page(link)
+    return items
+
+
 def selftest() -> int:
     """Обе ветки ``annotate`` и отказ на чужом уровне (правила 140, 145).
 
@@ -392,9 +473,45 @@ def selftest() -> int:
     else:
         broken.append("чужой уровень принят — площадка проглотит команду молча")
 
+    # ── обход страниц: конец — нет ссылки, а не короткая страница (212) ────
+    head = '<https://api.github.com/x?page=2>; rel="next", <https://api.github.com/x?page=9>; rel="last"'
+    page_cases = [
+        ("следующая есть", head, "https://api.github.com/x?page=2"),
+        ("последняя страница", '<https://api.github.com/x?page=1>; rel="prev"', ""),
+        ("заголовка нет", None, ""),
+        ("курсор вместо номера", '<https://api.github.com/x?after=Y2>; rel="next"',
+         "https://api.github.com/x?after=Y2"),
+    ]
+    for name, link, expected in page_cases:
+        if next_page(link) != expected:
+            broken.append(f"страницы, {name}: вышло {next_page(link)!r}")
+
+    # Обходчик идёт по ссылкам до конца и складывает страницы, а страницу не
+    # того вида отвергает. Сеть подменена: набор спрашивает механизм, а не
+    # площадку.
+    pages = {f"{API}/p": ([1, 2], f"<{API}/p2>; rel=\"next\""),
+             f"{API}/p2": ([3], ""),
+             f"{API}/w": ({"workflow_runs": [{"id": 7}]}, ""),
+             f"{API}/bad": ({"message": "Not Found"}, "")}
+    real = globals()["_request"]
+    globals()["_request"] = lambda url, *a, **k: pages[url]
+    try:
+        if rest_list("/p") != [1, 2, 3]:
+            broken.append("страницы: обходчик остановился на первой")
+        if rest_list("/w", key="workflow_runs") != [{"id": 7}]:
+            broken.append("страницы: завёрнутый список не развёрнут")
+        try:
+            rest_list("/bad")
+        except ValueError:
+            pass
+        else:
+            broken.append("страницы: ответ-объект принят за пустой список")
+    finally:
+        globals()["_request"] = real
+
     for line in broken:
         print(f"  {line}")
-    print("  свёртка имён и разметка находок проверены" if not broken else "")
+    print("  свёртка имён, разметка находок и обход страниц проверены" if not broken else "")
     return 1 if broken else 0
 
 

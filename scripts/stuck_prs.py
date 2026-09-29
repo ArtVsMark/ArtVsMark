@@ -47,11 +47,9 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
-import json
 import os
 import sys
 import urllib.error
-import urllib.request
 
 import checks
 
@@ -75,36 +73,6 @@ HOLD = "hold"
 #: По этой строке задача находится снова. Одна задача на весь предмет: вторая
 #: означала бы, что о том же кричат дважды.
 MARKER = "<!-- stuck-prs: не удаляйте, по этой строке задача находится снова -->"
-
-
-def _api(path: str) -> object:
-    token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
-    request = urllib.request.Request(
-        f"{API}{path}",
-        headers={
-            "Accept": "application/vnd.github+json",
-            "X-GitHub-Api-Version": "2022-11-28",
-            **({"Authorization": f"Bearer {token}"} if token else {}),
-        },
-    )
-    with urllib.request.urlopen(request, timeout=30) as response:
-        return json.load(response) if response.status != 204 else None
-
-
-def _post(path: str, method: str, payload: dict) -> object:
-    token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
-    request = urllib.request.Request(
-        f"{API}{path}",
-        data=json.dumps(payload).encode(),
-        method=method,
-        headers={
-            "Accept": "application/vnd.github+json",
-            "X-GitHub-Api-Version": "2022-11-28",
-            **({"Authorization": f"Bearer {token}"} if token else {}),
-        },
-    )
-    with urllib.request.urlopen(request, timeout=30) as response:
-        return json.load(response) if response.status != 204 else None
 
 
 def stuck(change: dict, checked: str | None, now: dt.datetime,
@@ -153,10 +121,11 @@ def required_verdict(number: int) -> str | None:
     Считается ПОСЛЕДНЯЯ запись с этим именем: на одной голове их бывает
     несколько, и отменённая среди них не отменяет зелёную.
     """
-    head = _api(f"/repos/{REPO}/pulls/{number}")
-    runs = _api(f"/repos/{REPO}/commits/{head['head']['sha']}/check-runs?per_page=100")
-    entries = [r for r in (runs.get("check_runs", []) if isinstance(runs, dict) else [])
-               if r.get("name") == REQUIRED]
+    head = checks.rest(f"/repos/{REPO}/pulls/{number}")
+    runs = checks.rest_list(
+        f"/repos/{REPO}/commits/{head['head']['sha']}/check-runs?per_page=100",
+        key="check_runs")
+    entries = [r for r in runs if r.get("name") == REQUIRED]
     if not entries:
         return None
     latest = max(entries, key=lambda r: r.get("started_at") or "")
@@ -196,15 +165,15 @@ def body(found: list[str], minutes: int) -> str:
 
 def sync_issue(found: list[str], minutes: int, dry: bool) -> str:
     """Заводит или обновляет ОДНУ задачу. Возвращает, что сделано."""
-    issues = _api(f"/repos/{REPO}/issues?state=open&per_page=100")
+    issues = checks.rest_list(f"/repos/{REPO}/issues?state=open&per_page=100")
     existing = next((i for i in issues if MARKER in (i.get("body") or "")), None)
     text = body(found, minutes)
     if dry:
         return f"вхолостую: {'обновил бы' if existing else 'завёл бы'} задачу"
     if existing:
-        _post(f"/repos/{REPO}/issues/{existing['number']}", "PATCH", {"body": text})
+        checks.rest(f"/repos/{REPO}/issues/{existing['number']}", "PATCH", {"body": text})
         return f"задача #{existing['number']} обновлена"
-    made = _post(f"/repos/{REPO}/issues", "POST",
+    made = checks.rest(f"/repos/{REPO}/issues", "POST",
                  {"title": "Изменение готово и не слито дольше порога",
                   "body": text, "labels": ["bug"]})
     return f"задача #{made['number']} заведена"
@@ -283,12 +252,12 @@ def main() -> int:
 
     now = dt.datetime.now(dt.timezone.utc)
     try:
-        opened = _api(f"/repos/{REPO}/pulls?state=open&per_page=50")
+        opened = checks.rest_list(f"/repos/{REPO}/pulls?state=open&per_page=100")
         found = []
         for short in opened:
             # Список изменений не несёт mergeable_state — его отдаёт только
             # запрос по одному. Ходим по одному и туда же за проверкой.
-            full = _api(f"/repos/{REPO}/pulls/{short['number']}")
+            full = checks.rest(f"/repos/{REPO}/pulls/{short['number']}")
             reason = stuck(full, required_verdict(short["number"]), now, args.minutes)
             if reason:
                 found.append(reason)

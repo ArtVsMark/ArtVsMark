@@ -1313,6 +1313,121 @@ def audit_calls(sources: dict[str, str]) -> list[str]:
     return found
 
 
+#: Путь к СПИСКУ площадки: последнее звено до запроса — имя коллекции. Одиночный
+#: объект (изменение, задача, выпуск `latest`, файл по пути) кончается номером
+#: или именем и сюда не попадает. Правила ветки — список, хотя и под `branches`.
+LIST_PATH = re.compile(
+    r"/(pulls|issues|comments|commits|releases|tags|labels|runs|workflows|check-runs"
+    r"|files|reviews|repos|events|jobs|artifacts|rules/branches/[^/?\s\"']+)(?:\?|$|[\s\"'])")
+
+#: Входы, читающие ОДНУ страницу. Список через них законен только названным
+#: пределом рядом с вызовом.
+ONE_PAGE = ("_api", "rest", "_get", "_fetch", "_request")
+
+#: Входы, обходящие страницы, и счёт по заголовку — законное чтение списка.
+ALL_PAGES = ("_api_list", "rest_list", "_count")
+
+#: Названный предел: строка `# предел: причина` над вызовом или в нём.
+LIMIT_NOTE = re.compile(r"#\s*предел:\s*\S")
+
+#: Сколько строк над вызовом считается «рядом».
+LIMIT_REACH = 3
+
+
+def _path_text(node: ast.AST) -> str:
+    """Путь запроса как текст: подстановки f-строки становятся `{}`."""
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.JoinedStr):
+        return "".join(v.value if isinstance(v, ast.Constant) else "{}" for v in node.values)
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        return _path_text(node.left) + _path_text(node.right)
+    return ""
+
+
+def _limit_named(lines: list[str], first: int, last: int) -> bool:
+    """Предел назван над вызовом или в его строках (номера строк — с единицы)."""
+    return any(LIMIT_NOTE.search(line)
+               for line in lines[max(0, first - 1 - LIMIT_REACH):last])
+
+
+def _logical_lines(text: str) -> list[tuple[int, str]]:
+    """Строки оболочки со склеенными переносами `\\`: (номер первой, текст)."""
+    out, start, buf = [], 0, ""
+    for number, line in enumerate(text.splitlines(), 1):
+        if not buf:
+            start = number
+        body = line.rstrip()
+        if body.endswith("\\"):
+            buf += body[:-1] + " "
+            continue
+        out.append((start, buf + body))
+        buf = ""
+    return out
+
+
+def list_reads(sources: dict[str, str], flows: dict[str, str]) -> list[str]:
+    """Списки площадки, читаемые одной страницей без названного предела (212).
+
+    ПОКА СПИСОК КОРОЧЕ СТРАНИЦЫ, РАЗНИЦЫ НЕ ВИДНО НИЧЕМ, и этим правило
+    опасно: прогон зелёный, запрос в коде исправен. 28 сентября так нашлось
+    десять чтений из двадцати одного, и одно уже теряло данные — доля
+    подписанной работы на витрине считалась по ста коммитам из ста
+    девятнадцати.
+
+    ФОРМ ДВЕ, И ОБЕ ЧИТАЮТСЯ (206). Замер 29 сентября, после починки: в питоне
+    чтений списков 20 — 16 через обходчики (`_api_list` 5, `rest_list` 6,
+    `_count` 5) и 4 одной страницей с названным пределом; в прогонах —
+    `gh api` к списку 1 (с `--paginate`) и `gh pr list` 2 (с пределом). До
+    починки гейт находил на том же дереве 19: 16 в питоне и 3 в прогонах.
+    Вызов в питоне разбирается деревом, а не строкой: имя входа — последнее
+    звено вызова, путь — первый аргумент, у f-строки подстановки становятся
+    `{}`. Запрос с методом, отличным от GET, — запись, а не чтение.
+
+    ЧЕГО НЕ ВИДИТ, И ЭТО НАЗВАНО. Путь, собранный вне вызова в переменную,
+    гейт не прочтёт: таких в дереве ноль, и форма объявлена, а не забыта.
+    GraphQL-связки с `first:` — отдельный предмет, их в дереве тоже ноль.
+    """
+    found: list[str] = []
+    for name, source in sorted(sources.items()):
+        tree, lines = ast.parse(source), source.splitlines()
+        imports = _import_table(tree)
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call) or not node.args:
+                continue
+            entry = _called(node, imports).rpartition(".")[2]
+            if entry not in ONE_PAGE:
+                continue
+            method = node.args[1] if len(node.args) > 1 else next(
+                (k.value for k in node.keywords if k.arg == "method"), None)
+            if isinstance(method, ast.Constant) and str(method.value).upper() != "GET":
+                continue
+            path = _path_text(node.args[0])
+            if not LIST_PATH.search(path.split("?")[0] + "?"):
+                continue
+            if not _limit_named(lines, node.lineno, node.end_lineno or node.lineno):
+                found.append(f"{name}:{node.lineno}: список «{path}» читается одной "
+                             f"страницей без названного предела — хвост за краем "
+                             f"пропадёт молча; _api_list/checks.rest_list или строка "
+                             f"«# предел: причина» рядом (212)")
+    for name, text in sorted(flows.items()):
+        raw = text.splitlines()
+        for number, line in _logical_lines(text):
+            code = line.split(" #", 1)[0]
+            if code.lstrip().startswith("#"):
+                continue
+            api = re.search(r"\bgh api\b(.*)", code)
+            if api and LIST_PATH.search(api.group(1)) and "--paginate" not in code \
+                    and not _limit_named(raw, number, number):
+                found.append(f"{name}:{number}: `gh api` к списку без --paginate и без "
+                             f"названного предела (212)")
+            if re.search(r"\bgh (pr|issue|run) list\b", code) \
+                    and not _limit_named(raw, number, number):
+                found.append(f"{name}:{number}: `gh … list` берёт умолчание в 30 записей "
+                             f"молча — строка «# предел: причина» рядом (212)")
+    return found
+
+
 #: Прогон принимает ветку входом ручной кнопки. Форма записи одна на все наши
 #: прогоны: `${{ inputs.branch || github.ref_name }}`.
 BRANCH_INPUT = re.compile(r"inputs\.branch")
@@ -2090,6 +2205,54 @@ def selftest() -> int:
                           f"{'отказ' if must_reject else 'пропуск'}, вышло {found}")
         print(f"  {'отвергнут' if found else 'пропущен '} — умолчание окружения: {name}")
 
+    # ── списки читаются до конца (правило 212) ─────────────────────────────
+    # Обе стороны (140): находка на одной странице без предела и пропуск у
+    # обходчика, у названного предела, у одиночного объекта и у записи.
+    page_cases = [
+        ("список одной страницей",
+         {"a.py": 'x = _api(f"/repos/{R}/issues?state=open&per_page=100")'}, {}, True),
+        ("через checks.rest — тоже",
+         {"a.py": 'import checks\nx = checks.rest(f"/repos/{R}/pulls?state=open")'}, {}, True),
+        ("правила ветки — список",
+         {"a.py": 'x = _api(f"/repos/{R}/rules/branches/main")'}, {}, True),
+        ("обходчик",
+         {"a.py": 'x = _api_list(f"/repos/{R}/issues?state=open&per_page=100")'}, {}, False),
+        ("счёт по заголовку",
+         {"a.py": 'x = _count(f"/repos/{R}/releases?per_page=1")'}, {}, False),
+        ("названный предел над вызовом",
+         {"a.py": '# предел: свежий один\nx = _api(f"/repos/{R}/releases?per_page=1")'}, {}, False),
+        ("предел без причины — не предел",
+         {"a.py": '# предел:\nx = _api(f"/repos/{R}/releases?per_page=1")'}, {}, True),
+        ("предел далеко над вызовом — не рядом",
+         {"a.py": '# предел: свежий один\n\n\n\n\nx = _api(f"/repos/{R}/releases")'}, {}, True),
+        ("одиночный объект",
+         {"a.py": 'x = _api(f"/repos/{R}/pulls/{n}")'}, {}, False),
+        ("свежий выпуск по имени — объект",
+         {"a.py": 'x = _api(f"/repos/{R}/releases/latest")'}, {}, False),
+        ("запись в коллекцию — не чтение",
+         {"a.py": 'import checks\nchecks.rest(f"/repos/{R}/issues", "POST", {})'}, {}, False),
+        ("gh api к списку без обхода",
+         {}, {"a.yml": 'run: |\n  gh api "repos/$R/rules/branches/main" --jq x'}, True),
+        ("путь на строке продолжения — склеивается",
+         {}, {"a.yml": 'run: |\n  gh api \\\n    "repos/$R/issues" --jq x'}, True),
+        ("--paginate на строке продолжения — тоже",
+         {}, {"a.yml": 'run: |\n  gh api "repos/$R/issues" \\\n    --paginate --jq x'}, False),
+        ("gh api с --paginate",
+         {}, {"a.yml": 'run: |\n  gh api --paginate "repos/$R/issues" --jq x'}, False),
+        ("gh pr list без предела",
+         {}, {"a.yml": 'run: |\n  gh pr list --head b --json number'}, True),
+        ("gh pr list с пределом",
+         {}, {"a.yml": 'run: |\n  # предел: у ветки одно изменение\n  gh pr list --head b'}, False),
+        ("список в комментарии — не вызов",
+         {}, {"a.yml": 'run: |\n  # gh pr list когда-то стоял здесь'}, False),
+    ]
+    for name, srcs, flws, must_reject in page_cases:
+        found = bool(list_reads(srcs, flws))
+        if found != must_reject:
+            broken.append(f"списки, {name}: ожидалось "
+                          f"{'отказ' if must_reject else 'пропуск'}, вышло {found}")
+        print(f"  {'отвергнут' if found else 'пропущен '} — списки: {name}")
+
     if broken:
         print("\nсамопроверка провалена:", file=sys.stderr)
         for line in broken:
@@ -2127,6 +2290,7 @@ def main() -> int:
              + audit_gaps(rules) + audit_workflows(flows) + audit_runners(flows)
              + gate_really_blocks(rules, flows)
              + audit_harness(sources, flows) + audit_charter(ROOT)
+             + list_reads(sources, flows)
              + audit_sparse(sources, flows) + audit_verdicts(sources)
              + audit_pipeline_labels(sources, flows) + shell_names(flows) + env_defaults(sources)
              + silent_truncation(sources) + own_output_readers(sources)
