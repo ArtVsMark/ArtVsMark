@@ -162,6 +162,8 @@ jobs:
 
           case "$verdict" in
             release:*)
+              # Метка `hold` — копия scripts/checks.py::HOLD_LABEL — оболочка питон не импортирует;
+              # меняется вместе с константой (071).
               gh pr edit "$number" --repo "$GITHUB_REPOSITORY" --remove-label hold
               echo "::notice::Стоп-кран с #$number снят: ${verdict#release: }"
               # ДОВЕСТИ ДО КОНЦА, А НЕ ОСТАВИТЬ НА ЧЕЛОВЕКА. Снятая метка сама
