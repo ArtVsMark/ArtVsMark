@@ -1287,21 +1287,98 @@ def _called(node: ast.Call, imports: dict[str, str]) -> str:
     return f"{base}{dot}{tail}"
 
 
-def audit_calls(sources: dict[str, str]) -> list[str]:
-    """Обращения мимо общего входа и авторизация, уходящая на чужой хост."""
+#: Входы, которым разрешено открывать соединение, — «модуль::функция» и
+#: предмет. РЕЕСТР ЗАКРЫТ, И СПРАШИВАЕТСЯ МЕСТО, А НЕ АДРЕС (206). Прежде гейт
+#: искал хост строкой внутри вызова `urlopen`, а таких вызовов в дереве был
+#: ноль: все пять получали адрес переменной, и scripts/build_metrics.py::_count
+#: неделями ходил в REST мимо общего входа при зелёном гейте. Место вызова от
+#: формы записи адреса не зависит.
+TRANSPORTS = {
+    "build_metrics.py::_fetch": "REST площадки и raw — у сборки единственное соединение",
+    "build_metrics.py::_graphql": "GraphQL — второй вход, назван (001)",
+    "build_metrics.py::pypi_version": "PyPI — чужой хост, авторизации нет",
+    "checks.py::_request": "REST сторожей — один вход на четыре скрипта",
+    "neighbours.py::main": "сводка каталога на raw — без токена",
+}
+
+#: Чем открывают соединение. Замер 29 сентября: `urllib.request.urlopen` — 5
+#: вызовов, все в TRANSPORTS; `http.client` и `requests` — 0, спрашиваются, чтобы
+#: вторая библиотека не стала обходом.
+OPENERS = ("urllib.request.urlopen", "urllib.request.build_opener",
+           "http.client.HTTPSConnection", "http.client.HTTPConnection",
+           "requests.get", "requests.post", "requests.request", "requests.Session")
+
+
+def _module_strings(source: str) -> dict[str, str]:
+    """Строковые константы верхнего уровня модуля, включая склейку в скобках."""
+    found: dict[str, str] = {}
+    for node in ast.parse(source).body:
+        if isinstance(node, ast.Assign) and len(node.targets) == 1 \
+                and isinstance(node.targets[0], ast.Name):
+            text = "".join(_strings(node.value))
+            if text:
+                found[node.targets[0].id] = text
+    return found
+
+
+def _enclosing(tree: ast.Module) -> dict[ast.AST, str]:
+    """Каждому вызову — имя функции верхнего уровня, в которой он стоит."""
+    owner: dict[ast.AST, str] = {}
+    for top in tree.body:
+        name = top.name if isinstance(top, (ast.FunctionDef, ast.AsyncFunctionDef)) \
+            else "<модуль>"
+        for node in ast.walk(top):
+            owner[node] = name
+    return owner
+
+
+def audit_calls(sources: dict[str, str],
+                transports: dict[str, str] | None = None) -> list[str]:
+    """Соединения мимо объявленных входов и авторизация на чужом хосте.
+
+    ДВА ВОПРОСА, И ОБА ЧИТАЮТ ВСЕ ФОРМЫ (206). Где открыто соединение —
+    спрашивается место вызова по реестру TRANSPORTS, какой бы ни была запись
+    адреса. Куда оно идёт — адрес собирается из строк вызова и из констант:
+    своих модуля и `checks.*`. Три чтения raw в дереве идут константами
+    (`RULES_EXPORT`, `ANSWER_CONTRACT`, `checks.CATALOGUE_WHERE`), и прежняя
+    проверка, искавшая хост строкой, пропустила бы любое из них с токеном.
+
+    Запись реестра без предмета — тоже находка: реестр, который никто не
+    сверяет с деревом, врёт так же молча, как список форм по памяти.
+
+    ЧЕГО НЕ ВИДИТ, И ЭТО НАЗВАНО. Открыватель, переданный значением
+    (`f = urllib.request.urlopen; f(url)`), и адрес, собранный вне вызова из
+    нескольких констант, — в дереве таких ноль. На дереве до #235 гейт видит
+    семь соединений мимо входов, прежний не видел ни одного.
+    """
+    transports = TRANSPORTS if transports is None else transports
+    shared = _module_strings(sources.get("checks.py", ""))
     found: list[str] = []
+    opened: set[str] = set()
     for name, source in sorted(sources.items()):
         tree = ast.parse(source)
         imports = _import_table(tree)
+        owner = _enclosing(tree)
+        consts = _module_strings(source)
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
                 continue
-            called, pieces = _called(node, imports), " ".join(_strings(node))
-            if called == "urllib.request.urlopen" and API_HOST in pieces:
-                found.append(f"{name}: обращение к площадке мимо _api() — у REST один "
-                             f"вход, второй заводит второе место, где ломается "
-                             f"авторизация и разбор ошибок (001)")
-            if called == "_get" and RAW_HOST in pieces:
+            called = _called(node, imports)
+            if called in OPENERS:
+                place = f"{name}::{owner.get(node, '<модуль>')}"
+                opened.add(place)
+                if place not in transports:
+                    found.append(f"{place}: соединение открыто мимо объявленных входов "
+                                 f"— у REST один вход, второй заводит второе место, где "
+                                 f"ломается авторизация и разбор ошибок (001); законный "
+                                 f"вход вносится в TRANSPORTS с предметом")
+            pieces = " ".join(_strings(node))
+            for arg in node.args[:1]:
+                if isinstance(arg, ast.Name):
+                    pieces += " " + consts.get(arg.id, "")
+                elif isinstance(arg, ast.Attribute) and _dotted(arg).startswith("checks."):
+                    pieces += " " + shared.get(arg.attr, "")
+            if called.rpartition(".")[2] in ("_get", "_fetch") and RAW_HOST in pieces:
                 unauth = any(k.arg == "authenticated"
                              and getattr(k.value, "value", None) is False
                              for k in node.keywords)
@@ -1310,6 +1387,11 @@ def audit_calls(sources: dict[str, str]) -> list[str]:
                                  f"чужой хост отвечает на него 404 вместо содержимого, и "
                                  f"отладка этого стоит дорого: адрес в браузере "
                                  f"открывается, а сборка падает (107)")
+    for place in sorted(set(transports) - opened):
+        module = place.partition("::")[0]
+        if module in sources:
+            found.append(f"{place}: вход объявлен в TRANSPORTS, а соединения там нет — "
+                         f"реестр отстал от дерева; уберите запись или верните вход")
     return found
 
 
@@ -1687,6 +1769,43 @@ def selftest() -> int:
          {"a.py": "_get(f'https://raw.githubusercontent.com/x', authenticated=False)\n"}, False),
         ("raw с заголовком авторизации", audit_calls,
          {"a.py": "_get(f'https://raw.githubusercontent.com/x')\n"}, True),
+        # ── формы, которых прежний гейт не видел (206) ─────────────────────
+        ("адрес в переменной — место решает", audit_calls,
+         {"a.py": "import urllib.request\ndef f(url):\n    return urllib.request.urlopen(url)\n"},
+         True),
+        ("Request и urlopen, как у прежнего _count", audit_calls,
+         {"a.py": "import urllib.request\ndef _count(p):\n"
+                  "    r = urllib.request.Request(API + p)\n"
+                  "    return urllib.request.urlopen(r)\n"}, True),
+        ("вторая библиотека — тоже соединение", audit_calls,
+         {"a.py": "import requests\ndef f(u):\n    return requests.get(u)\n"}, True),
+        ("объявленные входы", audit_calls,
+         {"build_metrics.py": "import urllib.request\n"
+                              "def _fetch(u):\n    return urllib.request.urlopen(u)\n"
+                              "def _graphql(q):\n    return urllib.request.urlopen(q)\n"
+                              "def pypi_version(n):\n    return urllib.request.urlopen(n)\n"},
+         False),
+        ("вход в реестре, а соединения там нет", audit_calls,
+         {"build_metrics.py": "import urllib.request\n"
+                              "def _fetch(u):\n    return urllib.request.urlopen(u)\n"
+                              "def _graphql(q):\n    return _fetch(q)\n"
+                              "def pypi_version(n):\n    return urllib.request.urlopen(n)\n"},
+         True),
+        ("raw константой модуля с токеном", audit_calls,
+         {"a.py": "EXPORT = 'https://raw.githubusercontent.com/x'\n_get(EXPORT)\n"}, True),
+        ("raw константой модуля без токена", audit_calls,
+         {"a.py": "EXPORT = 'https://raw.githubusercontent.com/x'\n"
+                  "_get(EXPORT, authenticated=False)\n"}, False),
+        ("raw константой из checks с токеном", audit_calls,
+         {"checks.py": "import urllib.request\n"
+                       "WHERE = ('https://raw.githubusercontent.com/'\n         'x.json')\n"
+                       "def _request(u):\n    return urllib.request.urlopen(u)\n",
+          "a.py": "import checks\n_get(checks.WHERE)\n"}, True),
+        ("raw константой из checks без токена", audit_calls,
+         {"checks.py": "import urllib.request\n"
+                       "WHERE = ('https://raw.githubusercontent.com/'\n         'x.json')\n"
+                       "def _request(u):\n    return urllib.request.urlopen(u)\n",
+          "a.py": "import checks\n_get(checks.WHERE, authenticated=False)\n"}, False),
 
         ("прогоны без циклов ожидания", audit_workflows,
          {"agent-pr.yml": "on:\n  push:\n    branches-ignore: [main]\n"}, False),
