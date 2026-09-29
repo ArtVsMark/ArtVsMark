@@ -30,9 +30,9 @@
 <!--m:profile-cards-->
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/engineering-dark.svg?v=6ee8bcce">
-  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/engineering-light.svg?v=ce209b3b">
-  <img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/engineering-dark.svg?v=6ee8bcce" alt="GitHub engineering stats: 6 public repos, 13 stars earned, 94 followers, 6 200 contributions · 365d, 23 day streak, 25 longest streak" width="48%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/engineering-dark.svg?v=ddfecb68">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/engineering-light.svg?v=21b90762">
+  <img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/engineering-dark.svg?v=ddfecb68" alt="GitHub engineering stats: 6 public repos, 13 stars earned, 94 followers, 6 217 contributions · 365d, 23 day streak, 25 longest streak" width="48%">
 </picture>
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/stack-dark.svg?v=723747e2">
@@ -43,9 +43,9 @@
 <br><br>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/activity-dark.svg?v=c5a1e2a4">
-  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/activity-light.svg?v=31b8a4da">
-  <img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/activity-dark.svg?v=c5a1e2a4" alt="A year of contributions day by day, peak 266 in a day, weekly trend below; a snake crossing the contribution grid" width="92%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/activity-dark.svg?v=41d00469">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/activity-light.svg?v=f029a3f6">
+  <img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/activity-dark.svg?v=41d00469" alt="A year of contributions day by day, peak 266 in a day, weekly trend below; a snake crossing the contribution grid" width="92%">
 </picture>
 
 <!--/m:profile-cards-->
@@ -67,9 +67,9 @@
 <div align="center">
 <a href="https://github.com/ArtVsMark?tab=repositories">
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/featured-dark.svg?v=b75cec0e">
-  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/featured-light.svg?v=cb8da5e2">
-  <img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/featured-dark.svg?v=b75cec0e" alt="Stepik-Python-Grader — Offline Python autograder: unlimited local checks, honest side-by-side comparison of solutions. release/pypi 1.11, CI success, coverage 91.2%, version 1.11.156. 3 stars, 1777 commits, 46 issues, 12 releases, 782 prs. 5 479 tests, 276 test modules, 20 checks per PR. rules held by: gate 86 (40.4%), pipeline 39 (18.3%), document 67 (31.5%); not applicable 3 (1.4%), unanswered 18 (8.5%); 195 of 213 rules answered · 187 linked to issues. CLI · web UI · GUI · pytest plugin · OS sandbox · Engineering-Pipeline-Mechanisms — One pipeline skeleton for the whole family: same workflows, own contents. Early — nothing to take yet. release/pypi v1.3.0, CI success, coverage 92.0%, version none. 1 stars, 860 commits, 12 issues, 5 releases, 805 prs. 2 611 tests, 132 test modules, 22 checks per PR. rules held by: gate 171 (80.3%), pipeline 23 (10.8%), skill 2 (0.9%), document 8 (3.8%); not applicable 9 (4.2%); 213 of 213 rules answered · 14 linked to issues. GitHub Actions · gates · Python · Engineering-Incidents-Playbook — Rules for agent sessions and a GitHub pipeline — each one carrying the incident it grew from. release/pypi 1.3, CI success, coverage 71%, version 1.3.4. 5 stars, 617 commits, 7 issues, 5 releases, 515 prs. 1 272 tests, 59 test modules, 3 checks per PR. rules held by: gate 144 (67.6%), pipeline 10 (4.7%), skill 2 (0.9%), document 26 (12.2%), none 12 (5.6%); not applicable 13 (6.1%), rejected 6 (2.8%); 213 of 213 rules answered · 56 linked to issues. docs · RU/EN · Claude-Code_Usage-Token — Turns a three-step limit indicator into a number. Early: the spec is written, the tool is not. release/pypi v0.2.0, CI success, coverage 87.6%, version 0.2.0. 1 stars, 71 commits, 12 issues, 2 releases, 68 prs. 557 tests, 34 test modules, 12 checks per PR. rules held by: gate 95 (44.6%), pipeline 9 (4.2%), document 46 (21.6%), none 2 (0.9%); not applicable 24 (11.3%), rejected 5 (2.3%), unanswered 32 (15.0%); 181 of 213 rules answered · 17 linked to issues. Python · JSONL over git" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/featured-dark.svg?v=2822685a">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/featured-light.svg?v=c094cbd9">
+  <img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/featured-dark.svg?v=2822685a" alt="Stepik-Python-Grader — Offline Python autograder: unlimited local checks, honest side-by-side comparison of solutions. release/pypi 1.11, CI success, coverage 91.2%, version 1.11.156. 3 stars, 1777 commits, 46 issues, 12 releases, 782 prs. 5 479 tests, 276 test modules, 20 checks per PR. rules held by: gate 86 (40.4%), pipeline 39 (18.3%), document 67 (31.5%); not applicable 3 (1.4%), unanswered 18 (8.5%); 195 of 213 rules answered · 187 linked to issues. CLI · web UI · GUI · pytest plugin · OS sandbox · Engineering-Pipeline-Mechanisms — One pipeline skeleton for the whole family: same workflows, own contents. Early — nothing to take yet. release/pypi v1.3.0, CI success, coverage 92.0%, version none. 1 stars, 863 commits, 18 issues, 5 releases, 809 prs. 2 615 tests, 132 test modules, 22 checks per PR. rules held by: gate 171 (80.3%), pipeline 23 (10.8%), skill 2 (0.9%), document 8 (3.8%); not applicable 9 (4.2%); 213 of 213 rules answered · 14 linked to issues. GitHub Actions · gates · Python · Engineering-Incidents-Playbook — Rules for agent sessions and a GitHub pipeline — each one carrying the incident it grew from. release/pypi 1.3, CI success, coverage 71%, version 1.3.4. 5 stars, 617 commits, 7 issues, 5 releases, 515 prs. 1 272 tests, 59 test modules, 3 checks per PR. rules held by: gate 144 (67.6%), pipeline 10 (4.7%), skill 2 (0.9%), document 26 (12.2%), none 12 (5.6%); not applicable 13 (6.1%), rejected 6 (2.8%); 213 of 213 rules answered · 56 linked to issues. docs · RU/EN · Claude-Code_Usage-Token — Turns a three-step limit indicator into a number. Early: the spec is written, the tool is not. release/pypi v0.2.0, CI success, coverage 87.6%, version 0.2.0. 1 stars, 71 commits, 12 issues, 2 releases, 68 prs. 557 tests, 34 test modules, 12 checks per PR. rules held by: gate 95 (44.6%), pipeline 9 (4.2%), document 46 (21.6%), none 2 (0.9%); not applicable 24 (11.3%), rejected 5 (2.3%), unanswered 32 (15.0%); 181 of 213 rules answered · 17 linked to issues. Python · JSONL over git" width="100%">
 </picture>
 </a>
 </div>
