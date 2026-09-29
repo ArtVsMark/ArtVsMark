@@ -943,7 +943,6 @@ def silent_truncation(sources: dict[str, str]) -> list[str]:
             tree = ast.parse(source)
         except SyntaxError:
             continue
-        imports = _import_table(tree)
         for shown in (n for n in ast.walk(tree) if isinstance(n, ast.JoinedStr)):
             for node in ast.walk(shown):
                 if not isinstance(node, ast.Subscript) or not isinstance(node.slice, ast.Slice):
@@ -1212,11 +1211,6 @@ def audit_pipeline_labels(sources: dict[str, str], flows: dict[str, str]) -> lis
     return found
 
 
-#: Хост площадки. Разбирается ВЫЗОВ, а не текст: первый черновик искал строкой и
-#: поймал сам себя — образец с адресом внутри регулярного выражения неотличим от
-#: обращения, если смотреть на буквы. Разбор дерева эту разницу видит.
-API_HOST = "api.github.com"
-
 #: Чужой хост, который на заголовок авторизации отвечает 404 вместо содержимого.
 RAW_HOST = "raw.githubusercontent.com"
 
@@ -1395,6 +1389,133 @@ def audit_calls(sources: dict[str, str],
     return found
 
 
+#: Имена, до которых рабочий путь не доходит ПО ПОСТРОЕНИЮ, — с причиной у
+#: имени (правило 211). Закрытые росписи для набора и помощники набора законны;
+#: запись без предмета — тоже находка, иначе реестр станет вторым мусором.
+REACH_EXEMPT = {
+    "build_metrics.py::_parses": "помощник набора: проверяет, что нарисованное "
+                                 "разбирается как XML; рабочий путь картинку не разбирает",
+    "check_mechanisms.py::GOOD_FLOW": "образец набора для прогонов",
+    "check_mechanisms.py::PY_FLOW": "образец набора для прогонов",
+    "check_mechanisms.py::VOICE_OK": "образец набора для голоса скрипта",
+}
+
+
+def _top_names(tree: ast.Module) -> dict[str, ast.AST]:
+    """Имена верхнего уровня модуля: функции, классы, присвоенные константы."""
+    names: dict[str, ast.AST] = {}
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            names[node.name] = node
+        elif isinstance(node, (ast.Assign, ast.AnnAssign)):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            names.update({t.id: node for t in targets if isinstance(t, ast.Name)})
+    return names
+
+
+def unreached_names(sources: dict[str, str],
+                    exempt: dict[str, str] | None = None) -> list[str]:
+    """Имена рабочего кода, до которых не доходит рабочий путь (211).
+
+    ЗЕЛЁНЫЙ НАБОР ЭТОГО НЕ ДОКАЗЫВАЕТ: он зовёт механизм напрямую и остаётся
+    зелёным, когда рабочий путь до механизма оборвался. Так жил
+    scripts/check_author.py::offenders — набор проверял его, а рабочий `main`
+    делал ту же проверку своей встроенной копией.
+
+    Корни — `main` и код верхнего уровня каждого модуля; живо то, до чего от
+    них доходит цепочка ссылок, в том числе между модулями (`checks.clip`,
+    `from x import y`). Ссылки из `selftest` в счёт не идут: набор рабочим
+    путём не считается. Импорт, который модуль не читает вовсе, — тоже имя
+    без читателя.
+
+    ЗАМЕР 29 СЕНТЯБРЯ, до починки: имён верхнего уровня 489, без рабочего пути
+    14 — пять находок разбора 211, четыре образца и помощник набора (законны,
+    в REACH_EXEMPT) и пять осиротевших констант, оставленных двумя прошлыми
+    починками (#235, #237). Импортов без читателя — один.
+
+    ЧЕГО НЕ ВИДИТ, И ЭТО НАЗВАНО: локальные переменные, вычисленные и не
+    прочитанные, — это предмет разбора функции, а не модуля; имена, до которых
+    доходят только через `globals()` или `getattr` строкой, — таких в рабочем
+    коде ноль.
+    """
+    exempt = REACH_EXEMPT if exempt is None else exempt
+    stems = {name[:-3]: name for name in sources if name.endswith(".py")}
+    graph: dict[tuple[str, str], set[tuple[str, str]]] = {}
+    roots: set[tuple[str, str]] = set()
+    everything: set[tuple[str, str]] = set()
+    found: list[str] = []
+
+    for name, source in sorted(sources.items()):
+        tree = ast.parse(source)
+        modules: dict[str, str] = {}
+        imported: dict[str, tuple[str, str]] = {}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name in stems:
+                        modules[alias.asname or alias.name] = stems[alias.name]
+            elif isinstance(node, ast.ImportFrom) and node.module in stems:
+                for alias in node.names:
+                    imported[alias.asname or alias.name] = (stems[node.module], alias.name)
+
+        def refs(node: ast.AST) -> set[tuple[str, str]]:
+            out: set[tuple[str, str]] = set()
+            for sub in ast.walk(node):
+                if isinstance(sub, ast.Name) and isinstance(sub.ctx, ast.Load):
+                    out.add(imported.get(sub.id, (name, sub.id)))
+                elif isinstance(sub, ast.Attribute) and isinstance(sub.value, ast.Name) \
+                        and sub.value.id in modules:
+                    out.add((modules[sub.value.id], sub.attr))
+            return out
+
+        top = _top_names(tree)
+        for key, node in top.items():
+            everything.add((name, key))
+            graph[(name, key)] = set() if key == "selftest" else refs(node)
+        for node in tree.body:
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef,
+                                     ast.Assign, ast.AnnAssign, ast.Import, ast.ImportFrom)):
+                roots |= refs(node)
+        if "main" in top:
+            roots.add((name, "main"))
+
+        # Импорт без читателя: имя, которое модуль не читает ни в одной строке.
+        read = {sub.id for sub in ast.walk(tree)
+                if isinstance(sub, ast.Name) and isinstance(sub.ctx, ast.Load)}
+        for node in tree.body:
+            if isinstance(node, (ast.Import, ast.ImportFrom)) and \
+                    getattr(node, "module", "") != "__future__":
+                for alias in node.names:
+                    bound = (alias.asname or alias.name).split(".")[0]
+                    if bound not in read:
+                        found.append(f"{name}: импорт {alias.name} модуль не читает — "
+                                     f"имя без читателя (211)")
+
+    alive: set[tuple[str, str]] = set()
+    todo = list(roots)
+    while todo:
+        key = todo.pop()
+        if key in alive:
+            continue
+        alive.add(key)
+        todo.extend(graph.get(key, ()))
+
+    for module, key in sorted(everything - alive):
+        place = f"{module}::{key}"
+        if key == "selftest" or place in exempt:
+            continue
+        found.append(f"{place}: рабочий путь до имени не доходит — его зовёт только "
+                     f"набор или никто, а у имени не сказано почему. Либо рабочий путь "
+                     f"начинает его звать, либо имя уходит; законный сосед — в "
+                     f"REACH_EXEMPT с причиной (211)")
+    for place in sorted(exempt):
+        module, _, key = place.partition("::")
+        if module in sources and ((module, key) not in everything or (module, key) in alive):
+            found.append(f"{place}: запись REACH_EXEMPT без предмета — имени нет или "
+                         f"рабочий путь до него доходит; уберите запись")
+    return found
+
+
 #: Путь к СПИСКУ площадки: последнее звено до запроса — имя коллекции. Одиночный
 #: объект (изменение, задача, выпуск `latest`, файл по пути) кончается номером
 #: или именем и сюда не попадает. Правила ветки — список, хотя и под `branches`.
@@ -1403,11 +1524,9 @@ LIST_PATH = re.compile(
     r"|files|reviews|repos|events|jobs|artifacts|rules/branches/[^/?\s\"']+)(?:\?|$|[\s\"'])")
 
 #: Входы, читающие ОДНУ страницу. Список через них законен только названным
-#: пределом рядом с вызовом.
+#: пределом рядом с вызовом. Обходчики (`_api_list`, `rest_list`) и счёт по
+#: заголовку (`_count`) сюда не входят — это законное чтение списка.
 ONE_PAGE = ("_api", "rest", "_get", "_fetch", "_request")
-
-#: Входы, обходящие страницы, и счёт по заголовку — законное чтение списка.
-ALL_PAGES = ("_api_list", "rest_list", "_count")
 
 #: Названный предел: строка `# предел: причина` над вызовом или в нём.
 LIMIT_NOTE = re.compile(r"#\s*предел:\s*\S")
@@ -2324,6 +2443,41 @@ def selftest() -> int:
                           f"{'отказ' if must_reject else 'пропуск'}, вышло {found}")
         print(f"  {'отвергнут' if found else 'пропущен '} — умолчание окружения: {name}")
 
+    # ── рабочий путь доходит до имени (правило 211) ────────────────────────
+    MAIN = 'if __name__ == "__main__":\n    raise SystemExit(main())\n'
+    reach_cases = [
+        ("зовёт main", {"a.py": "def f():\n    return 1\ndef main():\n    return f()\n" + MAIN},
+         {}, False),
+        ("зовёт только набор",
+         {"a.py": "def f():\n    return 1\ndef selftest():\n    return f()\n"
+                  "def main():\n    return 0\n" + MAIN}, {}, True),
+        ("не зовёт никто", {"a.py": "def f():\n    return 1\ndef main():\n    return 0\n" + MAIN},
+         {}, True),
+        ("ручка без читателя", {"a.py": "LIMIT = 3\ndef main():\n    return 0\n" + MAIN}, {}, True),
+        ("ручка, которую читает main", {"a.py": "LIMIT = 3\ndef main():\n    return LIMIT\n" + MAIN},
+         {}, False),
+        ("через модуль-помощник", {"checks.py": "def clip(x):\n    return x\n",
+                                   "a.py": "import checks\ndef main():\n    return checks.clip(1)\n" + MAIN},
+         {}, False),
+        ("через from-импорт", {"b.py": "def g():\n    return 1\n",
+                               "a.py": "from b import g\ndef main():\n    return g()\n" + MAIN},
+         {}, False),
+        ("код модуля — тоже корень", {"a.py": "def f():\n    return 1\nVALUE = f()\nprint(VALUE)\n"},
+         {}, False),
+        ("импорт без читателя", {"a.py": "import os\ndef main():\n    return 0\n" + MAIN}, {}, True),
+        ("законный сосед в реестре",
+         {"a.py": "SAMPLE = 'x'\ndef selftest():\n    return SAMPLE\n"
+                  "def main():\n    return 0\n" + MAIN}, {"a.py::SAMPLE": "образец набора"}, False),
+        ("запись реестра без предмета",
+         {"a.py": "def main():\n    return 0\n" + MAIN}, {"a.py::SAMPLE": "образец набора"}, True),
+    ]
+    for name, srcs, exempt, must_reject in reach_cases:
+        found = bool(unreached_names(srcs, exempt))
+        if found != must_reject:
+            broken.append(f"рабочий путь, {name}: ожидалось "
+                          f"{'отказ' if must_reject else 'пропуск'}, вышло {unreached_names(srcs, exempt)}")
+        print(f"  {'отвергнут' if found else 'пропущен '} — рабочий путь: {name}")
+
     # ── списки читаются до конца (правило 212) ─────────────────────────────
     # Обе стороны (140): находка на одной странице без предела и пропуск у
     # обходчика, у названного предела, у одиночного объекта и у записи.
@@ -2409,7 +2563,7 @@ def main() -> int:
              + audit_gaps(rules) + audit_workflows(flows) + audit_runners(flows)
              + gate_really_blocks(rules, flows)
              + audit_harness(sources, flows) + audit_charter(ROOT)
-             + list_reads(sources, flows)
+             + list_reads(sources, flows) + unreached_names(sources)
              + audit_sparse(sources, flows) + audit_verdicts(sources)
              + audit_pipeline_labels(sources, flows) + shell_names(flows) + env_defaults(sources)
              + silent_truncation(sources) + own_output_readers(sources)

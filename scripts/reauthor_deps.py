@@ -59,7 +59,6 @@ import urllib.error
 
 import checks
 
-API = "https://api.github.com"
 REPO = os.environ.get("GITHUB_REPOSITORY", "ArtVsMark/ArtVsMark")
 
 #: Кто предлагает правку и как он назван в трейлере. Адрес — тот, что в

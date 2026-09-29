@@ -400,7 +400,10 @@ def main() -> int:
 
     records = [(r.split("\x00") + ["", "", "", ""])[:4]
                for r in out.split("\x1e") if r.strip()]
-    bad = [r for r in records if r[0].strip() in FORBIDDEN]
+    # Рабочий путь зовёт ту же функцию, что набор: здесь стояла своя копия
+    # условия, и набор проверял не то, что исполнялось (211).
+    flagged = set(offenders([author for author, *_ in records]))
+    bad = [r for r in records if r[0] in flagged]
     silent = unattributed(records)
 
     if bad:

@@ -54,7 +54,6 @@ import urllib.error
 import checks
 
 REPO = os.environ.get("SHOWCASE_REPO", "ArtVsMark/ArtVsMark")
-API = "https://api.github.com"
 
 #: Порог, за которым готовое изменение считается застрявшим. Замер выше:
 #: обычное слияние 20–60 секунд, застревания 9,5 минут и 5 часов.

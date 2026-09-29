@@ -132,12 +132,6 @@ def journal_state(base: str, head: str) -> tuple[str, str]:
     return diff, text
 
 
-def added_sections(base: str, head: str) -> list[tuple[str, int]]:
-    """Разделы журнала, ДОПИСАННЫЕ этим изменением, и их длина в строках."""
-    diff, text = journal_state(base, head)
-    return new_sections(diff, text)
-
-
 def added_titles(diff: str) -> list[str]:
     """Заголовки, СОЗДАННЫЕ этим изменением: строки ``+## …`` в диффе."""
     return [line[4:] for line in diff.splitlines()
