@@ -382,6 +382,30 @@ def latest_by_name(runs: list[dict]) -> list[dict]:
     return list(latest.values())
 
 
+#: Сколько последних прогонов читается, чтобы выбрать из них нужный. Сотня —
+#: одна страница площадки и недели жизни у самого частого прогона витрины.
+RUNS_WINDOW = 100
+
+
+def newest_run(runs: list[dict], conclusion: str | None = None) -> dict | None:
+    """Последний ЗАВЕРШЁННЫЙ прогон списка по времени создания, либо ``None``.
+
+    ``conclusion`` — если нужен не любой завершённый, а с этим исходом.
+
+    ВЫБИРАЕТ СПИСОК, А НЕ ФИЛЬТР ПЛОЩАДКИ. Здесь стояли `?status=success` и
+    `?status=completed` с `per_page=1` — «площадка отдаёт от новых к старым».
+    С фильтром статуса это неверно: 1 октября `status=success` отдавал витрине
+    прогон 8 сентября при удачном 30-го и насчитывал 24 прогона змейки из
+    241 — сторож свежести завёл ложную просрочку (#247), а плашка CI каталога
+    читала прогон 17 сентября вместо 27-го. Без фильтра список свежий, но и на
+    его порядок здесь не опираются: берётся наибольшее время создания.
+    """
+    done = [run for run in runs
+            if run.get("status") == "completed"
+            and (conclusion is None or run.get("conclusion") == conclusion)]
+    return max(done, key=lambda run: str(run.get("created_at") or ""), default=None)
+
+
 #: Метка конвейера «придержано». Одна на все места, которые её ставят, снимают
 #: и узнают: scripts/hold.py снимает её, scripts/stuck_prs.py не жалуется на
 #: придержанное, scripts/check_labels.py не считает её классификацией. Здесь
@@ -601,6 +625,26 @@ def selftest() -> int:
     for name, link, expected in page_cases:
         if next_page(link) != expected:
             broken.append(f"страницы, {name}: вышло {next_page(link)!r}")
+
+    # ── последний прогон выбирается из списка, а не фильтром (#247) ──────
+    # Двусторонне: свежий удачный находится и тогда, когда площадка отдала его
+    # не первым; бегущий и упавший удачным не считаются; пустой — None.
+    def run(day: str, status: str = "completed", conclusion: str = "success") -> dict:
+        return {"created_at": f"2026-09-{day}T10:00:00Z", "status": status,
+                "conclusion": conclusion}
+    run_cases = [
+        ("свежий не первым в списке", [run("08"), run("30"), run("29")], "success", "30"),
+        ("упавший свежее удачного", [run("30", conclusion="failure"), run("29")], "success", "29"),
+        ("бегущий не завершён", [run("30", "in_progress", ""), run("29")], None, "29"),
+        ("любой исход — последний", [run("29"), run("30", conclusion="failure")], None, "30"),
+        ("удачных нет", [run("30", conclusion="failure")], "success", None),
+        ("пустой список", [], None, None),
+    ]
+    for name, runs, conclusion, day in run_cases:
+        got = newest_run(runs, conclusion)
+        got_day = got["created_at"][8:10] if got else None
+        if got_day != day:
+            broken.append(f"последний прогон, {name}: ждали {day!r}, вышло {got_day!r}")
 
     # Обходчик идёт по ссылкам до конца и складывает страницы, а страницу не
     # того вида отвергает. Сеть подменена: набор спрашивает механизм, а не
