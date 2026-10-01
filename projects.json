@@ -15,11 +15,11 @@
     "редактура, её измерять нечем. Длина держится в пределах строки картинки;",
     "сборка падает, если не влезает, — обрезать описание молча нельзя.",
     "",
-    "badges — ответ проекта по каждому ОБЯЗАТЕЛЬНОМУ показателю. Их четыре:",
-    "версия, CI, покрытие, пакет. У каждого либо бейдж, либо названная",
-    "причина, почему предмета нет. Пустого ответа не бывает: 'у нас этого",
-    "нет' и 'мы не дошли' — разные вещи, и различать их обязан гейт, а не",
-    "читатель. Проверяет scripts/build_metrics.py::check_badges.",
+    "Показателей проекта (выпуск, CI, покрытие, версия) здесь НЕТ, и это",
+    "решение 1 октября: всё, что витрина показывает о проекте, лежит в его",
+    "facts.json по договору .rules/facts.schema.json, и причина «предмета нет»",
+    "тоже там — полем none. Прежде здесь хранился ответ по каждому показателю:",
+    "копия чужого знания, верная до первой правки на той стороне.",
     "",
     "not_shown — публичные репозитории владельца, которые на витрину не берутся,",
     "и ПРИЧИНА у каждого. Пустая причина ответом не считается: «решили не",
@@ -29,12 +29,6 @@
     "на 195 правил и на витрину не попал: заметил это человек, а не механизм."
   ],
   "featured_limit": 5,
-  "required_badges": [
-    "release",
-    "ci",
-    "coverage",
-    "version"
-  ],
   "not_shown": {},
   "projects": [
     {
@@ -42,101 +36,31 @@
       "title": "Stepik-Python-Grader",
       "pin": true,
       "tagline": "Offline Python autograder: unlimited local checks, honest side-by-side comparison of solutions.",
-      "stack": "CLI · web UI · GUI · pytest plugin · OS sandbox",
-      "badges": {
-        "release": {
-          "endpoint": "release"
-        },
-        "ci": {
-          "workflow": "ci.yml"
-        },
-        "coverage": {
-          "endpoint": "coverage-combined"
-        },
-        "version": {
-          "endpoint": "version"
-        }
-      }
+      "stack": "CLI · web UI · GUI · pytest plugin · OS sandbox"
     },
     {
       "repo": "ArtVsMark/Engineering-Incidents-Playbook",
       "title": "Engineering-Incidents-Playbook",
       "tagline": "Rules for agent sessions and a GitHub pipeline — each one carrying the incident it grew from.",
-      "stack": "docs · RU/EN",
-      "badges": {
-        "release": {
-          "endpoint": "release"
-        },
-        "ci": {
-          "workflow": "ci.yml"
-        },
-        "coverage": {
-          "endpoint": "coverage"
-        },
-        "version": {
-          "endpoint": "version"
-        }
-      }
+      "stack": "docs · RU/EN"
     },
     {
       "repo": "ArtVsMark/Claude-Code_Usage-Token",
       "title": "Claude-Code_Usage-Token",
       "tagline": "Turns a three-step limit indicator into a number. Early: the spec is written, the tool is not.",
-      "stack": "Python · JSONL over git",
-      "badges": {
-        "release": {
-          "release": true
-        },
-        "ci": {
-          "workflow": "ci.yml"
-        },
-        "coverage": {
-          "endpoint": "coverage"
-        },
-        "version": {
-          "endpoint": "version"
-        }
-      }
+      "stack": "Python · JSONL over git"
     },
     {
       "repo": "ArtVsMark/Glossary-Python",
       "title": "Glossary-Python",
       "tagline": "The RU/EN glossary the grader links into when a run fails.",
-      "stack": "content · tooling",
-      "badges": {
-        "release": {
-          "none": "выпусков и пакета нет: содержимое подключается ссылками из грейдера, а не версией"
-        },
-        "ci": {
-          "workflow": "ci.yml"
-        },
-        "coverage": {
-          "endpoint": "coverage"
-        },
-        "version": {
-          "none": "версии нет: содержимое не версионируется, глоссарий читают по ссылке на актуальный текст"
-        }
-      }
+      "stack": "content · tooling"
     },
     {
       "repo": "ArtVsMark/Engineering-Pipeline-Mechanisms",
       "title": "Engineering-Pipeline-Mechanisms",
       "tagline": "One pipeline skeleton for the whole family: same workflows, own contents. Early — nothing to take yet.",
-      "stack": "GitHub Actions · gates · Python",
-      "badges": {
-        "release": {
-          "release": true
-        },
-        "ci": {
-          "workflow": "ci.yml"
-        },
-        "coverage": {
-          "facts": "coverage_percent"
-        },
-        "version": {
-          "none": "пакета нет: на PyPI имени engineering-pipeline-mechanisms нет, а версионируется здесь не пакет, а договор — файлом CONTRACT_VERSION"
-        }
-      }
+      "stack": "GitHub Actions · gates · Python"
     }
   ]
 }

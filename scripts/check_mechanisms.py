@@ -1443,13 +1443,12 @@ def _called(node: ast.Call, imports: dict[str, str]) -> str:
 TRANSPORTS = {
     "build_metrics.py::_fetch": "REST площадки и raw — у сборки единственное соединение",
     "build_metrics.py::_graphql": "GraphQL — второй вход, назван (001)",
-    "build_metrics.py::pypi_version": "PyPI — чужой хост, авторизации нет",
     "checks.py::_request": "REST сторожей — один вход на четыре скрипта",
     "neighbours.py::main": "сводка каталога на raw — без токена",
 }
 
 #: Чем открывают соединение. Замер 29 сентября: `urllib.request.urlopen` — 5
-#: вызовов, все в TRANSPORTS; `http.client` и `requests` — 0, спрашиваются, чтобы
+#: вызовов, все в TRANSPORTS (1 октября — 4: PyPI витрина больше не спрашивает); `http.client` и `requests` — 0, спрашиваются, чтобы
 #: вторая библиотека не стала обходом.
 OPENERS = ("urllib.request.urlopen", "urllib.request.build_opener",
            "http.client.HTTPSConnection", "http.client.HTTPConnection",
@@ -2214,14 +2213,12 @@ def selftest() -> int:
         ("объявленные входы", audit_calls,
          {"build_metrics.py": "import urllib.request\n"
                               "def _fetch(u):\n    return urllib.request.urlopen(u)\n"
-                              "def _graphql(q):\n    return urllib.request.urlopen(q)\n"
-                              "def pypi_version(n):\n    return urllib.request.urlopen(n)\n"},
+                              "def _graphql(q):\n    return urllib.request.urlopen(q)\n"},
          False),
         ("вход в реестре, а соединения там нет", audit_calls,
          {"build_metrics.py": "import urllib.request\n"
                               "def _fetch(u):\n    return urllib.request.urlopen(u)\n"
-                              "def _graphql(q):\n    return _fetch(q)\n"
-                              "def pypi_version(n):\n    return urllib.request.urlopen(n)\n"},
+                              "def _graphql(q):\n    return _fetch(q)\n"},
          True),
         ("raw константой модуля с токеном", audit_calls,
          {"a.py": "EXPORT = 'https://raw.githubusercontent.com/x'\n_get(EXPORT)\n"}, True),
