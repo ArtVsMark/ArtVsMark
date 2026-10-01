@@ -1814,13 +1814,15 @@ def project_badges(repo: str, answers: dict,
                 badges.append((BADGE_LABELS["release"], latest_tag(repo) or "—",
                                "info" if latest_tag(repo) else "muted"))
         elif kind == "ci":
-            # предел: одна запись — последний завершённый прогон на main;
-            # площадка отдаёт прогоны от новых к старым.
+            # предел: последние checks.RUNS_WINDOW прогонов на main без фильтра
+            # статуса — фильтр площадки отдаёт устаревшее (#247), выбор см.
+            # checks.newest_run.
             runs = _api(
                 f"/repos/{repo}/actions/workflows/{answer['workflow']}"
-                "/runs?branch=main&status=completed&per_page=1"
+                f"/runs?branch=main&per_page={checks.RUNS_WINDOW}"
             ).get("workflow_runs", [])
-            state = runs[0]["conclusion"] if runs else "unknown"
+            last = checks.newest_run(runs)
+            state = last["conclusion"] if last else "unknown"
             badges.append((BADGE_LABELS["ci"], state, "ok" if state == "success" else "warn"))
         elif kind == "coverage":
             # Объявленный значок мог исчезнуть — сосед вправе переложить его или

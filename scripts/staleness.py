@@ -120,14 +120,15 @@ def last_success(workflow: str) -> dt.datetime | None:
     вызывающий: у молодого прогона это норма, у живущего месяц — поломка
     (правило 010).
     """
-    # предел: одна запись — последний успешный прогон; площадка отдаёт
-    # прогоны от новых к старым, и свежий стоит первым.
+    # предел: последние checks.RUNS_WINDOW прогонов без фильтра статуса —
+    # фильтр площадки отдаёт устаревшее (#247), выбор см. checks.newest_run.
     runs = checks.rest(f"/repos/{REPO}/actions/workflows/{workflow}"
-                f"/runs?status=success&per_page=1")
+                f"/runs?per_page={checks.RUNS_WINDOW}")
     entries = runs.get("workflow_runs", []) if isinstance(runs, dict) else []
-    if not entries:
+    run = checks.newest_run(entries, "success")
+    if run is None:
         return None
-    return dt.datetime.fromisoformat(entries[0]["created_at"].replace("Z", "+00:00"))
+    return dt.datetime.fromisoformat(run["created_at"].replace("Z", "+00:00"))
 
 
 def verdict(last: dt.datetime | None, now: dt.datetime, hours: int) -> tuple[bool, str]:
@@ -137,8 +138,8 @@ def verdict(last: dt.datetime | None, now: dt.datetime, hours: int) -> tuple[boo
     и не дожидаясь настоящей просрочки.
     """
     if last is None:
-        return True, ("успешных прогонов нет вовсе — прогон либо ни разу не "
-                      "отработал, либо падает каждый раз")
+        return True, (f"среди последних {checks.RUNS_WINDOW} прогонов удачных нет — "
+                      "прогон либо ни разу не отработал, либо падает каждый раз")
     age = (now - last).total_seconds() / 3600
     when = last.strftime("%Y-%m-%d %H:%M UTC")
     if age > hours:
