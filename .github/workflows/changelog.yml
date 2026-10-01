@@ -67,6 +67,10 @@ jobs:
         with:
           # Тем же токеном пойдёт пуш ветки — чтобы событие разбудило agent-pr.
           token: ${{ env.MERGE_QUEUE_TOKEN }}
+          # ИСТОРИЯ ЦЕЛИКОМ: месяц записи — месяц коммита, добавившего фрагмент.
+          # В мелком клоне каждый фрагмент выглядит добавленным верхушкой, и
+          # сборщик в нём отказывает, а не угадывает (#257).
+          fetch-depth: 0
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
@@ -82,7 +86,7 @@ jobs:
           git checkout -B "$BRANCH"
           python scripts/collect_changelog.py --collect --month "$month"
           if git diff --quiet -- CHANGELOG.md; then
-            echo "::notice::Фрагментов нет — журнал за $month не тронут, изменение не нужно."
+            echo "::notice::Собирать за $month нечего — журнал не тронут, изменение не нужно. Фрагменты, приехавшие позже, ждут своего месяца."
             exit 0
           fi
           git add -A CHANGELOG.md changelog.d

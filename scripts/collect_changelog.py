@@ -23,7 +23,18 @@
 
 ЕДИНИЦА — МЕСЯЦ, КАК У ЖУРНАЛА РЕШЕНИЙ. Раздел ``## Сентябрь 2026``; повторный
 сбор за тот же месяц дописывает в существующий раздел, новый месяц ложится
-выше прежних. Записи внутри секции идут по номеру изменения, а не по имени
+выше прежних.
+
+МЕСЯЦ ЗАПИСИ — КОГДА ОНА ПРИЕХАЛА В ``main``, А НЕ КОГДА ЕЁ СОБРАЛИ. Прежде
+сбор брал ВСЕ фрагменты каталога и клал их в месяц запуска («вчера был
+сентябрь»). Это держалось на допущении, что прогон 1-го числа бежит раньше
+первых слияний месяца. 1 октября площадка поставила прогон с 05:37 на 11:46, за
+утро слились четыре изменения, и сбор за сентябрь унёс их в сентябрь (#257).
+Теперь месяц фрагмента — месяц коммита, который его добавил (UTC, как у
+прогона); сбор за месяц M берёт всё, что приехало по M включительно, каждое — в
+раздел СВОЕГО месяца, а приехавшее позже оставляет лежать. Мелкий клон —
+отказ: в нём каждый фрагмент выглядит добавленным последним коммитом, то есть
+ровно та же ошибка с месяцем. Записи внутри секции идут по номеру изменения, а не по имени
 файла: слаг говорит о теме, номер — о порядке слияния.
 
 ПОЧЕМУ СОБИРАЕТ ПРОГОН, А НЕ «КОГДА НАКОПИТСЯ». Здесь стояло: раздел
@@ -46,8 +57,10 @@
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import pathlib
 import re
+import subprocess
 import sys
 
 import checks
@@ -139,6 +152,45 @@ def parse(path: pathlib.Path) -> tuple[str, str, list[str]]:
         found.append(f"{path.name}: подпись секции «{prefix['name']}» в начале строки "
                      f"подставит сборка из имени файла — оставьте «{checks.clip(rest, 60)}»")
     return section, text, found
+
+
+def landed(path: pathlib.Path) -> str | None:
+    """Месяц ``ГГГГ-ММ`` (UTC), когда фрагмент добавлен в текущую ветку. ``None`` — не закоммичен."""
+    out = subprocess.run(
+        ["git", "log", "--diff-filter=A", "-1", "--format=%cI", "--",
+         path.relative_to(ROOT).as_posix()],
+        cwd=ROOT, capture_output=True, text=True, encoding="utf-8", check=True).stdout.strip()
+    if not out:
+        return None
+    return dt.datetime.fromisoformat(out).astimezone(dt.timezone.utc).strftime("%Y-%m")
+
+
+def shallow() -> bool:
+    """Мелкий ли клон: в нём дата добавления фрагмента — дата верхушки, а не его."""
+    out = subprocess.run(["git", "rev-parse", "--is-shallow-repository"],
+                         cwd=ROOT, capture_output=True, text=True, encoding="utf-8", check=True).stdout
+    return out.strip() == "true"
+
+
+def split(dates: dict[str, str | None], until: str) -> tuple[dict[str, list[str]], list[str], list[str]]:
+    """Разложить фрагменты по месяцам приезда: что собрать, что оставить, что без даты.
+
+    Собираются месяцы по ``until`` включительно — каждый в свой раздел: фрагмент,
+    пропущенный прошлым сбором, не должен переехать в чужой месяц. Приехавшее
+    позже остаётся до своего сбора. Без даты — не закоммичено, и месяц ему
+    назначить нечем: такой фрагмент — отказ сборки, а не догадка.
+    """
+    take: dict[str, list[str]] = {}
+    later: list[str] = []
+    undated: list[str] = []
+    for name, month in sorted(dates.items()):
+        if month is None:
+            undated.append(name)
+        elif month <= until:
+            take.setdefault(month, []).append(name)
+        else:
+            later.append(name)
+    return take, later, undated
 
 
 def collected() -> tuple[dict[str, list[str]], list[str]]:
@@ -311,6 +363,18 @@ def selftest() -> int:
     else:
         broken.append("строка вне формы раздела выброшена молча при пересборке")
 
+    # Месяц записи — месяц приезда, а не сбора (#257). Обе стороны: своё и
+    # прошлое собирается в свои разделы, будущее остаётся, без даты — отказ.
+    take, later, undated = split({"a.fixed.md": "2026-09", "b.fixed.md": "2026-10",
+                                  "c.added.md": "2026-08", "d.added.md": None}, "2026-09")
+    expected = ({"2026-08": ["c.added.md"], "2026-09": ["a.fixed.md"]}, ["b.fixed.md"], ["d.added.md"])
+    if (take, later, undated) != expected:
+        broken.append(f"разбор по месяцам: ждали {expected}, вышло {(take, later, undated)}")
+    print("  по месяцу — приехавшее позже остаётся, пропущенное — в свой раздел, без даты — отказ")
+    take, later, _ = split({"a.fixed.md": "2026-10"}, "2026-09")
+    if take or later != ["a.fixed.md"]:
+        broken.append("октябрьский фрагмент унесён сбором за сентябрь")
+
     if broken:
         print(checks.annotate("error", "самопроверка провалена"), file=sys.stderr)
         for line in broken:
@@ -364,10 +428,10 @@ def main() -> int:
     if args.check:
         print(f"фрагменты в порядке: {sum(len(v) for v in by_section.values())}")
         return 0
-    if args.preview:
-        print(f"{title or '## <месяц>'}\n\n{block}" if block else "фрагментов нет — собирать нечего")
+    if args.preview and not title:
+        print(f"## <месяц>\n\n{block}" if block else "фрагментов нет — собирать нечего")
         return 0
-    if not args.collect:
+    if not args.collect and not args.preview:
         print(f"фрагментов: {sum(len(v) for v in by_section.values())}. "
               f"--preview покажет сборку, --collect перенесёт в журнал")
         return 0
@@ -376,15 +440,49 @@ def main() -> int:
         print("фрагментов нет — журнал не тронут")
         return 0
     try:
-        CHANGELOG.write_text(merge(CHANGELOG.read_text(encoding="utf-8"), title, by_section),
-                             encoding="utf-8")
-        for path in fragments():
-            path.unlink()
+        if shallow():
+            print(checks.annotate("error", "мелкий клон: дата приезда фрагмента не "
+                                  "читается — месяц назначить нечем (нужен fetch-depth: 0)"),
+                  file=sys.stderr)
+            return 2
+        paths = {path.name: path for path in fragments()}
+        take, later, undated = split({name: landed(path) for name, path in paths.items()},
+                                     args.month)
+    except (OSError, subprocess.CalledProcessError) as err:
+        print(checks.annotate("error", f"история фрагментов не прочитана: {err}"),
+              file=sys.stderr)
+        return 2
+    if undated:
+        print(checks.annotate("error", f"фрагменты не закоммичены — месяца у них нет: "
+                              f"{', '.join(undated)}"), file=sys.stderr)
+        return 2
+    # Предпросмотр и сбор идут одним разбором: показано ровно то, что ляжет.
+    months: dict[str, dict[str, list[str]]] = {}
+    for month, names in sorted(take.items()):
+        sections: dict[str, list[str]] = {}
+        for name in names:
+            section, line, _ = parse(paths[name])
+            sections.setdefault(section, []).append(line)
+        months[month] = {key: sorted(lines, key=by_number) for key, lines in sections.items()}
+    if args.preview:
+        for month, sections in months.items():
+            print(f"{month_title(month)}\n\n{render(sections)}")
+        print(f"остаётся до своего месяца: {', '.join(later) or '—'}")
+        return 0
+    try:
+        text = CHANGELOG.read_text(encoding="utf-8")
+        for month, sections in months.items():
+            text = merge(text, month_title(month), sections)
+        CHANGELOG.write_text(text, encoding="utf-8")
+        for names in take.values():
+            for name in names:
+                paths[name].unlink()
     except (OSError, ValueError) as err:
         print(checks.annotate("error", f"собрать не удалось: {err}"), file=sys.stderr)
         return 2
-    print(f"собрано записей: {sum(len(v) for v in by_section.values())}, "
-          f"фрагменты удалены")
+    print(f"собрано записей: {sum(len(v) for v in take.values())} "
+          f"по месяцам {', '.join(sorted(take)) or '—'}; оставлено до своего месяца: "
+          f"{len(later)}")
     return 0
 
 
