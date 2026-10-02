@@ -125,14 +125,28 @@ def validate(value: object, schema: dict, path: str = "") -> list[str]:
 
 
 def check(facts: object, repo: str, schema: dict) -> list[str]:
-    """Расхождения файла с договором. Сверх схемы — одно: файл о том, у кого лежит.
+    """Расхождения файла с договором. Сверх схемы — две сверки, которых ей не выразить.
 
-    Это схеме не выразить — она не знает, откуда файл прочитан.
+    * файл о том, у кого лежит: схема не знает, откуда файл прочитан;
+    * версия — сборка выпуска: ``version`` начинается с ``release`` и точки.
+      Выпуск — серия ``X.Y``, версия — ``X.Y.Z`` внутри неё (договор 1.3).
+      Сверка двух полей между собой схеме подмножества не по силам, а
+      расходятся они правдоподобно: забытый подъём выпуска или версия,
+      убежавшая в серию, которой нет, выглядят как обычные числа.
     """
     found = validate(facts, schema)
-    if isinstance(facts, dict) and isinstance(facts.get("repo"), str) \
-            and facts["repo"] != repo:
+    if not isinstance(facts, dict):
+        return found
+    if isinstance(facts.get("repo"), str) and facts["repo"] != repo:
         found.append(f"repo: «{facts['repo']}», а файл лежит у {repo}")
+    # Сверяются только поля правильной формы: выпуск «v1.3.0» уже назван
+    # схемой, и вторая находка о той же причине была бы шумом, а не сведением.
+    version, release = facts.get("version"), facts.get("release")
+    series = schema.get("properties", {}).get("release", {}).get("pattern", "")
+    if isinstance(version, str) and isinstance(release, str) \
+            and re.search(series, release) and not version.startswith(f"{release}."):
+        found.append(f"version: «{version}» — не сборка выпуска «{release}»: "
+                     f"версия обязана начинаться с «{release}.»")
     return found
 
 
@@ -157,7 +171,7 @@ def selftest() -> int:
     good = {
         "schema": "1.2", "schema_of": "факты проекта для витрины", "repo": repo,
         "generated_at": "2026-10-01T07:22:31+00:00", "commit": "a" * 40,
-        "ci": {"workflow": "ci.yml"}, "version": "1.3.45", "release": "v1.3.0",
+        "ci": {"workflow": "ci.yml"}, "version": "1.3.45", "release": "1.3",
         "coverage_percent": 92.1, "tests": {"functions": 10, "modules": 2},
         "python": {"supported": ["3.12"]},
         "checks_per_pr": {"count": 3, "names": ["a", "b", "c"]},
@@ -203,12 +217,27 @@ def selftest() -> int:
          "имя не из допустимых"),
         ("прогон CI не файлом", with_(ci={"workflow": "CI"}), "не той формы"),
         ("файл о другом репозитории", with_(repo="Owner/Other"), "лежит у Owner/Name"),
+        # Выпуск — серия X.Y, версия — сборка X.Y.Z внутри неё (договор 1.3).
+        ("выпуск тегом с v", with_(release="v1.3.0"), "release: «v1.3.0» не той формы"),
+        ("ошибка формы выпуска — одна находка, не две", with_(release="v1.3.0"), 1),
+        ("выпуск с нулевым хвостом", with_(release="1.3.0"), "release: «1.3.0» не той формы"),
+        ("версия из двух чисел", with_(version="1.3"), "version: «1.3» не той формы"),
+        ("версия с v", with_(version="v1.3.45"), "version: «v1.3.45» не той формы"),
+        ("версия из чужой серии", with_(version="1.4.2"), "не сборка выпуска «1.3»"),
+        ("серия — префикс без точки не считается", with_(release="1.1", version="1.11.157"),
+         "не сборка выпуска «1.1»"),
+        ("двузначные части — законно", with_(release="1.11", version="1.11.157"), None),
+        ("версия без выпуска — сверять не с чем", {**without("release"),
+                                                  "none": {"release": "выпусков нет"}}, None),
         ("не объект", [1, 2], "ожидался object"),
     ]
     broken = []
     for name, facts, expected in cases:
         found = check(facts, repo, schema)
-        ok = (not found) if expected is None else any(expected in line for line in found)
+        if isinstance(expected, int):
+            ok = len(found) == expected
+        else:
+            ok = (not found) if expected is None else any(expected in line for line in found)
         if not ok:
             broken.append(f"{name}: ждали {'чисто' if expected is None else expected!r}, "
                           f"вышло {found}")
