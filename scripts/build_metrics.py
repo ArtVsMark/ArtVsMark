@@ -1252,6 +1252,22 @@ BADGES = (("release", "release"), ("CI", "ci"),
           ("coverage", "coverage_percent"), ("version", "version"))
 
 
+#: Пороги тона покрытия: от какой доли какой тон. Решение владельца 2 октября —
+#: одни пороги на все проекты. Прежде любое покрытие рисовалось зелёным, и 71.9%
+#: у каталога выглядело так же, как 92.1% у механизмов: цвет ничего не говорил.
+#: Тона — палитра площадки: зелёный, жёлтый (fair), оранжевый (low); красный
+#: оставлен упавшему CI, чтобы низкое покрытие не читалось как поломка.
+COVERAGE_TONES = ((90.0, "ok"), (75.0, "fair"), (0.0, "low"))
+
+
+def coverage_tone(percent: float) -> str:
+    """Тон плашки покрытия по порогам ``COVERAGE_TONES``: граница — в старшем тоне."""
+    for floor, tone in COVERAGE_TONES:
+        if percent >= floor:
+            return tone
+    return COVERAGE_TONES[-1][1]
+
+
 def ci_badge(repo: str, facts: dict, findings: list[str]) -> tuple[str, str, str]:
     """Плашка CI: прогон назван в фактах, его статус — у площадки.
 
@@ -1318,7 +1334,7 @@ def project_badges(repo: str, facts: dict,
                 and field == "coverage_percent":
             # Число из фактов — доля, а не готовая надпись: единицу дописывает
             # витрина, потому что показывает её она.
-            badges.append((label, f"{value}%", "ok"))
+            badges.append((label, f"{value}%", coverage_tone(float(value))))
         elif isinstance(value, str) and value:
             badges.append((label, value, "info"))
         elif field in reasons:
@@ -1463,10 +1479,12 @@ def pill(x: int, y: int, label: str, value: str, tone: str, dark: bool) -> tuple
     """
     if dark:
         back, edge, muted = "#161B22", "#30363D", "#8B949E"
-        tones = {"ok": "#3FB950", "warn": "#F85149", "info": "#58A6FF", "muted": "#8B949E"}
+        tones = {"ok": "#3FB950", "warn": "#F85149", "info": "#58A6FF", "muted": "#8B949E",
+                 "fair": "#D29922", "low": "#DB6D28"}
     else:
         back, edge, muted = "#F6F8FA", "#D0D7DE", "#636C76"
-        tones = {"ok": "#1A7F37", "warn": "#CF222E", "info": "#0969DA", "muted": "#636C76"}
+        tones = {"ok": "#1A7F37", "warn": "#CF222E", "info": "#0969DA", "muted": "#636C76",
+                 "fair": "#9A6700", "low": "#BC4C00"}
 
     label_w = len(label) * 6.4
     value_w = len(value) * 6.9
@@ -3120,6 +3138,21 @@ def selftest() -> int:
          [("release", "—"), ("CI", "success"), ("coverage", "92.1%"),
           ("version", "1.3.47")], 1),
     ]
+    # Пороги покрытия — с обеих сторон каждой границы: граница в старшем тоне.
+    for percent, tone in ((100, "ok"), (90, "ok"), (89.9, "fair"), (75, "fair"),
+                          (74.9, "low"), (0, "low")):
+        got = coverage_tone(percent)
+        if got != tone:
+            broken.append(f"тон покрытия {percent}%: ждали {tone}, вышло {got}")
+    print("  да  — покрытие: 90 и выше зелёное, от 75 жёлтое, ниже оранжевое")
+    # Новые тоны обязаны быть у плашки в обеих темах: иначе KeyError на рисовании.
+    for dark in (True, False):
+        for tone in ("fair", "low"):
+            try:
+                pill(0, 0, "coverage", "80%", tone, dark)
+            except KeyError:
+                broken.append(f"плашка не знает тона {tone} ({'тёмная' if dark else 'светлая'} тема)")
+
     saved_api = globals()["_api"]
     calls: list[str] = []
 
