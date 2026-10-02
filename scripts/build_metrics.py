@@ -1262,7 +1262,7 @@ def ci_badge(repo: str, facts: dict, findings: list[str]) -> tuple[str, str, str
     """
     workflow = (facts.get("ci") or {}).get("workflow") if isinstance(facts.get("ci"), dict) else None
     if not workflow:
-        findings.append(f"{repo}: в facts.json нет ci.workflow — плашка CI «—» (договор 1.2)")
+        findings.append(f"{repo}: в facts.json нет ci.workflow — плашка CI «—» (договор фактов)")
         return "CI", "—", "muted"
     try:
         # предел: последние checks.RUNS_WINDOW прогонов на main без фильтра
@@ -1327,7 +1327,7 @@ def project_badges(repo: str, facts: dict,
             badges.append((label, "none", "muted"))
         else:
             findings.append(f"{repo}: в facts.json нет «{field}» и нет причины в "
-                            f"none.{field} — плашка «—» (договор 1.2)")
+                            f"none.{field} — плашка «—» (договор фактов)")
             badges.append((label, "—", "muted"))
     return badges
 
@@ -3054,7 +3054,7 @@ def selftest() -> int:
     # ── баннер: то, что обязано быть в картинке ────────────────────────────
     accents = [
         {"title": "Alpha", "tagline": "первый по всему", "stack": "CLI · web",
-         "badges": [("release", "v1.2.3", "info"), ("CI", "success", "ok")], "stats": lead},
+         "badges": [("release", "1.2", "info"), ("CI", "success", "ok")], "stats": lead},
         {"title": "Beta", "tagline": "середина", "stack": "docs",
          "badges": [("CI", "failure", "warn")], "stats": mid},
         {"title": "Gamma", "tagline": "хвост", "stack": "content", "badges": [], "stats": tail},
@@ -3066,7 +3066,7 @@ def selftest() -> int:
          all(a["title"] in label for a in accents)),
         ("подпись несёт описание, а не только числа",
          all(a["tagline"] in label for a in accents)),
-        ("подпись несёт показатели", "release v1.2.3" in label and "CI failure" in label),
+        ("подпись несёт показатели", "release 1.2" in label and "CI failure" in label),
         ("подпись несёт стек", all(a["stack"] in label for a in accents)),
         ("плашка есть у каждого показателя, включая отсутствующий",
          svg.count('rx="12"') == sum(len(a["badges"]) for a in accents)),
@@ -3093,24 +3093,24 @@ def selftest() -> int:
            "created_at": "2026-10-01T07:00:00Z"}
     OLD_RED = {"status": "completed", "conclusion": "failure",
                "created_at": "2026-09-01T07:00:00Z"}
-    full = {"release": "v1.3.0", "version": "1.3.47", "coverage_percent": 92.1,
+    full = {"release": "1.3", "version": "1.3.47", "coverage_percent": 92.1,
             "ci": {"workflow": "ci.yml"}}
     reasons = {"ci": {"workflow": "ci.yml"}, "coverage_percent": 97.1,
                "none": {"release": "выпусков нет", "version": "не версионируется"}}
     plate_cases = [
         ("все поля — четыре значения", full,
-         [("release", "v1.3.0"), ("CI", "success"), ("coverage", "92.1%"),
+         [("release", "1.3"), ("CI", "success"), ("coverage", "92.1%"),
           ("version", "1.3.47")], 0),
         ("причины в none — «none», не находка", reasons,
          [("release", "none"), ("CI", "success"), ("coverage", "97.1%"),
           ("version", "none")], 0),
         ("поля нет и причины нет — «—» и находка",
          {k: v for k, v in full.items() if k != "version"},
-         [("release", "v1.3.0"), ("CI", "success"), ("coverage", "92.1%"),
+         [("release", "1.3"), ("CI", "success"), ("coverage", "92.1%"),
           ("version", "—")], 1),
         ("прогон CI не назван — «—» и находка",
          {k: v for k, v in full.items() if k != "ci"},
-         [("release", "v1.3.0"), ("CI", "—"), ("coverage", "92.1%"),
+         [("release", "1.3"), ("CI", "—"), ("coverage", "92.1%"),
           ("version", "1.3.47")], 1),
         ("файла нет — все четыре «—», одна находка", {},
          [("release", "—"), ("CI", "—"), ("coverage", "—"), ("version", "—")], 1),
