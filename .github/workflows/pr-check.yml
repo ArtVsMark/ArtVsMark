@@ -293,7 +293,7 @@ jobs:
       # Прежняя редакция выкачивала гейт по нему ещё раз, и закрепить его
       # можно было, только зная второй вход (095) — мы его знали и задавали.
       - name: Сверить трейлеры со списком согласованных имён
-        uses: ArtVsMark/Engineering-Incidents-Playbook/.github/actions/attribution@aa1531bd07aa26466fc0fd1701cfcb8d931dcbef # v1.4.0, 2026-10-01
+        uses: ArtVsMark/Engineering-Incidents-Playbook/.github/actions/attribution@4b81f08c5e7f782a27e93736995b470f66a272ca # v1.4.0, 2026-10-01
         with:
           authors: .github/authors.txt
           # Пусто: подрезать нечего, диапазон и так только коммиты изменения.
