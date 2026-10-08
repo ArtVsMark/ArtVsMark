@@ -351,12 +351,41 @@ def selftest() -> int:
         ("отказ без замера", {"001": {"holdable": "refused"}}, 1),
         ("отказ с пустым замером", {"001": {"holdable": "refused", "machine_half": " "}}, 1),
         ("слово вне словаря", {"001": {"holdable": "impossible"}}, 1),
+        ("ничем, с машинной половиной — законно",
+         {"001": {"status": "active", "mechanism": "none", "machine_half": "строится с #9"}}, 0),
+        ("ничем без машинной половины", {"001": {"status": "active", "mechanism": "none"}}, 1),
+        ("ничем с пустой машинной половиной",
+         {"001": {"status": "active", "mechanism": "none", "machine_half": "  "}}, 1),
+        ("ничем, но неприменимо — не предмет",
+         {"001": {"status": "not-applicable", "mechanism": "none"}}, 0),
     ]
     for name, rules, expected in limit_cases:
         got = len(limits(rules))
         if got != expected:
             broken.append(f"предел, {name}: ожидалось находок {expected}, вышло {got}")
         print(f"  {got} находок — предел: {name}")
+
+    # Исполняемый адрес у ответа gate/pipeline (139) — шесть видов адреса
+    # проходят, документ и пустота краснеют, code и неприменимое не предмет.
+    run_cases = [
+        ("прогон .yml", "gate", ".github/workflows/pr-check.yml — шаг", 0),
+        ("прогон .yaml", "pipeline", ".github/workflows/x.yaml", 0),
+        ("действие", "gate", ".github/actions/attribution/action.yml", 0),
+        ("скрипт .py", "gate", "scripts/check_page.py::audit", 0),
+        ("скрипт .sh", "gate", "scripts/run.sh", 0),
+        ("тест", "gate", "tests/test_x.py::test_y", 0),
+        ("хук окна", "gate", ".claude/hooks/session-start.sh", 0),
+        ("только документ", "gate", "CLAUDE.md § Гейты — абзац", 1),
+        ("документ и пустота", "pipeline", "", 1),
+        ("путь в чужом каталоге не свой", "gate", "x/scripts/y.py", 1),
+        ("code не предмет", "code", "README.md", 0),
+    ]
+    for name, mechanism, where_, expected in run_cases:
+        got = len(unrunnable({"001": {"status": "active", "mechanism": mechanism,
+                                      "where": where_}}))
+        if got != expected:
+            broken.append(f"исполняемый адрес, {name}: ожидалось {expected}, вышло {got}")
+        print(f"  {got} находок — исполняемый адрес: {name}")
 
     # Документа нет вовсе — это НЕ наш предмет: на него жалуется проверка ссылок,
     # и вторая жалоба о том же сбивала бы с толку.
@@ -396,6 +425,15 @@ def limits(rules: dict[str, dict]) -> list[str]:
     """
     found: list[str] = []
     for number, binding in sorted(rules.items()):
+        # «ДЕРЖИТСЯ НИЧЕМ» НЕ БЕСПЛАТНО (182, контракт ответа). Ответ
+        # `mechanism: none` обязан назвать машинную половину — что следует из
+        # данных и почему не построено. Спрашивалось это только у `refused`;
+        # каталог, грейдер, счётчик токенов и глоссарий требуют поле у любого
+        # `none` (сводка 8 октября, #286). Разложен ли ответ ВЕРНО — суждение.
+        if (binding.get("status") == "active" and binding.get("mechanism") == "none"
+                and not str(binding.get("machine_half", "")).strip()):
+            found.append(f"{number}: «держится ничем» без machine_half — машинная "
+                         f"половина не названа, и ответ неотличим от «не разбирали» (182)")
         word = binding.get("holdable")
         if word is None:
             continue
@@ -406,6 +444,40 @@ def limits(rules: dict[str, dict]) -> list[str]:
             found.append(f"{number}: `refused` без замера в machine_half — отказ, за "
                          f"которым нет числа, неотличим от «не смотрели» (213)")
     return found
+
+
+#: Адрес ИСПОЛНЯЕМОГО: прогон, действие, скрипт, тест, хук окна. Список видов
+#: закрытый — «похоже на путь» приняло бы и документ, а абзац свода прогоном
+#: не подтверждается вовсе (139). Формы перечислены поимённо: прогон .yml и
+#: .yaml, действие action.yml, скрипт .py и .sh, тест, хук .claude/hooks —
+#: шесть видов, каждый в наборе.
+RUNNABLE = re.compile(
+    r"(?<![\w/.-])(?:\.github/workflows/[\w.-]+\.ya?ml"
+    r"|\.github/actions/[\w./-]+/action\.ya?ml"
+    r"|scripts/[\w./-]+\.(?:py|sh)"
+    r"|tests/[\w./-]+\.py"
+    r"|\.claude/hooks/[\w./-]+\.(?:sh|py))")
+
+
+def unrunnable(rules: dict[str, dict]) -> list[str]:
+    """Ответы «держится гейтом/конвейером», не назвавшие ничего исполняемого.
+
+    МЕХАНИЗМ ПОДТВЕРЖДАЕТСЯ ПРОГОНОМ, А НЕ ЧТЕНИЕМ (139). Ответ `gate` или
+    `pipeline`, в чьём ``where`` нет ни прогона, ни скрипта, ни теста, обещает
+    проверку, которой нет: документ не запускается. Образец — каталог
+    (check_bindings) и проект механизмов (test_a_gate_names_something_runnable);
+    у витрины на 8 октября таких ответов 0 — гейт держит регресс.
+
+    ЧЕГО НЕ ДЕРЖИТ: что названный скрипт держит ИМЕННО это правило — это
+    суждение; и ответ `code` — код держит правило поведением, а не проверкой,
+    и его адресом законно бывает функция сборки.
+    """
+    return [f"{number}: «{binding['mechanism']}» без исполняемого адреса — ни прогона, "
+            f"ни скрипта, ни теста в where; документ прогоном не подтверждается (139)"
+            for number, binding in sorted(rules.items())
+            if binding.get("status") == "active"
+            and binding.get("mechanism") in ("gate", "pipeline")
+            and not RUNNABLE.search(binding.get("where") or "")]
 
 
 def unchecked(rules: dict[str, dict]) -> list[tuple[str, str]]:
@@ -496,6 +568,7 @@ def main() -> int:
 
         dead += dead_sections(bindings["rules"], sections)
         vocabulary = limits(bindings["rules"])
+        unrun = unrunnable(bindings["rules"])
         # Существование предмета спрашивается у дерева одной командой — без
         # сети, как и требует правило: то, что видно локально.
         alive = refuted(bindings["rules"], lambda glob: [str(p.relative_to(ROOT))
@@ -524,6 +597,14 @@ def main() -> int:
               "только с замером — что считается командой и сколько раз сигнал сработал "
               "бы на законном.", file=sys.stderr)
 
+    if unrun:
+        print(checks.annotate("error", f"ответы «держится гейтом» без исполняемого "
+                              f"адреса: {len(unrun)}"), file=sys.stderr)
+        for line in unrun:
+            print(f"  {line}", file=sys.stderr)
+        print("\nНазовите прогон, скрипт или тест, которым правило держится, — или "
+              "поменяйте механизм на document: абзац не запускается.", file=sys.stderr)
+
     if dead:
         print(checks.annotate("error", f"вердикты показывают в пустоту, мёртвых ссылок: {len(dead)}"), file=sys.stderr)
         for line in dead:
@@ -534,7 +615,7 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
-    if alive or vocabulary:
+    if alive or vocabulary or unrun:
         return 1
 
     checkable = sum(1 for b in bindings["rules"].values() if b.get("refuted_by"))
