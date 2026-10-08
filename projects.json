@@ -29,7 +29,9 @@
     "на 195 правил и на витрину не попал: заметил это человек, а не механизм."
   ],
   "featured_limit": 5,
-  "not_shown": {},
+  "not_shown": {
+    "ArtVsMark/ArtVsMark.github.io": "заглушка, на витрину не берём — решение владельца 8 октября. Корень хоста artvsmark.github.io: страница-указатель на проекты и тег подтверждения Яндекс.Вебмастера (так сказано в его README); кода, выпусков и facts.json нет"
+  },
   "projects": [
     {
       "repo": "ArtVsMark/Stepik-Python-Grader",

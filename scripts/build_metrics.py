@@ -1839,9 +1839,12 @@ def contract_findings(document: str, facts: dict[str, dict],
 
 #: Номер сводки «где держится», под который перечитан её разбор: поля
 #: ``by_mechanism``, ``by_status``, ``answered`` и ``trails``. Это не копия чужой
-#: константы, а наше утверждение «прочитано под 1.5»: поднимает его человек,
+#: константы, а наше утверждение «прочитано под 1.6»: поднимает его человек,
 #: перечитав поля, а сверка с опубликованным номером говорит, когда пора.
-WHERE_READ = "1.5"
+#: Подъём 1.5 → 1.6 (каталог v1.7.0, playbook#705) добавил записям держания
+#: ``origin`` и ``origin_kind``; четыре читаемых поля не тронуты — перечитано
+#: по ``aggregate_bindings.py`` той версии, а не по заголовку.
+WHERE_READ = "1.6"
 
 
 def catalogue_where() -> dict[str, dict]:
@@ -1910,32 +1913,61 @@ def facts_gaps(facts: dict) -> list[str]:
     отказывает, называя СТОРОНУ. «Издатель не измерил» и «мы не собрали» чинятся
     в разных репозиториях, и путать их дороже, чем разбирать (правило 039).
     """
+    # ПУСТОЙ СПИСОК — ОТВЕТ, А НЕ ПРОБЕЛ. Пробел — это отсутствие ключа: «не
+    # измеряли». Пустой список — «измерено: экспериментальных версий в CI нет».
+    # 8 октября грейдер переехал на 3.14, а предварительную 3.15 унёс в
+    # отдельный прогон, и честно опубликовал `experimental: []`; сборка
+    # прочла это как «не измерил» и отказала — на изменении #282 и на суточной.
+    #
+    # МАТРИЦА ТОЖЕ ОТСЮДА, А НЕ ИЗ ЗАЩИТЫ ВЕТКИ. Тем же переездом грейдер увёл
+    # матрицу `test (ОС, версия)` за сводную проверку `ci-complete`: в
+    # обязательных шесть контекстов, и ни один не несёт ОС и версию. Разбор
+    # имён контекстов давал 0 × 0. Издатель публикует матрицу сам —
+    # `python.os` и `python.supported` (договор 1.3), — и читается она там.
+    python = facts.get("python", {})
     needed = {
-        "python.experimental": facts.get("python", {}).get("experimental"),
+        "python.experimental": python.get("experimental"),
+        "python.os": python.get("os"),
+        "python.supported": python.get("supported"),
     }
-    return sorted(key for key, value in needed.items() if value in (None, "", [], {}))
+    return sorted(key for key, value in needed.items() if not isinstance(value, list))
 
 
-def protection_facts() -> tuple[int, int, int]:
-    """Обязательные проверки на ``main``: сколько их, сколько ОС и версий Python.
+def experimental_text(facts: dict) -> str:
+    """Экспериментальные версии для README: перечень через точку, «no» — если их нет.
+
+    «No» вместо пустоты: сторож пустых метрик (``unanswered``) законно краснит
+    пустую строку, а пустой список у издателя — ответ, и показывается он словом.
+    """
+    return " · ".join(facts["python"]["experimental"]) or "no"
+
+
+def matrix_text(facts: dict) -> tuple[int, str]:
+    """Матрица тестов для README: число ОС и версии Python через точку.
+
+    Версии показываются значениями, а не числом: «× 1 Python versions» не по-
+    английски, а «Python 3.14» читатель сверит с файлом фактов.
+    """
+    python = facts["python"]
+    return len(python["os"]), " · ".join(python["supported"])
+
+
+def required_checks() -> int:
+    """Обязательные проверки на ``main`` — сколько их.
 
     Источник — правила ветки, а не объект ruleset: ``/rules/branches/main``
     отдаёт имена обязательных контекстов любому, кто видит репозиторий, тогда
     как ``/rulesets/{id}`` без прав admin молчит про ``bypass_actors``.
 
-    Имена матричных джобов входят в ruleset дословно
-    (``test (ubuntu-latest, 3.12, false)``), поэтому размерность матрицы
-    вынимается из них же: это ровно те комбинации, без которых мерж не
-    состоится.
+    Размерность матрицы отсюда больше не вынимается: с 8 октября матрица
+    стоит за сводной ``ci-complete``, и имена контекстов её не несут. Она
+    читается из фактов издателя — ``matrix_text``.
     """
     contexts = []
     for rule in _api_list(f"/repos/{REPO}/rules/branches/main?per_page=100"):
         if rule.get("type") == "required_status_checks":
             contexts = [c["context"] for c in rule["parameters"]["required_status_checks"]]
-    matrix = [re.match(r"test \(([^,]+), ([^,)]+)", context) for context in contexts]
-    systems = {m.group(1) for m in matrix if m}
-    versions = {m.group(2) for m in matrix if m}
-    return len(contexts), len(systems), len(versions)
+    return len(contexts)
 
 
 def release_count() -> int:
@@ -3027,7 +3059,7 @@ def selftest() -> int:
     провалом в последней группе: самопроверка отвечала «пройдена» и кодом 0.
     """
     live = {
-        "projects": "|таблица|", "modules": 218, "required": 11, "os": 3, "py": 2,
+        "projects": "|таблица|", "modules": 218, "required": 11, "os": 3, "py": "3.14",
         "exp": "3.14", "releases": 12, "rules": 140,
         "signed": 80, "signed-total": 81,
         "tests": 4321, "coverage": "92.4%", "checks per PR": 17,
@@ -3588,13 +3620,36 @@ def selftest() -> int:
     # честности не легче: показать число всё равно нечем. Проверяется, что
     # пробел НАЙДЕН и НАЗВАН — «что-то не так с фактами» отправило бы читающего
     # искать предмет самому.
-    whole = {"python": {"experimental": ["3.14"]}}
+    whole = {"python": {"experimental": ["3.14"], "os": ["ubuntu-latest"],
+                        "supported": ["3.13"]}}
+    every = ["python.experimental", "python.os", "python.supported"]
     if facts_gaps(whole):
         broken.append("полные факты объявлены неполными")
-    if facts_gaps({"python": {}}) != ["python.experimental"]:
+    if facts_gaps({"python": {}}) != every:
         broken.append("пробел в фактах не назван поимённо")
-    if facts_gaps({}) != ["python.experimental"]:
+    if facts_gaps({}) != every:
         broken.append("пустые факты не дают всех пробелов")
+    if facts_gaps({"python": {**whole["python"], "os": None}}) != ["python.os"]:
+        broken.append("матрица без ОС не названа пробелом")
+    # Пустой список — ответ издателя «экспериментальных нет», а не пробел; на
+    # витрине он читается словом (грейдер, 8 октября, после переезда на 3.14).
+    if facts_gaps({"python": {**whole["python"], "experimental": []}}):
+        broken.append("пустой список экспериментальных версий принят за пробел")
+    if facts_gaps({"python": {**whole["python"], "experimental": "3.15"}}) != ["python.experimental"]:
+        broken.append("строка вместо списка принята за ответ")
+    # Матрица — из фактов: число ОС и версии значениями (грейдер 8 октября:
+    # три ОС × 3.14, в обязательных контекстах матрицы больше нет).
+    for python, shown in (({"os": ["u", "w", "m"], "supported": ["3.14"]}, (3, "3.14")),
+                          ({"os": ["u"], "supported": ["3.13", "3.14"]}, (1, "3.13 · 3.14"))):
+        got = matrix_text({"python": python})
+        if got != shown:
+            broken.append(f"матрица {python}: ждали {shown!r}, вышло {got!r}")
+    for given, shown in ((["3.15"], "3.15"), (["3.15", "3.16"], "3.15 · 3.16"), ([], "no")):
+        got = experimental_text({"python": {"experimental": given}})
+        if got != shown:
+            broken.append(f"экспериментальные {given}: ждали {shown!r}, вышло {got!r}")
+    if unanswered({"exp": experimental_text({"python": {"experimental": []}})}):
+        broken.append("«no» экспериментальных принят сторожем за пустую метрику")
     # Спрашивается ровно то, что витрина показывает. Тесты и проверки на
     # изменение ушли отсюда вместе с плиткой флагмана: падать из-за чужого
     # пробела в числе, которого на странице нет, значит требовать невозможного.
@@ -4202,8 +4257,9 @@ def main() -> int:
               file=sys.stderr)
         return 1
 
-    required, systems, versions = protection_facts()
-    experimental = " · ".join(facts["python"]["experimental"])
+    required = required_checks()
+    systems, versions = matrix_text(facts)
+    experimental = experimental_text(facts)
     releases = release_count()
     signed, signed_total = signed_commits()
     export = rules_export()
