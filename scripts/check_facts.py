@@ -28,8 +28,6 @@
 о чьём-то файле (правило 039: «не ответил» не записывается в «не отвечает»).
 """
 
-from __future__ import annotations
-
 import argparse
 import base64
 import json

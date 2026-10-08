@@ -54,8 +54,6 @@
 не отработала (нет каталога, нет раздела в журнале, запись не удалась).
 """
 
-from __future__ import annotations
-
 import argparse
 import datetime as dt
 import pathlib
@@ -162,7 +160,7 @@ def landed(path: pathlib.Path) -> str | None:
         cwd=ROOT, capture_output=True, text=True, encoding="utf-8", check=True).stdout.strip()
     if not out:
         return None
-    return dt.datetime.fromisoformat(out).astimezone(dt.timezone.utc).strftime("%Y-%m")
+    return dt.datetime.fromisoformat(out).astimezone(dt.UTC).strftime("%Y-%m")
 
 
 def shallow() -> bool:

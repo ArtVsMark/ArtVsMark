@@ -35,8 +35,6 @@
 отработала (имени не передали).
 """
 
-from __future__ import annotations
-
 import sys
 
 import checks

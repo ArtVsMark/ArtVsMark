@@ -50,8 +50,6 @@
 2 — проверка не отработала (площадка или git не ответили).
 """
 
-from __future__ import annotations
-
 import os
 import subprocess
 import sys

@@ -43,8 +43,6 @@
 2 — сторож не отработал (площадка не ответила, ответ не разобран).
 """
 
-from __future__ import annotations
-
 import argparse
 import datetime as dt
 import os
@@ -186,7 +184,7 @@ def selftest() -> int:
     сторож, кричащий о нормальном слиянии, приучает не смотреть на его задачу.
     """
     broken: list[str] = []
-    now = dt.datetime(2026, 9, 8, 20, 0, tzinfo=dt.timezone.utc)
+    now = dt.datetime(2026, 9, 8, 20, 0, tzinfo=dt.UTC)
 
     def change(minutes_ago: int, **over) -> dict:
         seen = now - dt.timedelta(minutes=minutes_ago)
@@ -250,7 +248,7 @@ def main() -> int:
     if args.selftest:
         return selftest()
 
-    now = dt.datetime.now(dt.timezone.utc)
+    now = dt.datetime.now(dt.UTC)
     try:
         opened = checks.rest_list(f"/repos/{REPO}/pulls?state=open&per_page=100")
         found = []

@@ -30,8 +30,6 @@
 Исходы: 0 — сделано или делать нечего; 1 — решение не применено; 2 — не отработал.
 """
 
-from __future__ import annotations
-
 import argparse
 import json
 import re

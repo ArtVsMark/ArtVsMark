@@ -42,8 +42,6 @@
 Исходы: 0 — чисто; 1 — правка поведения без ответа о соседях; 2 — не отработал.
 """
 
-from __future__ import annotations
-
 import subprocess
 import sys
 
