@@ -1842,7 +1842,10 @@ def contract_findings(document: str, facts: dict[str, dict],
 #: Подъём 1.5 → 1.6 (каталог v1.7.0, playbook#705) добавил записям держания
 #: ``origin`` и ``origin_kind``; четыре читаемых поля не тронуты — перечитано
 #: по ``aggregate_bindings.py`` той версии, а не по заголовку.
-WHERE_READ = "1.6"
+#: Подъём 1.6 → 1.7 (каталог, playbook#756) прибавил потребителю ключ ``notes``
+#: — заметки и замеры по правилам; четыре читаемых поля не тронуты: перечитано
+#: по диффу ``aggregate_bindings.py`` в #756, а не по заголовку.
+WHERE_READ = "1.7"
 
 
 def catalogue_where() -> dict[str, dict]:
