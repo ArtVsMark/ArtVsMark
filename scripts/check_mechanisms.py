@@ -180,6 +180,71 @@ def script_polls(sources: dict[str, str]) -> list[str]:
     return found
 
 
+#: Сколько объявленных ненулевых исходов ни разу не ожидает самопроверка.
+#: ХРАПОВИК, а не порог (186): долг выше — находка, долг ниже — тоже находка,
+#: «опустите число» тем же заходом, что и починка. Замер на включении
+#: (2026-10-08): 32 из 34; прогнаны два — check_author 2 и check_labels 1.
+OUTCOMES_BUDGET = 32
+
+
+def declared_outcomes(source: str) -> set[int]:
+    """Ненулевые коды, которые ``main()`` возвращает литералом."""
+    return {node.value.value
+            for func in ast.walk(ast.parse(source))
+            if isinstance(func, ast.FunctionDef) and func.name == "main"
+            for node in ast.walk(func)
+            if isinstance(node, ast.Return) and isinstance(node.value, ast.Constant)
+            and type(node.value.value) is int and node.value.value != 0}
+
+
+def exercised_outcomes(source: str) -> set[int]:
+    """Коды, с которыми в файле сравнивается вызов ``main()`` или ``.returncode``.
+
+    Форма прогона не навязывается, как у образца — check_declared_outcomes
+    грейдера: ``main() == 2``, ``proc.returncode != 1`` — оба прогон.
+    """
+    found: set[int] = set()
+    for node in ast.walk(ast.parse(source)):
+        if not isinstance(node, ast.Compare):
+            continue
+        sides = [node.left, *node.comparators]
+        runs = any(isinstance(side, ast.Call) and isinstance(side.func, ast.Name)
+                   and side.func.id == "main"
+                   or isinstance(side, ast.Attribute) and side.attr == "returncode"
+                   for side in sides)
+        if runs:
+            found |= {side.value for side in sides
+                      if isinstance(side, ast.Constant) and type(side.value) is int}
+    return found
+
+
+def outcomes_never_run(sources: dict[str, str]) -> list[tuple[str, int]]:
+    """Объявленные исходы, которых не ожидает ни одна проверка (186).
+
+    ПРОГОН ОДНОГО ПУТИ ПОДТВЕРЖДАЕТ, ЧТО МЕХАНИЗМ ЗАПУСКАЕТСЯ, — и только.
+    Наборы витрины проверяют функции на подделках, а ``main`` с его кодами
+    возврата — нет: «находка» и «не отработала» существуют в исходнике и в
+    докстроке, но никто не видел их работающими. Код 0 прогоняет живое дерево
+    в каждой проверке, и требовать для него вызова значило бы завести обряд.
+    """
+    return [(name, code)
+            for name, source in sorted(sources.items())
+            for code in sorted(declared_outcomes(source) - exercised_outcomes(source))]
+
+
+def outcomes_budget(sources: dict[str, str], budget: int = OUTCOMES_BUDGET) -> list[str]:
+    """Долг непрогнанных исходов против храповика. Пусто — число сходится."""
+    debt = len(outcomes_never_run(sources))
+    if debt > budget:
+        return [f"непрогнанных исходов {debt} при бюджете {budget}: новый код возврата "
+                f"объявлен без проверки, которая его ждёт (186)"]
+    if debt < budget:
+        return [f"непрогнанных исходов {debt} при бюджете {budget}: долг уменьшился — "
+                f"опустите OUTCOMES_BUDGET тем же заходом, иначе запас съест следующий "
+                f"непрогнанный исход молча (186)"]
+    return []
+
+
 def audit_scripts(sources: dict[str, str]) -> list[str]:
     """Скрипты, чьи докстроки не объявляют трёх исходов."""
     return [f"{name}: докстрока не объявляет три исхода — находка и поломка "
@@ -2930,6 +2995,31 @@ def selftest() -> int:
                           f"{'отказ' if must_reject else 'пропуск'}, вышло {found}")
         print(f"  {'отвергнут' if found else 'пропущен '} — списки: {name}")
 
+    # ── объявленный исход ждёт проверка (186) ─────────────────────────────
+    # Формы прогона названы поимённо: вызов main() слева и справа, returncode
+    # процесса, неравенство. Не прогон: код 0, литерал без вызова, чужой main.
+    gate = "def main():\n    if x:\n        return 2\n    if y:\n        return 1\n    return 0\n"
+    run_cases = [
+        ("ни одного прогона", gate, 2),
+        ("main() == 2", gate + "def selftest():\n    assert main() == 2\n", 1),
+        ("2 == main() и returncode != 1",
+         gate + "def selftest():\n    assert 2 == main()\n    assert p.returncode != 1\n", 0),
+        ("сравнение без вызова — не прогон", gate + "def selftest():\n    assert x == 2\n", 2),
+        ("чужой main через атрибут — не прогон",
+         gate + "def selftest():\n    assert other.main() == 2\n", 2),
+        ("код 0 не спрашивается", "def main():\n    return 0\n", 0),
+    ]
+    for name, source, expected in run_cases:
+        got = len(outcomes_never_run({"g.py": source}))
+        if got != expected:
+            broken.append(f"исходы, {name}: ожидалось непрогнанных {expected}, вышло {got}")
+        print(f"  {got} непрогнанных — исходы: {name}")
+    # Храповик с обеих сторон: выше бюджета — отказ, ниже — тоже, ровно — молча.
+    for budget, must_reject in ((1, True), (3, True), (2, False)):
+        if bool(outcomes_budget({"g.py": gate}, budget)) is not must_reject:
+            broken.append(f"исходы: бюджет {budget} при долге 2 — ожидалось "
+                          f"{'отказ' if must_reject else 'пропуск'}")
+
     if broken:
         print("\nсамопроверка провалена:", file=sys.stderr)
         for line in broken:
@@ -2977,7 +3067,8 @@ def main() -> int:
              + foreign_why_links(prose) + prefix_matched_markers(sources)
              + claimed_rules({**sources, **flows}, rules) + required_job_conditions(flows)
              + source_next_to_derived(ROOT) + prose_cut_by_punctuation(sources)
-             + derived_findings((ROOT / "README.md").read_text(encoding="utf-8"), tracked))
+             + derived_findings((ROOT / "README.md").read_text(encoding="utf-8"), tracked)
+             + outcomes_budget(sources))
     if found:
         print(checks.annotate("error", f"механизмы держат не то, что объявили: {len(found)}"), file=sys.stderr)
         for line in found:
@@ -2991,7 +3082,8 @@ def main() -> int:
     # неотличима от чистого результата (правило 165). Ровно так и было: разбор
     # по строкам терял имена с не-ASCII символами, а итог выглядел прежним.
     print(f"механизмы держат объявленное: скриптов {len(sources)}, "
-          f"прогонов {len(flows)}, вердиктов {len(rules)}, картинок в дереве {len(tracked)}")
+          f"прогонов {len(flows)}, вердиктов {len(rules)}, картинок в дереве {len(tracked)}; "
+          f"непрогнанных исходов {len(outcomes_never_run(sources))} при бюджете {OUTCOMES_BUDGET}")
     return 0
 
 
