@@ -1910,10 +1910,24 @@ def facts_gaps(facts: dict) -> list[str]:
     отказывает, называя СТОРОНУ. «Издатель не измерил» и «мы не собрали» чинятся
     в разных репозиториях, и путать их дороже, чем разбирать (правило 039).
     """
+    # ПУСТОЙ СПИСОК — ОТВЕТ, А НЕ ПРОБЕЛ. Пробел — это отсутствие ключа: «не
+    # измеряли». Пустой список — «измерено: экспериментальных версий в CI нет».
+    # 8 октября грейдер переехал на 3.14, а предварительную 3.15 унёс в
+    # отдельный прогон, и честно опубликовал `experimental: []`; сборка
+    # прочла это как «не измерил» и отказала — на изменении #282 и на суточной.
     needed = {
         "python.experimental": facts.get("python", {}).get("experimental"),
     }
-    return sorted(key for key, value in needed.items() if value in (None, "", [], {}))
+    return sorted(key for key, value in needed.items() if not isinstance(value, list))
+
+
+def experimental_text(facts: dict) -> str:
+    """Экспериментальные версии для README: перечень через точку, «no» — если их нет.
+
+    «No» вместо пустоты: сторож пустых метрик (``unanswered``) законно краснит
+    пустую строку, а пустой список у издателя — ответ, и показывается он словом.
+    """
+    return " · ".join(facts["python"]["experimental"]) or "no"
 
 
 def protection_facts() -> tuple[int, int, int]:
@@ -3595,6 +3609,18 @@ def selftest() -> int:
         broken.append("пробел в фактах не назван поимённо")
     if facts_gaps({}) != ["python.experimental"]:
         broken.append("пустые факты не дают всех пробелов")
+    # Пустой список — ответ издателя «экспериментальных нет», а не пробел; на
+    # витрине он читается словом (грейдер, 8 октября, после переезда на 3.14).
+    if facts_gaps({"python": {"experimental": []}}):
+        broken.append("пустой список экспериментальных версий принят за пробел")
+    if facts_gaps({"python": {"experimental": "3.15"}}) != ["python.experimental"]:
+        broken.append("строка вместо списка принята за ответ")
+    for given, shown in ((["3.15"], "3.15"), (["3.15", "3.16"], "3.15 · 3.16"), ([], "no")):
+        got = experimental_text({"python": {"experimental": given}})
+        if got != shown:
+            broken.append(f"экспериментальные {given}: ждали {shown!r}, вышло {got!r}")
+    if unanswered({"exp": experimental_text({"python": {"experimental": []}})}):
+        broken.append("«no» экспериментальных принят сторожем за пустую метрику")
     # Спрашивается ровно то, что витрина показывает. Тесты и проверки на
     # изменение ушли отсюда вместе с плиткой флагмана: падать из-за чужого
     # пробела в числе, которого на странице нет, значит требовать невозможного.
@@ -4203,7 +4229,7 @@ def main() -> int:
         return 1
 
     required, systems, versions = protection_facts()
-    experimental = " · ".join(facts["python"]["experimental"])
+    experimental = experimental_text(facts)
     releases = release_count()
     signed, signed_total = signed_commits()
     export = rules_export()
