@@ -36,6 +36,12 @@
   написанный не на том языке, то есть даёт значение у другого края, а не рядом
   с порогом;
 
+* ссылки из витрины в её же производные (089). Картинка сборки — законная
+  цель ``src``: так производное показывают. Ссылка на него — ``href``,
+  разметочная ссылка или сноска — уводит читателя на копию вместо источника.
+  Производные перечислимы: ветки, которые сборка пишет сама. Обратные ссылки
+  проектов сюда — предмет на чужой стороне, и он не наш;
+
 * объём прозы витрины и свода (023, 029). Предел в СЛОВАХ, а не в строках:
   переливка абзацев число не меняет. Считается то, что читают глазами, —
   без тегов, комментариев-маркеров и адресов ссылок. Что именно оставить на
@@ -133,6 +139,23 @@ CHARTER_WORDS = 3000
 HTML_TAG = re.compile(r"<!--.*?-->|</?[A-Za-z][^<>]*>", re.S)
 LINK_ADDRESS = re.compile(r"\]\([^)]*\)")
 BARE_URL = re.compile(r"https?://\S+")
+
+#: Производные витрины — ветки, которые пишет сборка, а не человек. Тот же
+#: перечень `agent-pr.yml` исключает из открытия изменений (кроме main):
+#: копия намеренная, обе стороны называют одно — что в ветке не правят руками.
+DERIVED_BRANCHES = ("assets", "output", "badges")
+
+#: Адрес производного: файл ветки сборки по сырому адресу или страница ветки.
+DERIVED_URL = re.compile(
+    r"(?:raw\.githubusercontent\.com/ArtVsMark/ArtVsMark/"
+    r"|github\.com/ArtVsMark/ArtVsMark/(?:blob|tree|raw)/)"
+    rf"(?:{'|'.join(DERIVED_BRANCHES)})(?:[/?#]|$)", re.I)
+
+#: Формы ССЫЛКИ, а не картинки, — названы поимённо (210): атрибут href в любых
+#: кавычках, разметочная ссылка без «!» перед ней, ссылка по сноске.
+HREF = re.compile(r"""\bhref\s*=\s*["']([^"']*)["']""", re.I)
+MD_LINK = re.compile(r"(?<!!)\[[^\]]*\]\(\s*<?([^)\s>]+)")
+MD_LINK_REF = re.compile(r"(?<![!\]])\[[^\]]*\]\[([^\]]*)\]")
 
 #: Начало строки заголовка русского пересказа: всё выше — английская часть.
 RUSSIAN_HEADING = re.compile(rf"^#+[^\n]*{RUSSIAN_SECTION}", re.M)
@@ -271,6 +294,17 @@ def prose_words(text: str) -> int:
     return len(BARE_URL.sub(" ", text).split())
 
 
+def audit_derived_links(page: str) -> list[str]:
+    """Ссылки витрины на её же производные (089). Картинки не судятся."""
+    refs = {label.lower(): url for label, url in MD_REF_DEF.findall(page)}
+    targets = (HREF.findall(page) + MD_LINK.findall(page)
+               + [refs.get(label.lower(), "") for label in MD_LINK_REF.findall(page)])
+    return [f"ссылка из витрины в её производное: {url} — читатель уходит на копию, "
+            "собранную сборкой, вместо источника; производное показывают картинкой, "
+            "а ссылаются на то, из чего оно собрано (089)"
+            for url in sorted(set(targets)) if DERIVED_URL.search(url)]
+
+
 def english_part(page: str) -> str:
     """Витрина до заголовка русского пересказа; без него — целиком."""
     heading = RUSSIAN_HEADING.search(page)
@@ -344,6 +378,38 @@ def selftest() -> int:
         if bool(found) is not must_reject:
             broken.append(f"{name}: ожидалось {'отказ' if must_reject else 'пропуск'}, вышло наоборот")
         print(f"  {'отвергнут' if found else 'пропущен '} — {name}")
+
+    # ── ссылки в производные ───────────────────────────────────────────────
+    # Каждая форма ссылки и каждая ветка сборки — отдельным случаем; живая
+    # половина — картинка из той же ветки и ссылка на ЧУЖУЮ ветку фактов.
+    raw = "https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/stack-dark.svg"
+    link_cases = [
+        ("картинка из ветки сборки — законна", f'<img src="{raw}" alt="x">', False),
+        ("srcset из ветки сборки — законен", f'<source srcset="{raw}">', False),
+        ("картинка разметкой — законна", f"![x]({raw})", False),
+        ("ссылка href на сырой адрес", f'<a href="{raw}">x</a>', True),
+        ("href в одинарных кавычках", f"<a href='{raw}'>x</a>", True),
+        ("разметочная ссылка", f"[x]({raw})", True),
+        ("ссылка по сноске", f"[x][s]\n\n[s]: {raw}\n", True),
+        ("страница ветки output",
+         '<a href="https://github.com/ArtVsMark/ArtVsMark/tree/output">x</a>', True),
+        ("файл ветки badges",
+         "[x](https://github.com/ArtVsMark/ArtVsMark/blob/badges/f.json)", True),
+        ("факты ЧУЖОГО проекта — его источник, не наша копия",
+         '<a href="https://github.com/ArtVsMark/Stepik-Python-Grader/blob/badges/f.json">x</a>',
+         False),
+        ("ветка с похожим началом — не производное",
+         "[x](https://github.com/ArtVsMark/ArtVsMark/tree/assets-old)", False),
+        ("картинка по сноске — законна", f"![x][s]\n\n[s]: {raw}\n", False),
+    ]
+    for name, page, must_reject in link_cases:
+        found = audit_derived_links(page)
+        if bool(found) is not must_reject:
+            broken.append(f"производные, {name}: ожидалось "
+                          f"{'отказ' if must_reject else 'пропуск'}, вышло — {found}")
+        print(f"  {'отвергнут' if found else 'пропущен '} — производные: {name}")
+    if not any("stack-dark.svg" in line for line in audit_derived_links(f"[x]({raw})")):
+        broken.append("отказ на ссылке в производное не называет адрес")
 
     # ── объём прозы ────────────────────────────────────────────────────────
     # Граница считается и с той, и с другой стороны: ровно на пределе — пропуск.
@@ -444,6 +510,7 @@ def main() -> int:
                   for path in sorted((ROOT / "assets").glob("*.svg"))}
         charter = (ROOT / CHARTER).read_text(encoding="utf-8")
         found = audit_page(page) + audit_alt(page, assets) + audit_prose(page, charter)
+        found += audit_derived_links(page)
         for name in SERVICE:
             found += audit_service(name, (ROOT / name).read_text(encoding="utf-8"))
     except OSError as e:
