@@ -161,6 +161,19 @@ def body(found: list[str], minutes: int) -> str:
     return "\n".join(lines) + "\n"
 
 
+def reread(sent: str, returned: object) -> str:
+    """Опубликованное перечитывается по ответу на запись (188). Пусто — то же.
+
+    Расхождение — предупреждение площадки, а не исход: задача заведена, и
+    сторож своё сделал; узнать надо, что текст в ней не тот (051).
+    """
+    differs = checks.published_differs(sent, returned)
+    if not differs:
+        return ""
+    print(checks.annotate("warning", differs))
+    return " — НО ОПУБЛИКОВАНА НЕ ТАК, КАК ОТПРАВЛЕНА"
+
+
 def sync_issue(found: list[str], minutes: int, dry: bool) -> str:
     """Заводит или обновляет ОДНУ задачу. Возвращает, что сделано."""
     issues = checks.rest_list(f"/repos/{REPO}/issues?state=open&per_page=100")
@@ -169,12 +182,12 @@ def sync_issue(found: list[str], minutes: int, dry: bool) -> str:
     if dry:
         return f"вхолостую: {'обновил бы' if existing else 'завёл бы'} задачу"
     if existing:
-        checks.rest(f"/repos/{REPO}/issues/{existing['number']}", "PATCH", {"body": text})
-        return f"задача #{existing['number']} обновлена"
+        done = checks.rest(f"/repos/{REPO}/issues/{existing['number']}", "PATCH", {"body": text})
+        return f"задача #{existing['number']} обновлена" + reread(text, done)
     made = checks.rest(f"/repos/{REPO}/issues", "POST",
                  {"title": "Изменение готово и не слито дольше порога",
                   "body": text, "labels": ["bug"]})
-    return f"задача #{made['number']} заведена"
+    return f"задача #{made['number']} заведена" + reread(text, made)
 
 
 def selftest() -> int:

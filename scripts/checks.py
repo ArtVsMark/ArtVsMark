@@ -461,6 +461,31 @@ def rest(path: str, method: str = "GET", payload: dict | None = None) -> object:
     return _request(f"{API}{path}", method, payload)[0]
 
 
+def published_differs(sent: str, returned: object) -> str:
+    """Что площадка опубликовала не так, как ей отправили. Пусто — то же самое.
+
+    ОПУБЛИКОВАННОЕ ПЕРЕЧИТЫВАЕТСЯ (188). Код 201 доставки не доказывает:
+    площадка вправе переписать текст на публикации, и делает это тихо —
+    команда `@dependabot rebase` уехала как `·@·d·ependabot r·ebase`.
+    Перечитывается по ответу на саму запись: POST и PATCH возвращают объект
+    целиком, вместе с телом, — ноль лишних запросов, как у образца
+    (проект механизмов сверяет тело изменения по ответу на запись).
+
+    Концы строк приводятся к одному виду: `\r\n` против `\n` — не правка
+    смысла, и шуметь на нём значило бы приучить не читать находку (051).
+    """
+    got = returned.get("body") if isinstance(returned, dict) else None
+    if not isinstance(got, str):
+        return "ответ на запись без тела — что опубликовано, не видно"
+    norm = lambda text: text.replace("\r\n", "\n").rstrip("\n")  # noqa: E731
+    if norm(got) == norm(sent):
+        return ""
+    a, b = norm(sent), norm(got)
+    at = next((i for i, (x, y) in enumerate(zip(a, b)) if x != y), min(len(a), len(b)))
+    return (f"опубликовано не то, что отправлено: с знака {at} отправлено "
+            f"«{clip(a[at:at + 40], 40)}», опубликовано «{clip(b[at:at + 40], 40)}»")
+
+
 def rest_list(path: str, key: str | None = None) -> list:
     """Список площадки целиком: страницы по ``rel="next"``, пока ссылка есть.
 
@@ -542,6 +567,26 @@ def selftest() -> int:
         if got is not expected:
             broken.append(f"машинный автор, {name}: ожидалось {expected}, вышло {got}")
         print(f"  {'машина ' if got else 'человек'} — автор: {name}")
+
+    # ── опубликованное перечитывается (188) ───────────────────────────────
+    # Обе стороны: тихая правка площадки — находка; тот же текст, другие
+    # концы строк или хвостовой перевод строки — не находка.
+    published_cases = [
+        ("то же самое", "текст\nдальше\n", {"body": "текст\nдальше\n"}, False),
+        ("другие концы строк", "текст\nдальше", {"body": "текст\r\nдальше\r\n"}, False),
+        ("тихая правка упоминания", "@dependabot rebase", {"body": "·@·d·ependabot r·ebase"}, True),
+        ("тело обрезано", "длинный текст целиком", {"body": "длинный текст"}, True),
+        ("ответ без тела", "текст", {"number": 1}, True),
+        ("ответ не объект", "текст", None, True),
+    ]
+    for name, sent, returned, must_flag in published_cases:
+        got = published_differs(sent, returned)
+        if bool(got) is not must_flag:
+            broken.append(f"перечитывание, {name}: ожидалось "
+                          f"{'находка' if must_flag else 'молчание'}, вышло {got!r}")
+        print(f"  {'находка' if got else 'то же  '} — перечитывание: {name}")
+    if "dependabot" not in published_differs("@dependabot rebase", {"body": "·@·d·ependabot"}):
+        broken.append("перечитывание: находка не показывает, что именно разошлось")
 
     # ── урезанный вывод говорит, что он урезан (правило 016) ──────────────
     # Обе стороны: пропустить обрыв — показать обрубок как целое; поставить
