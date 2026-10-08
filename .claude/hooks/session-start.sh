@@ -56,3 +56,8 @@ fi
 got=$("$ENV_DIR/bin/python" -c 'import sys;print("%d.%d.%d"%sys.version_info[:3])' 2>/dev/null)
 if [ -x "$ENV_DIR/bin/ruff" ]; then ruff_state="ruff есть"; else ruff_state="ruff НЕ поставлен — гейт стиля откажет"; fi
 echo "окно на планке $floor: python и python3 — $got из $ENV_DIR, $ruff_state"
+
+# ПЛАН ОКНА (091): источники работы в порядке свода, первый непустой отмечен.
+# Печатается после строки планки и на её же интерпретаторе: скрипт написан на
+# планке. Не ответил трекер — план это называет, а старт не роняется (051).
+"$ENV_DIR/bin/python" "$ROOT/scripts/work_plan.py" 2>&1 || true
