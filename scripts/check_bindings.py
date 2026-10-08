@@ -39,6 +39,7 @@ import json
 import pathlib
 import re
 import sys
+from collections.abc import Callable
 
 import checks
 
@@ -174,14 +175,17 @@ def dead_sections(rules: dict[str, dict], read) -> list[str]:
     return found
 
 
-def refuted(rules: dict[str, dict], exists) -> list[str]:
+def refuted(rules: dict[str, dict], files: Callable[[str], list[str]],
+            read: Callable[[str], str] = lambda path: "") -> list[str]:
     """Ответы «предмета нет», у которых предмет нашёлся.
 
     ОТВЕТ «ЭТОГО У НАС НЕТ» — УТВЕРЖДЕНИЕ О ДЕЙСТВИТЕЛЬНОСТИ, а не оборот речи,
     и устаревает оно молча: прозу не двигает никакой механизм, а выглядит она
     осознанным решением (правило 175). Проверяется подкласс, сводимый к наличию
-    объекта: вердикт называет его сам, полем ``refuted_by`` — образцом пути,
-    существование которого опровергает ответ.
+    объекта: вердикт называет его сам, полем ``refuted_by`` — пробой
+    ``{globs, contains}``: файл по маске (при непустом ``contains`` — файл с
+    одной из строк) опровергает ответ. Семантика — ``answer_form.прогнать_пробу``
+    каталога: совпадает файл, а не каталог.
 
     ОТКАЗ ТОЛЬКО В ОДНУ СТОРОНУ: нашли опровержение — красное; не нашли —
     молчим. Незнание не доказывает отсутствия, и односторонность здесь не
@@ -195,13 +199,24 @@ def refuted(rules: dict[str, dict], exists) -> list[str]:
     """
     found = []
     for number, binding in sorted(rules.items()):
-        pattern = binding.get("refuted_by")
-        if not pattern:
+        probe = binding.get("refuted_by")
+        if not probe:
             continue
-        hits = exists(pattern)
+        # ФОРМА — КОНТРАКТА 1.9: объект {globs, contains}. Строка-маска —
+        # диалект до 1.9; на нём проба читалась ROOT.glob и совпадала с
+        # КАТАЛОГОМ, а по контракту совпадает только файл. Перенос строки как
+        # есть заглушил бы 16 проб из 28 — те, что смотрели на каталоги.
+        if not isinstance(probe, dict):
+            found.append(f"{number}: refuted_by — {type(probe).__name__}, а с контракта "
+                         f"1.9 проба пишется объектом {{globs, contains}}")
+            continue
+        globs, needles = probe.get("globs") or [], probe.get("contains") or []
+        hits = [path for glob in globs for path in files(glob)
+                if not needles or any(needle in read(path) for needle in needles)]
         if hits:
-            found.append(f"{number}: ответ «предмета нет» опровергается — {pattern} "
-                         f"существует ({checks.tail(sorted(hits), 3)}). Утверждение о "
+            what = ", ".join(globs) + (f" со строкой из {needles}" if needles else "")
+            found.append(f"{number}: ответ «предмета нет» опровергается — {what} "
+                         f"существует ({checks.tail(sorted(set(hits)), 3)}). Утверждение о "
                          f"действительности устарело молча (175)")
     return found
 
@@ -293,16 +308,22 @@ def selftest() -> int:
     # стал бы генератором ложных находок.
     refute_cases = [
         ("предмет нашёлся — ответ устарел",
-         {"053": {"status": "not-applicable", "refuted_by": "x.yml"}}, ["x.yml"], True),
+         {"053": {"status": "not-applicable", "refuted_by": {"globs": ["x.yml"]}}}, ["x.yml"], True),
         ("предмета нет — молчим",
-         {"053": {"status": "not-applicable", "refuted_by": "x.yml"}}, [], False),
+         {"053": {"status": "not-applicable", "refuted_by": {"globs": ["x.yml"]}}}, [], False),
+        ("строка-маска — диалект до 1.9",
+         {"053": {"status": "not-applicable", "refuted_by": "x.yml"}}, [], True),
+        ("файл есть, нужной строки в нём нет — молчим",
+         {"053": {"status": "not-applicable",
+                  "refuted_by": {"globs": ["x.yml"], "contains": ["merge_group"]}}},
+         ["x.yml"], False),
         ("опровержение не названо — не наше дело",
          {"053": {"status": "not-applicable", "why": "очереди нет"}}, ["x.yml"], False),
         ("действующий вердикт поля не несёт",
          {"011": {"status": "active", "where": "metrics.yml"}}, ["x.yml"], False),
     ]
     for name, rules, hits, must_reject in refute_cases:
-        found = bool(refuted(rules, lambda glob, h=hits: h))
+        found = bool(refuted(rules, lambda glob, h=hits: h, lambda path: "on: push"))
         if found is not must_reject:
             broken.append(f"опровержение, {name}: ожидалось "
                           f"{'отказ' if must_reject else 'пропуск'}, вышло {found}")
@@ -310,8 +331,13 @@ def selftest() -> int:
 
     # Находка обязана назвать НОМЕР и НАЙДЕННОЕ: «что-то устарело» отправляет
     # читающего искать предмет самому.
-    said = refuted({"053": {"status": "not-applicable", "refuted_by": "q.yml"}},
+    said = refuted({"053": {"status": "not-applicable", "refuted_by": {"globs": ["q.yml"]}}},
                    lambda glob: ["q.yml"])
+    # Строка из contains найдена — опровергнуто: вторая половина пробы.
+    if not refuted({"053": {"status": "not-applicable",
+                            "refuted_by": {"globs": ["x.yml"], "contains": ["merge_group"]}}},
+                   lambda glob: ["x.yml"], lambda path: "on: merge_group"):
+        broken.append("опровержение: строка из contains найдена, а ответ не опровергнут")
     if not (said and "053" in said[0] and "q.yml" in said[0]):
         broken.append("опровержение: находка не называет номер и найденное")
 
@@ -571,8 +597,11 @@ def main() -> int:
         unrun = unrunnable(bindings["rules"])
         # Существование предмета спрашивается у дерева одной командой — без
         # сети, как и требует правило: то, что видно локально.
-        alive = refuted(bindings["rules"], lambda glob: [str(p.relative_to(ROOT))
-                                                        for p in ROOT.glob(glob)])
+        alive = refuted(
+            bindings["rules"],
+            lambda glob: [str(p.relative_to(ROOT)) for p in ROOT.glob(glob)
+                          if p.is_file() and ".git" not in p.relative_to(ROOT).parts],
+            lambda path: (ROOT / path).read_text(encoding="utf-8", errors="replace"))
     except (OSError, ValueError, SyntaxError) as e:
         # Третий исход, а не разновидность второго: находку чинит автор, а
         # неотработавшую проверку — тот, кто её запускает (правило 039).
