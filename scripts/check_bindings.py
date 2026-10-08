@@ -413,6 +413,24 @@ def selftest() -> int:
             broken.append(f"исполняемый адрес, {name}: ожидалось {expected}, вышло {got}")
         print(f"  {got} находок — исполняемый адрес: {name}")
 
+    # ── заявленное число предметов против перечня (136) ───────────────────
+    count_cases = [
+        ("число и перечень сходятся", "предметов три, перебраны все. (1) а (2) б (3) в", 0),
+        ("число прописью заглавными", "предметов ПЯТЬ: (1) (2) (3) (4) (5)", 0),
+        ("число цифрой", "предметов 2: (1) а; (2) б", 0),
+        ("пункт сверх числа", "предметов три: (1) (2) (3) (4)", 1),
+        ("пункта не хватает", "предметов три: (1) (2)", 1),
+        ("пункт дважды", "предметов три: (1) (2) (2)", 1),
+        ("перечень не размечен", "предметов три, перебраны все", 1),
+        ("числа не заявлено — не судим", "главный из пяти предметов; (1) а", 0),
+        ("номер правила в скобках — не пункт", "предметов два: (1) а (157) (2) б", 0),
+    ]
+    for name, where_, expected in count_cases:
+        got = len(declared_counts({"001": {"status": "active", "where": where_}}))
+        if got != expected:
+            broken.append(f"число предметов, {name}: ожидалось {expected}, вышло {got}")
+        print(f"  {got} находок — число предметов: {name}")
+
     # Документа нет вовсе — это НЕ наш предмет: на него жалуется проверка ссылок,
     # и вторая жалоба о том же сбивала бы с толку.
     rule = {"001": {"status": "active", "where": "нет-такого.md § Ветки — проза"}}
@@ -506,6 +524,45 @@ def unrunnable(rules: dict[str, dict]) -> list[str]:
             and not RUNNABLE.search(binding.get("where") or "")]
 
 
+#: Заявленное число предметов: «предметов три», «предметов ПЯТЬ», «предметов 4».
+#: Слова — до десяти: больше в одном ответе не перечисляли ни разу.
+NUMBER_WORDS = {"два": 2, "три": 3, "четыре": 4, "пять": 5, "шесть": 6,
+                "семь": 7, "восемь": 8, "девять": 9, "десять": 10}
+DECLARED = re.compile(rf"предмет(?:ов|а)\s+({'|'.join(NUMBER_WORDS)}|\d{{1,2}})\b", re.I)
+
+#: Пункт перечня: «(1)», «(2)»… Двузначный предел намеренный — номер правила
+#: в скобках «(157)» трёхзначен и пунктом не считается.
+ITEM = re.compile(r"\((\d{1,2})\)")
+
+
+def declared_counts(rules: dict[str, dict]) -> list[str]:
+    """Ответы, где заявленное число предметов расходится с размеченным перечнем.
+
+    ЧТО ДЕРЖИТСЯ (136, разложено надвое по 182). Ответ «предметов N, перебраны
+    все» обязан перечислить их пунктами (1)…(N) — каждый номер ровно раз. Так
+    у соседа «находок N» сверяется с числом строк (review_findings проекта
+    механизмов); у нас перечень — проза, и разметка делает его счётным.
+
+    ЧЕГО НЕ ДЕРЖИТ: что предметов у правила ИМЕННО N — это знание о правиле.
+    Машина ловит число, пережившее перечень, а не перечень, не доросший до
+    правила. Случай, ради которого гейт заведён, нашёлся на его же разметке:
+    ответ 142 заявлял «ЧЕТЫРЕ» при пяти адресатах в собственном тексте.
+    """
+    found: list[str] = []
+    for number, binding in sorted(rules.items()):
+        text = " ".join(str(binding.get(field, "")) for field in ("where", "why"))
+        said = DECLARED.search(text)
+        if not said:
+            continue
+        word = said.group(1).lower()
+        expected = NUMBER_WORDS.get(word) or int(word)
+        items = [int(m) for m in ITEM.findall(text)]
+        if sorted(items) != list(range(1, expected + 1)):
+            found.append(f"{number}: заявлено предметов {expected}, а пункты перечня — "
+                         f"{items or 'не размечены'}; ждётся (1)…({expected}), каждый раз (136)")
+    return found
+
+
 def unchecked(rules: dict[str, dict]) -> list[tuple[str, str]]:
     """Ответы «предмета нет», которые не проверяет ничто. Очередь на перечитывание.
 
@@ -595,6 +652,7 @@ def main() -> int:
         dead += dead_sections(bindings["rules"], sections)
         vocabulary = limits(bindings["rules"])
         unrun = unrunnable(bindings["rules"])
+        counts = declared_counts(bindings["rules"])
         # Существование предмета спрашивается у дерева одной командой — без
         # сети, как и требует правило: то, что видно локально.
         alive = refuted(
@@ -634,6 +692,14 @@ def main() -> int:
         print("\nНазовите прогон, скрипт или тест, которым правило держится, — или "
               "поменяйте механизм на document: абзац не запускается.", file=sys.stderr)
 
+    if counts:
+        print(checks.annotate("error", f"число предметов разошлось с перечнем: {len(counts)}"),
+              file=sys.stderr)
+        for line in counts:
+            print(f"  {line}", file=sys.stderr)
+        print("\nОтвет «предметов N, перебраны все» перечисляет их пунктами (1)…(N): либо "
+              "число пережило перечень, либо перечень не размечен.", file=sys.stderr)
+
     if dead:
         print(checks.annotate("error", f"вердикты показывают в пустоту, мёртвых ссылок: {len(dead)}"), file=sys.stderr)
         for line in dead:
@@ -644,7 +710,7 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
-    if alive or vocabulary or unrun:
+    if alive or vocabulary or unrun or counts:
         return 1
 
     checkable = sum(1 for b in bindings["rules"].values() if b.get("refuted_by"))
