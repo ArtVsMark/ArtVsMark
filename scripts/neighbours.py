@@ -37,9 +37,19 @@ SELF = "ArtVsMark/ArtVsMark"
 
 
 def unmechanized(rules: dict) -> list[str]:
-    """Правила, признанные действующими и не обеспеченные ничем."""
+    """Правила, о которых спрашивают соседей: действующие и не обеспеченные машиной.
+
+    ДВА ПРИЗНАКА, А НЕ ОДИН. ``mechanism: none`` — «держится ничем», и это
+    исходный предмет 162. Но ответ «держать машиной нельзя» (``holdable: no``)
+    — такое же утверждение об отсутствии машинной половины, только записанное
+    документом, и прежде он сюда не попадал: 8 октября 21 из 23 таких ответов
+    оказались неверны — их половину держали гейтами соседи, — а прогон печатал
+    «спрашивать не о чем» (#286). ``not-yet`` сюда не берётся: там вопрос
+    уже задан, и образец назван в ``machine_half``.
+    """
     return sorted(k for k, v in rules.items()
-                  if v.get("status") == "active" and v.get("mechanism") == "none")
+                  if v.get("status") == "active"
+                  and (v.get("mechanism") == "none" or v.get("holdable") == "no"))
 
 
 def advice(where: dict, gaps: list[str]) -> dict[str, list[tuple[str, str]]]:
@@ -68,6 +78,16 @@ def advice(where: dict, gaps: list[str]) -> dict[str, list[tuple[str, str]]]:
     return found
 
 
+#: Механизмы, которые краснеют сами, — в отличие от документа, который читают.
+MACHINE = ("gate", "pipeline", "code")
+
+
+def machine_held(found: dict[str, list[tuple[str, str]]]) -> list[str]:
+    """Правила, которые хоть у одного соседа держит машина, а не документ."""
+    return sorted(rule for rule, answers in found.items()
+                  if any(held.split(":", 1)[0] in MACHINE for _, held in answers))
+
+
 def selftest() -> int:
     """Прогоняет разбор тем, что он обязан отобрать и отбросить (140, 145).
 
@@ -81,11 +101,18 @@ def selftest() -> int:
         "010": {"status": "active", "mechanism": "gate", "where": "scripts/x.py"},
         "011": {"status": "not-applicable", "why": "предмета нет"},
         "012": {"status": "active", "mechanism": "none", "where": "…"},
+        # «Нельзя» документом — тот же вопрос о машинной половине (#286).
+        "013": {"status": "active", "mechanism": "document", "holdable": "no"},
+        # «Строится» — вопрос уже задан, образец назван в machine_half.
+        "014": {"status": "active", "mechanism": "document", "holdable": "not-yet"},
+        # Гейт с ответом «нельзя» об оставшейся половине — тоже спрашивают.
+        "015": {"status": "active", "mechanism": "gate", "holdable": "no"},
+        "016": {"status": "not-applicable", "holdable": "no"},
     }
     gaps = unmechanized(rules)
-    if gaps != ["006", "012"]:
+    if gaps != ["006", "012", "013", "015"]:
         broken.append(f"пробелы отобраны неверно: {gaps}")
-    print(f"  {gaps} — пробелы: только active без механизма")
+    print(f"  {gaps} — пробелы: active без механизма или с ответом «нельзя»")
 
     where = {"consumers": [
         {"repo": "ArtVsMark/Stepik-Python-Grader", "state": "подключён",
@@ -108,6 +135,9 @@ def selftest() -> int:
         ("ответ без адреса не берётся — пересказ не помогает", "012" not in got),
         ("механизм назван вместе с адресом",
          got.get("006", [("", "")])[0][1].startswith("gate: ")),
+        ("машиной считается гейт, документ — нет",
+         machine_held({"006": [("a", "gate: x")], "012": [("b", "document: y")]})
+         == ["006"]),
     ]
     for name, ok in cases:
         if not ok:
@@ -166,11 +196,15 @@ def main() -> int:
 
     gaps = unmechanized(rules)
     if not gaps:
-        print("правил без механизма нет — спрашивать не о чем")
+        print("правил без механизма и с ответом «нельзя» нет — спрашивать не о чем")
         return 0
 
     helped = advice(where, gaps)
-    print(f"правил без механизма: {len(gaps)}; у соседей решено: {len(helped)}")
+    # «Решено» засчитывает и ответ соседа «держится документом», а он на вопрос
+    # о машинной половине не отвечает: число машиной — отдельно (#286).
+    by_machine = machine_held(helped)
+    print(f"правил без механизма или с ответом «нельзя»: {len(gaps)}; "
+          f"у соседей с адресом: {len(helped)}, из них машиной: {len(by_machine)}")
     for rule in gaps:
         answers = helped.get(rule)
         if not answers:
