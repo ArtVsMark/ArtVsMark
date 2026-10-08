@@ -46,8 +46,6 @@
 [#64]: https://github.com/ArtVsMark/ArtVsMark/pull/64
 """
 
-from __future__ import annotations
-
 import argparse
 import re
 import sys

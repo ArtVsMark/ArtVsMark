@@ -40,8 +40,6 @@ of <дата>» — это день, когда числа последний р
 2 — сторож не отработал (площадка не ответила, ответ не разобран).
 """
 
-from __future__ import annotations
-
 import argparse
 import datetime as dt
 import os
@@ -201,7 +199,7 @@ def selftest() -> int:
     Время подставное: дожидаться настоящей просрочки значило бы проверять
     механизм раз в двое суток, то есть не проверять (правило 140).
     """
-    now = dt.datetime(2026, 8, 28, 12, 0, tzinfo=dt.timezone.utc)
+    now = dt.datetime(2026, 8, 28, 12, 0, tzinfo=dt.UTC)
     hour = dt.timedelta(hours=1)
     cases = [
         ("сборка бежала час назад", now - hour, False),
@@ -297,7 +295,7 @@ def main() -> int:
         return 2
 
     subject = WATCHED[args.workflow]["subject"]
-    stale, why = verdict(last, dt.datetime.now(dt.timezone.utc), args.hours)
+    stale, why = verdict(last, dt.datetime.now(dt.UTC), args.hours)
     if not stale:
         print(f"{subject} свежая: {why}")
         return 0

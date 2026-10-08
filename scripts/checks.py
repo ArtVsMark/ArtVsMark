@@ -41,8 +41,6 @@ GitHub отдаёт по одному имени столько записей, 
 (модуль не разобрался — это видно трассировкой импорта, а не кодом).
 """
 
-from __future__ import annotations
-
 import json
 import os
 import re

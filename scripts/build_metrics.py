@@ -51,8 +51,6 @@
 сервера и наша поломка чинятся разными людьми.
 """
 
-from __future__ import annotations
-
 from typing import NamedTuple
 
 import base64
@@ -275,7 +273,7 @@ def _graphql(query: str) -> dict:
 
 
 
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def repo_meta(repo: str) -> dict:
     """Карточка репозитория — один запрос на прогон, а не по одному на читателя.
 
@@ -1759,7 +1757,7 @@ def project_facts(repo: str, silent: list[str] | None = None) -> dict:
         if refusal.code != 404 and silent is not None:
             silent.append(repo)
         return {}
-    except (urllib.error.URLError, OSError, ValueError, KeyError):
+    except urllib.error.URLError, OSError, ValueError, KeyError:
         if silent is not None:
             silent.append(repo)
         return {}
@@ -1892,7 +1890,7 @@ def facts_staleness(generated_at: str, now: dt.datetime, limit: int = FACTS_STAL
     except ValueError:
         return f"отметка времени фактов {generated_at!r} не разобрана — свежесть проверить нечем"
     if stamp.tzinfo is None:
-        stamp = stamp.replace(tzinfo=dt.timezone.utc)
+        stamp = stamp.replace(tzinfo=dt.UTC)
     days = (now - stamp).days
     if days <= limit:
         return ""
@@ -2003,7 +2001,7 @@ def signed_commits(days: int = SIGNED_WINDOW_DAYS) -> tuple[int, int]:
     """
     # Время в форме с «Z»: смещение «+00:00» уходило в адрес сырым плюсом и так
     # же возвращалось в ссылке на следующую страницу.
-    since = (dt.datetime.now(dt.timezone.utc)
+    since = (dt.datetime.now(dt.UTC)
              - dt.timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
     # ВСЕ СТРАНИЦЫ, А НЕ ПЕРВАЯ. Здесь стояла одна страница по сотне, а за 30
     # дней к 28 сентября коммитов набралось 118: доля на витрине считалась без
@@ -2076,7 +2074,7 @@ def mentioned_repos(root: pathlib.Path) -> dict[str, list[str]]:
             continue
         try:
             text = path.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
+        except OSError, UnicodeDecodeError:
             continue
         for name in REPO_MENTION.findall(text):
             # `.git` на конце — часть адреса клона, а не имени репозитория:
@@ -2116,7 +2114,7 @@ def renamed_repos(census: dict[str, list[str]]) -> list[str]:
     for name, places in sorted(census.items()):
         try:
             live = str(_api(f"/repos/{name}").get("full_name", ""))
-        except (urllib.error.URLError, OSError, ValueError, KeyError):
+        except urllib.error.URLError, OSError, ValueError, KeyError:
             continue
         finding = renaming_finding(name, live, places)
         if finding:
@@ -2199,7 +2197,7 @@ def answer_contract_version() -> str:
     """
     try:
         template = json.loads(_get(ANSWER_CONTRACT, authenticated=False))
-    except (urllib.error.URLError, ValueError, OSError):
+    except urllib.error.URLError, ValueError, OSError:
         return ""
     return str(template.get("schema", ""))
 
@@ -2636,7 +2634,7 @@ def snake_layer(theme: str) -> dict | None:
     try:
         payload = _api(f"/repos/{SHOWCASE}/contents/snake-{theme}.svg?ref={SNAKE_BRANCH}")
         svg = base64.b64decode(payload["content"]).decode("utf-8")
-    except (urllib.error.URLError, OSError, ValueError, KeyError, UnicodeDecodeError):
+    except urllib.error.URLError, OSError, ValueError, KeyError, UnicodeDecodeError:
         return None
     head = re.match(r"<svg[^>]*>", svg)
     box = re.search(r'viewBox="\s*([-\d.]+)\s+([-\d.]+)\s+([\d.]+)\s+([\d.]+)"', svg)
@@ -3598,7 +3596,7 @@ def selftest() -> int:
     # Обе стороны, и обе ошибки названы. Молчание здесь опаснее ложной находки:
     # витрина показывала бы вчерашние числа как сегодняшние, а снаружи это
     # неотличимо от «числа не менялись».
-    now = dt.datetime(2026, 9, 2, tzinfo=dt.timezone.utc)
+    now = dt.datetime(2026, 9, 2, tzinfo=dt.UTC)
     stale_cases = [
         ("сегодняшние", "2026-09-02T10:00:00+00:00", False),
         ("вчерашние", "2026-09-01T10:00:00+00:00", False),
@@ -4243,7 +4241,7 @@ def main() -> int:
     # Отказ ради чистоты дороже совместимости (правило 051).
     facts = grader_facts()
 
-    stale = facts_staleness(facts.get("generated_at", ""), dt.datetime.now(dt.timezone.utc))
+    stale = facts_staleness(facts.get("generated_at", ""), dt.datetime.now(dt.UTC))
     if stale:
         # Находка, а не отказ: числа в файле есть и они настоящие — вопрос лишь
         # в том, когда их считали. Ронять суточную сборку из-за молчания соседа
@@ -4314,7 +4312,7 @@ def main() -> int:
         if path.endswith((".md", ".json", ".py", ".yml")):
             try:
                 tree[path] = (ROOT / path).read_text(encoding="utf-8")
-            except (OSError, UnicodeDecodeError):
+            except OSError, UnicodeDecodeError:
                 continue
     broken = rule_links(tree, export)
     if broken:

@@ -21,8 +21,6 @@
 1 — предмет не разобран; 2 — источник не ответил.
 """
 
-from __future__ import annotations
-
 import json
 import pathlib
 import sys

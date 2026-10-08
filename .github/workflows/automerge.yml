@@ -136,6 +136,16 @@ jobs:
             scripts/checks.py
           sparse-checkout-cone-mode: false
 
+      # Разбор исходов — код витрины, и исполнять его на системном python3
+      # образа значит исполнять на версии, которой проект не объявлял: 19
+      # октября образ сменится, и с ним молча сменилась бы версия семи
+      # вызовов этой работы (правило 217). Число сверяет с планкой
+      # pyproject.toml гейт check_python_version.py.
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        if: env.SKIP != '1'
+        with:
+          python-version: "3.14"
+
       - name: состояние изменения
         id: pr
         if: env.SKIP != '1'
