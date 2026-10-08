@@ -1468,6 +1468,40 @@ def rule_links(sources: dict[str, str], export: dict) -> list[str]:
 
 
 
+#: Ссылки на правила, которые витрина отклонила или признала неприменимыми, —
+#: но цитирует сознательно. ЗАКРЫТЫЙ СПИСОК С ПРИЧИНОЙ, как у образца
+#: test_citation_applicability проекта механизмов: «номер → почему ссылаемся».
+#: Пуст на включении — замер 8 октября: ссылок на 59 отрицательных ответов 0.
+CITED_DESPITE: dict[str, str] = {}
+
+
+def inapplicable_links(sources: dict[str, str], rules: dict[str, dict]) -> list[str]:
+    """Ссылки на правила, чей ответ у витрины — «отклонено» или «неприменимо» (204).
+
+    ДЕРЖИТСЯ ТО, ЧТО СЛЕДУЕТ ИЗ ДАННЫХ: ссылка на правило — опора на него, а
+    у отклонённого или неприменимого опоры нет по нашему же ответу в
+    .rules/bindings.json. Подходит ли к случаю правило со статусом `active` —
+    суждение о разделе «Не работает», и сюда оно не входит (182).
+
+    Вырез тот же, что у ``rule_links``, — строка с ``LINK_FIXTURE``: набор
+    обязан показывать ссылку целиком. Сознательная цитата — в
+    ``CITED_DESPITE`` с причиной, а не молчанием.
+    """
+    found: list[str] = []
+    for name, text in sorted(sources.items()):
+        for number_line, line in enumerate(text.splitlines(), start=1):
+            if LINK_FIXTURE in line:
+                continue
+            for match in sorted({m.group("num") for m in RULE_LINK.finditer(line)}):
+                status = (rules.get(match) or {}).get("status")
+                if status in ("rejected", "not-applicable") and match not in CITED_DESPITE:
+                    found.append(f"{name}:{number_line}: ссылка на правило {match}, а наш ответ "
+                                 f"по нему — {status}: опоры на него у витрины нет. Либо "
+                                 f"пересмотрите ответ, либо уберите ссылку, либо назовите "
+                                 f"причину в CITED_DESPITE (204)")
+    return found
+
+
 def pill(x: int, y: int, label: str, value: str, tone: str, dark: bool) -> tuple[str, int]:
     """Один показатель: подпись и значение в скруглённой плашке.
 
@@ -4083,6 +4117,33 @@ def selftest() -> int:
         broken.append(f"ссылки на правила: отказ не называет ни файл со строкой, "
                       f"ни верное имя: {said}")
 
+    # ── ссылка на правило, которое мы сами отклонили (204) ─────────────────
+    # Двусторонний набор (140): статусы `active` и `unreviewed` молчат,
+    # `rejected` и `not-applicable` — находка; вырез строкой и список с
+    # причиной — каждый своим случаем.
+    answers = {"051": {"status": "active"}, "052": {"status": "rejected"},
+               "053": {"status": "not-applicable"}, "054": {"status": "unreviewed"}}
+    cite_cases = [
+        ("действующее правило", "rules/ru/051-warn-on-likely-block-on-certain.md", False),
+        ("отклонённое", "см. rules/ru/052-x.md", True),  # образец ссылки
+        ("неприменимое, английская сторона", "rules/en/053-x.md", True),  # образец ссылки
+        ("не разобранное — не наше дело здесь", "rules/ru/054-x.md", False),  # образец ссылки
+        ("номера нет в ответе", "rules/ru/999-x.md", False),  # образец ссылки
+    ]
+    for name, text, must_reject in cite_cases:
+        # Пометка выреза стоит комментарием строки набора, а не в тексте случая:
+        # иначе случай не судился бы вовсе.
+        found = inapplicable_links({"a.md": text}, answers)
+        if bool(found) is not must_reject:
+            broken.append(f"цитата неприменимого, {name}: ожидалось "
+                          f"{'отказ' if must_reject else 'пропуск'}, вышло {found}")
+        print(f"  {'отвергнута' if found else 'пропущена '} — цитата: {name}")
+    if inapplicable_links({"a.md": "rules/ru/052-x.md — образец ссылки"}, answers):
+        broken.append("цитата неприменимого: строка с пометкой образца не прикрыта")
+    said = inapplicable_links({"CLAUDE.md": "\nrules/ru/053-x.md"}, answers)  # образец ссылки
+    if not (said and "CLAUDE.md:2" in said[0] and "053" in said[0]):
+        broken.append(f"цитата неприменимого: отказ не называет файл со строкой и номер: {said}")
+
     # ── состав витрины сверяется со списком репозиториев ───────────────────
     # Набор двусторонний (140), и вторая сторона здесь не формальность:
     # отговорка, пережившая предмет, врёт ровно так же, как незаявленный
@@ -4317,10 +4378,11 @@ def main() -> int:
                 tree[path] = (ROOT / path).read_text(encoding="utf-8")
             except OSError, UnicodeDecodeError:
                 continue
-    broken = rule_links(tree, export)
+    broken = rule_links(tree, export) + inapplicable_links(
+        tree, json.loads(BINDINGS.read_text(encoding="utf-8")).get("rules", {}))
     if broken:
         print(checks.annotate("error" if check else "warning",
-                              f"ссылки на правила каталога не сходятся с выгрузкой: {len(broken)}"),
+                              f"ссылки на правила каталога не проходят сверку: {len(broken)}"),
               file=sys.stderr)
         for line in broken:
             print(f"  • {line}", file=sys.stderr)
