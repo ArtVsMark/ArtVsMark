@@ -300,6 +300,23 @@ def audit(paths: list[str], messages: str,
             f"раздела в {JOURNAL} — {checks.tail(behaviour, 5)}"], ""
 
 
+def compound(added: list[str]) -> list[str]:
+    """Добавленные фрагменты журнала, если их больше одного. Пусто — тема одна.
+
+    ИЗМЕНЕНИЕ САМО ОБЪЯВЛЯЕТ, СКОЛЬКО У НЕГО «ЗАЧЕМ» (132): числом фрагментов
+    журнала наружу. Два фрагмента — две строки «что изменилось», то есть, скорее
+    всего, две темы. Скорее всего, а не наверняка: фича с починкой рядом законно
+    несёт `added` и `fixed`. Поэтому это ПРЕДУПРЕЖДЕНИЕ, а не отказ, — так
+    требует само правило и так держит его образец, say_if_compound проекта
+    механизмов (051). Число зон сборности сосед замерил и отверг.
+
+    Считаются только ДОБАВЛЕННЫЕ фрагменты: ежемесячный сбор журнала фрагменты
+    удаляет, и всякое касание сделало бы его «составным».
+    """
+    fragments = sorted(path for path in added if collect_changelog.is_fragment(path))
+    return fragments if len(fragments) > 1 else []
+
+
 def _git(*args: str) -> str:
     return subprocess.run(["git", *args], capture_output=True, text=True, encoding="utf-8",
                           check=True).stdout
@@ -489,6 +506,25 @@ def selftest() -> int:
             broken.append(f"по месяцам, {name}: ожидалось находок {expected}, вышло {got}")
         print(f"  {'отвергнут' if got else 'пропущен '} — по месяцам: {name}")
 
+    # ── составное изменение (132) ──────────────────────────────────────────
+    # Граница с обеих сторон: один фрагмент — тема одна, два — предупреждение.
+    # Не фрагменты: соглашение changelog.d/README.md, вложенный файл, не `.md`.
+    compound_cases = [
+        ("один фрагмент", ["changelog.d/a.added.md", "scripts/x.py"], 0),
+        ("два фрагмента", ["changelog.d/a.added.md", "changelog.d/b.fixed.md"], 2),
+        ("три фрагмента", ["changelog.d/a.added.md", "changelog.d/b.fixed.md",
+                           "changelog.d/c.changed.md"], 3),
+        ("соглашение — не фрагмент", ["changelog.d/a.added.md", "changelog.d/README.md"], 0),
+        ("вложенный файл — не фрагмент",
+         ["changelog.d/a.added.md", "changelog.d/released/b.fixed.md"], 0),
+        ("фрагментов нет", ["scripts/x.py", "HISTORY.md"], 0),
+    ]
+    for name, added, expected in compound_cases:
+        got = compound(added)
+        if len(got) != expected:
+            broken.append(f"составное, {name}: ожидалось {expected}, вышло {got}")
+        print(f"  {'замечен  ' if got else 'пропущен '} — составное: {name}")
+
     if broken:
         print("\nсамопроверка провалена:", file=sys.stderr)
         for line in broken:
@@ -509,6 +545,7 @@ def main() -> int:
         # По NUL, а не по строкам и тем более не `.split()`: тот рвал бы путь с
         # пробелом надвое, а git ещё и экранирует не-ASCII имена (правило 165).
         paths = checks.git_paths("diff", "--name-only", f"{base}...{head}")
+        added = checks.git_paths("diff", "--name-only", "--diff-filter=A", f"{base}...{head}")
         messages = _git("log", "--format=%B", rng)
         # Автор и число родителей у каждого коммита: слияние узнаётся по
         # второму родителю, а решает это ``audit`` — здесь только чтение.
@@ -528,6 +565,14 @@ def main() -> int:
         print(checks.annotate("error", f"проверка не отработала: журнал не "
                               f"прочитан — {e}"), file=sys.stderr)
         return 2
+
+    # ПРЕДУПРЕЖДЕНИЕ, А НЕ ОТКАЗ (132, 051): печатается до отказов и исхода
+    # не меняет — изменение с двумя фрагментами законно бывает одной темой.
+    several = compound(added)
+    if several:
+        print(checks.annotate("warning", f"в изменении {len(several)} фрагмента журнала — "
+                              f"возможно, несколько тем: {', '.join(several)}. Одна "
+                              f"тема — оставьте; две — разделите изменение (132)"))
 
     bare = missing_rubric(diff, text)
     if bare:
