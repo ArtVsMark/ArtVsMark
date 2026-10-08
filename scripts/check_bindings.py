@@ -431,6 +431,27 @@ def selftest() -> int:
             broken.append(f"число предметов, {name}: ожидалось {expected}, вышло {got}")
         print(f"  {got} находок — число предметов: {name}")
 
+    # ── статусы говорят, чего не означают (056) ────────────────────────────
+    head = STATUS_SECTION + "\n\n| статус | означает | **не** означает |\n|---|---|---|\n"
+    full = "".join(f"| `{w}` | да | **не** означает другое |\n" for w in STATUSES)
+    status_cases = [
+        ("все четыре со строкой", head + full, {}, 0),
+        ("строки нет", head + full.replace("| `unreviewed` | да | **не** означает другое |\n", ""), {}, 1),
+        ("клетка пуста", head + full.replace("**не** означает другое |\n| `unreviewed`",
+                                             " |\n| `unreviewed`"), {}, 1),
+        ("статус ответа вне словаря и без строки", head + full,
+         {"001": {"status": "deferred"}}, 1),
+        ("строка в соседнем разделе не считается",
+         head + full.replace("| `active` | да | **не** означает другое |\n", "")
+         + "\n### Другое\n\n| `active` | да | **не** означает |\n", {}, 1),
+        ("раздела нет вовсе", full, {}, 1),
+    ]
+    for name, doc, rules_, expected in status_cases:
+        got = len(unsaid_statuses(doc, rules_))
+        if got != expected:
+            broken.append(f"статусы, {name}: ожидалось находок {expected}, вышло {got}")
+        print(f"  {got} находок — статусы: {name}")
+
     # Документа нет вовсе — это НЕ наш предмет: на него жалуется проверка ссылок,
     # и вторая жалоба о том же сбивала бы с толку.
     rule = {"001": {"status": "active", "where": "нет-такого.md § Ветки — проза"}}
@@ -533,6 +554,49 @@ DECLARED = re.compile(rf"предмет(?:ов|а)\s+({'|'.join(NUMBER_WORDS)}|\
 #: Пункт перечня: «(1)», «(2)»… Двузначный предел намеренный — номер правила
 #: в скобках «(157)» трёхзначен и пунктом не считается.
 ITEM = re.compile(r"\((\d{1,2})\)")
+
+
+#: Словарь статусов контракта ответа каталогу (export/README.md, поле
+#: `status`). КОПИЯ НАМЕРЕННАЯ, как LIMITS (071): словарь живёт в таблице
+#: контракта, машинно отдельным списком не публикуется, а подъём контракта
+#: сверяет scripts/build_metrics.py::contracts_drift — тогда же перечитывается
+#: и этот список.
+STATUSES = ("active", "rejected", "not-applicable", "unreviewed")
+
+#: Где витрина говорит, что статус НЕ означает (056).
+STATUS_DOC = ROOT / ".rules/README.md"
+STATUS_SECTION = "## Что означают статусы и чего не означают"
+STATUS_ROW = re.compile(r"^\|\s*`([\w-]+)`\s*\|([^|]*)\|([^|]*)\|", re.M)
+
+
+def unsaid_statuses(doc: str, rules: dict[str, dict]) -> list[str]:
+    """Статусы, у которых не написано, чего они НЕ означают (056).
+
+    ЧТО ДЕРЖИТСЯ: вторая половина сигнала НАПИСАНА — у каждого слова
+    словаря и у каждого статуса, встречающегося в ответе, есть строка в
+    таблице раздела, и её клетка «не означает» несёт отрицание. Образец —
+    test_signals глоссария: «не означает» у каждого кода.
+
+    ЧЕГО НЕ ДЕРЖИТ: верна ли написанная граница. Это суждение о смысле.
+    """
+    start = doc.find(STATUS_SECTION)
+    if start < 0:
+        return [f"{STATUS_DOC.name}: нет раздела «{STATUS_SECTION[3:]}» — "
+                f"статусы читают, не заглядывая в реализацию (056)"]
+    tail = doc[start + len(STATUS_SECTION):]
+    end = re.search(r"^#{2,3} ", tail, re.M)
+    section = tail[:end.start()] if end else tail
+    rows = {word: denial for word, _means, denial in STATUS_ROW.findall(section)}
+    wanted = sorted(set(STATUSES) | {str(b.get("status")) for b in rules.values()
+                                     if b.get("status")})
+    found: list[str] = []
+    for word in wanted:
+        if word not in rows:
+            found.append(f"статус `{word}` без строки в таблице «чего не означают» (056)")
+        elif not re.search(r"\bне\b", rows[word], re.I):
+            found.append(f"статус `{word}`: клетка «не означает» пуста или без "
+                         f"отрицания — вторая половина сигнала не написана (056)")
+    return found
 
 
 def declared_counts(rules: dict[str, dict]) -> list[str]:
@@ -653,6 +717,7 @@ def main() -> int:
         vocabulary = limits(bindings["rules"])
         unrun = unrunnable(bindings["rules"])
         counts = declared_counts(bindings["rules"])
+        unsaid = unsaid_statuses(STATUS_DOC.read_text(encoding="utf-8"), bindings["rules"])
         # Существование предмета спрашивается у дерева одной командой — без
         # сети, как и требует правило: то, что видно локально.
         alive = refuted(
@@ -692,6 +757,14 @@ def main() -> int:
         print("\nНазовите прогон, скрипт или тест, которым правило держится, — или "
               "поменяйте механизм на document: абзац не запускается.", file=sys.stderr)
 
+    if unsaid:
+        print(checks.annotate("error", f"статусы без «не означает»: {len(unsaid)}"),
+              file=sys.stderr)
+        for line in unsaid:
+            print(f"  {line}", file=sys.stderr)
+        print(f"\nСтатус читают, не заглядывая в реализацию: у каждого — строка в "
+              f"{STATUS_DOC.name} § {STATUS_SECTION[3:]}.", file=sys.stderr)
+
     if counts:
         print(checks.annotate("error", f"число предметов разошлось с перечнем: {len(counts)}"),
               file=sys.stderr)
@@ -710,7 +783,7 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
-    if alive or vocabulary or unrun or counts:
+    if alive or vocabulary or unrun or counts or unsaid:
         return 1
 
     checkable = sum(1 for b in bindings["rules"].values() if b.get("refuted_by"))
