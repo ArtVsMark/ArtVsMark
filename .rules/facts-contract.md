@@ -178,7 +178,7 @@ JSON Schema.** Этот текст их объясняет, но не повто
 |---|:---:|:---:|:---:|:---:|:---:|
 | [Stepik-Python-Grader](https://github.com/ArtVsMark/Stepik-Python-Grader) | есть | ✅ | ✅ | ✅ | ✅ |
 | [Claude-Code_Usage-Token](https://github.com/ArtVsMark/Claude-Code_Usage-Token) | есть | ✅ | ✅ | ✅ | ✅ |
-| [Glossary-Python](https://github.com/ArtVsMark/Glossary-Python) | есть | — | — | ✅ | ✅ |
+| [Glossary-Python](https://github.com/ArtVsMark/Glossary-Python) | есть | ✅ | ✅ | ✅ | ✅ |
 | [Engineering-Incidents-Playbook](https://github.com/ArtVsMark/Engineering-Incidents-Playbook) | есть | ✅ | ✅ | ✅ | ✅ |
 | [Engineering-Pipeline-Mechanisms](https://github.com/ArtVsMark/Engineering-Pipeline-Mechanisms) | есть | ✅ | ✅ | ✅ | ✅ |
 
