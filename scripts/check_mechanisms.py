@@ -2179,6 +2179,67 @@ def live_halves(sources: dict[str, str], flows: dict[str, str], hook: str) -> li
             if "def selftest" in source and name not in live and name not in LIBRARIES]
 
 
+#: Пин соседа в прогоне — две формы, обе взяты замером 9 октября: ``ref:`` в
+#: шаге чекаута после ``repository:`` и ``uses: владелец/имя/путь@sha``.
+STEP_START = re.compile(r"^\s*-\s")
+CHECKOUT_REPO = re.compile(r"^\s*repository:\s*[\"']?([\w.-]+/[\w.-]+)")
+CHECKOUT_REF = re.compile(r"^\s*ref:\s*[\"']?([0-9a-f]{40})\b")
+USES_PIN = re.compile(r"uses:\s*[\"']?([\w.-]+/[\w.-]+)(?:/[^@\s]*)?@([0-9a-f]{40})\b")
+ORIGIN = re.compile(r"^([\w.-]+/[\w.-]+):[^@]+@([0-9a-f]{40})$")
+
+
+def flow_pins(flows: dict[str, str]) -> dict[str, set[str]]:
+    """Пины соседей в прогонах: репозиторий → множество закреплённых коммитов.
+
+    ``ref:`` читается в пределах ТОГО ЖЕ шага, что и ``repository:``: чекаут
+    другого соседа в том же файле своим ``ref:`` не должен прикрыть
+    расхождение. Шаг кончается на следующем ``- `` списка шагов.
+    """
+    pins: dict[str, set[str]] = {}
+    for text in flows.values():
+        repo = ""
+        for line in text.splitlines():
+            if STEP_START.match(line):
+                repo = ""
+            if match := USES_PIN.search(line):
+                pins.setdefault(match[1], set()).add(match[2])
+            if match := CHECKOUT_REPO.match(line):
+                repo = match[1]
+            elif repo and (match := CHECKOUT_REF.match(line)):
+                pins.setdefault(repo, set()).add(match[1])
+    return pins
+
+
+def called_pins(rules: dict[str, dict], flows: dict[str, str]) -> list[str]:
+    """Вызванный механизм (``called``) называет в ``origin`` версию, на которой стоит прогон.
+
+    ПРЕДМЕТ ОПЛАЧЕН 9 ОКТЯБРЯ (#319): пины каталога сдвинуты на v1.11.0, а
+    ``origin`` у вызываемых остался на прежней версии — ответ говорил, что
+    витрина зовёт код, которого её прогоны больше не берут. Поймано
+    перечитыванием, не машиной.
+
+    ПРЕДМЕТ — ТОЛЬКО ``called``. У ``adapted`` и ``copied`` версия в ``origin``
+    — исторический факт: с какой версии взят приём. Двигать её вместе с пином
+    значило бы переписать историю заимствования.
+    """
+    pins = flow_pins(flows)
+    found: list[str] = []
+    for number, binding in sorted(rules.items()):
+        if binding.get("origin_kind") != "called":
+            continue
+        match = ORIGIN.match(str(binding.get("origin") or ""))
+        if not match:
+            found.append(f"{number}: origin вызванного механизма не формы "
+                         f"«владелец/имя:путь@sha» — сверять версию не с чем")
+            continue
+        repo, sha = match[1], match[2]
+        if sha not in pins.get(repo, set()):
+            held = ", ".join(sorted(pins.get(repo, set()))) or "ни одного"
+            found.append(f"{number}: origin зовёт {repo}@{sha}, а прогоны прибиты к "
+                         f"{held} — пин сдвинут, а ответ нет (или наоборот)")
+    return found
+
+
 def gate_really_blocks(rules: dict[str, dict], flows: dict[str, str]) -> list[str]:
     """Слово `gate` в вердикте означает отказ изменению, а не просто прогон.
 
@@ -2328,6 +2389,20 @@ def selftest() -> int:
     гейт судит о ФОРМЕ чужих докстрок и вердиктов, и стоит ему заругаться на
     здоровое — его начнут обходить, а обойдённый не держит уже ничего.
     """
+    # Подставные прогоны набора для called_pins: чекаут каталога на «a», чекаут
+    # другого соседа на «b» в том же файле, действие каталога на «d».
+    PIN_FLOWS = {"x.yml": (
+        "    steps:\n"
+        "      - uses: actions/checkout@v7\n"
+        "        with:\n"
+        "          repository: A/cat\n"
+        f"          ref: {'a' * 40}\n"
+        "      - uses: actions/checkout@v7\n"
+        "        with:\n"
+        "          repository: B/other\n"
+        f"          ref: {'b' * 40}\n"
+        f"      - uses: A/cat/.github/actions/act@{'d' * 40}\n")}
+
     MAIN = '\n\ndef main():\n    return 1\n'
     three = '"""Что делает.\n\nИсходы: 0 — чисто; 1 — находки; 2 — не отработала.\n"""' + MAIN
     two = '"""Что делает.\n\nИсходы: 0 — чисто; 1 — есть находки.\n"""' + MAIN
@@ -2375,6 +2450,18 @@ def selftest() -> int:
          {"a.py": "import sys\nsys.path.insert(0, 'x')\n"}, False),
         ("своё имя — не общее состояние", shared_swaps,
          {"a.py": "def f():\n    argv = ['x']\n    path = []\n    path.insert(0, 1)\n"}, False),
+        ("origin вызванного на пине прогона", lambda r: called_pins(r, PIN_FLOWS),
+         {"123": {"origin_kind": "called", "origin": f"A/cat:scripts/x.py@{'a' * 40}"}}, False),
+        ("origin вызванного отстал от пина", lambda r: called_pins(r, PIN_FLOWS),
+         {"123": {"origin_kind": "called", "origin": f"A/cat:scripts/x.py@{'c' * 40}"}}, True),
+        ("ref чужого чекаута в том же файле не прикрывает", lambda r: called_pins(r, PIN_FLOWS),
+         {"123": {"origin_kind": "called", "origin": f"A/cat:scripts/x.py@{'b' * 40}"}}, True),
+        ("пин действия uses: тоже пин", lambda r: called_pins(r, PIN_FLOWS),
+         {"123": {"origin_kind": "called", "origin": f"A/cat:a/act@{'d' * 40}"}}, False),
+        ("adapted — история, не сверяется", lambda r: called_pins(r, PIN_FLOWS),
+         {"123": {"origin_kind": "adapted", "origin": f"A/cat:scripts/x.py@{'c' * 40}"}}, False),
+        ("origin вызванного без версии", lambda r: called_pins(r, PIN_FLOWS),
+         {"123": {"origin_kind": "called", "origin": "A/cat:scripts/x.py"}}, True),
         ("ожидание в цикле скрипта", script_polls,
          {"a.py": "import time\nwhile True:\n    time.sleep(30)\n"}, True),
         ("ожидание по прямому имени", script_polls,
@@ -3235,7 +3322,7 @@ def main() -> int:
              + single_catalogue_address(sources)
              + audit_gaps(rules) + audit_workflows(flows) + audit_runners(flows)
              + shared_temp(sources) + shared_swaps(sources) + script_polls(sources)
-             + gate_really_blocks(rules, flows)
+             + gate_really_blocks(rules, flows) + called_pins(rules, flows)
              + audit_harness(sources, flows) + audit_charter(ROOT)
              + list_reads(sources, flows) + unreached_names(sources)
              + regex_copies(sources) + marker_copies(sources, flows)
