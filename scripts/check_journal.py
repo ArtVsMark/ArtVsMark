@@ -317,6 +317,37 @@ def compound(added: list[str]) -> list[str]:
     return fragments if len(fragments) > 1 else []
 
 
+#: Номер в тексте фрагмента: ``#322``. Заготовка ``#НОМЕР`` — не номер, а
+#: напоминание вписать его после открытия изменения.
+NUMBER = re.compile(r"#(\d+)\b")
+PLACEHOLDER = "#НОМЕР"
+
+
+def unnumbered(fragments: dict[str, str], pr: int) -> list[str]:
+    """Добавленные фрагменты, не называющие номер этого изменения (215).
+
+    ПЕРЕСКАЗ СВОЕЙ РАБОТЫ СНИМАЕТСЯ С ИСТОЧНИКА, и номер изменения — самая
+    узкая его часть: в ``pr-check`` номер известен, и расхождение видно без
+    чтения смысла. 1 октября номера трёх фрагментов вписаны ДО открытия
+    изменений — совпали, но угадыванием (#253, #255, #259).
+
+    ПРЕДУПРЕЖДЕНИЕ, А НЕ ОТКАЗ (051): фрагмент законно называет и задачу
+    (#248 у #250), а первый прогон изменения всегда видит заготовку —
+    номер вписывается вторым коммитом, после того как ``agent-pr`` открыл
+    изменение. Отказ краснил бы каждое изменение на первом пуше.
+    """
+    said: list[str] = []
+    for path, text in sorted(fragments.items()):
+        if PLACEHOLDER in text:
+            said.append(f"{path}: стоит заготовка {PLACEHOLDER} — номер вписывается после "
+                        f"открытия, вторым коммитом (215)")
+        elif str(pr) not in NUMBER.findall(text):
+            named = ", ".join(f"#{n}" for n in NUMBER.findall(text)) or "ни одного"
+            said.append(f"{path}: номер этого изменения #{pr} не назван (названо: {named}) — "
+                        f"снят ли номер с площадки, а не угадан? (215)")
+    return said
+
+
 def _git(*args: str) -> str:
     return subprocess.run(["git", *args], capture_output=True, text=True, encoding="utf-8",
                           check=True).stdout
@@ -525,6 +556,23 @@ def selftest() -> int:
             broken.append(f"составное, {name}: ожидалось {expected}, вышло {got}")
         print(f"  {'замечен  ' if got else 'пропущен '} — составное: {name}")
 
+    # ── номер изменения во фрагменте (215) ─────────────────────────────────
+    # Обе стороны: свой номер — молчание, даже рядом с номером задачи; чужой
+    # номер, номера нет вовсе, заготовка — предупреждение. #3220 не равен #322.
+    number_cases = [
+        ("свой номер", {"changelog.d/a.added.md": "строка (#322)"}, 0),
+        ("свой номер рядом с задачей", {"changelog.d/a.added.md": "строка (#318, #322)"}, 0),
+        ("номер задачи вместо своего", {"changelog.d/a.added.md": "строка (#318)"}, 1),
+        ("номера нет вовсе", {"changelog.d/a.added.md": "строка без номера"}, 1),
+        ("заготовка не вписана", {"changelog.d/a.added.md": "строка (#НОМЕР)"}, 1),
+        ("префикс числа — не номер", {"changelog.d/a.added.md": "строка (#3220)"}, 1),
+    ]
+    for name, fragments, expected in number_cases:
+        got = unnumbered(fragments, 322)
+        if len(got) != expected:
+            broken.append(f"номер во фрагменте, {name}: ожидалось {expected}, вышло {got}")
+        print(f"  {'замечен  ' if got else 'пропущен '} — номер во фрагменте: {name}")
+
     if broken:
         print("\nсамопроверка провалена:", file=sys.stderr)
         for line in broken:
@@ -568,6 +616,20 @@ def main() -> int:
 
     # ПРЕДУПРЕЖДЕНИЕ, А НЕ ОТКАЗ (132, 051): печатается до отказов и исхода
     # не меняет — изменение с двумя фрагментами законно бывает одной темой.
+    # Номер изменения — из события площадки, флагом; без него (пуш, ручной
+    # запуск) сверять не с чем, и сверка молчит, а не угадывает.
+    pr_arg = next((a.split("=", 1)[1] for a in argv if a.startswith("--pr=")), "")
+    if pr_arg.isdigit():
+        try:
+            texts = {path: _git("show", f"{head}:{path}") for path in added
+                     if collect_changelog.is_fragment(path)}
+        except (subprocess.CalledProcessError, OSError) as e:
+            print(checks.annotate("error", f"проверка не отработала: фрагмент не "
+                                  f"прочитан — {e}"), file=sys.stderr)
+            return 2
+        for line in unnumbered(texts, int(pr_arg)):
+            print(checks.annotate("warning", line))
+
     several = compound(added)
     if several:
         print(checks.annotate("warning", f"в изменении {len(several)} фрагмента журнала — "

@@ -164,7 +164,7 @@ jobs:
         run: python scripts/collect_changelog.py --check
 
       - name: Журнал в ногу с правкой
-        run: python scripts/check_journal.py
+        run: python scripts/check_journal.py --pr="${{ github.event.pull_request.number }}"
 
       # Починка называет соседние случаи (195). Предмет оплачен здесь же:
       # #175 сузила чтение размера клетки и не назвала соседа рядом — признак
