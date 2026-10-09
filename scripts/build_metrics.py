@@ -1826,8 +1826,10 @@ def project_facts(repo: str, silent: list[str] | None = None) -> dict:
 
 #: Колонки таблицы «Кто это уже делает» в .rules/facts-contract.md: подпись в
 #: шапке и раздел фактов, о котором она говорит. Порядок — порядок колонок.
+#: Колонки ``rules`` нет с договора 1.4 (#309): доли механизмов считает каталог,
+#: и в фактах раздел ``rules`` — предупреждение, а не показатель.
 CONTRACT_COLUMNS = (("файл", None), ("tests", "tests"), ("checks", "checks_per_pr"),
-                    ("coverage", "coverage_percent"), ("rules", "rules"))
+                    ("coverage", "coverage_percent"))
 
 #: Строка таблицы: имя проекта ссылкой, дальше клетки. Ключом берётся АДРЕС, а
 #: не подпись: подпись правят, адрес — нет.
@@ -4283,15 +4285,15 @@ def selftest() -> int:
     # Набор двусторонний (140). Ложный отказ здесь дороже пропуска: находки о
     # соседях красные на проверке изменения, и ругаться на верную строку значит
     # красить чужой правкой то, что в порядке.
-    TABLE = ("| проект | файл | tests | checks | coverage | rules |\n"
-             "|---|:---:|:---:|:---:|:---:|:---:|\n"
-             "| [Сосед](https://github.com/Owner/Neighbour) | есть | ✅ | ✅ | — | — |\n")
+    TABLE = ("| проект | файл | tests | checks | coverage |\n"
+             "|---|:---:|:---:|:---:|:---:|\n"
+             "| [Сосед](https://github.com/Owner/Neighbour) | есть | ✅ | ✅ | — |\n")
     HAS = {"Owner/Neighbour": {"schema": "1.0", "tests": {"functions": 5},
                                "checks_per_pr": {"count": 3}}}
     contract_cases = [
         ("строка сходится с тем, что сосед публикует", TABLE, HAS, [], False),
         ("сосед начал публиковать раздел, а в таблице прочерк", TABLE,
-         {"Owner/Neighbour": {**HAS["Owner/Neighbour"], "rules": {"gate": 1}}}, [], True),
+         {"Owner/Neighbour": {**HAS["Owner/Neighbour"], "coverage_percent": 90.0}}, [], True),
         ("сосед перестал публиковать раздел, а в таблице галочка", TABLE,
          {"Owner/Neighbour": {"schema": "1.0", "checks_per_pr": {"count": 3}}}, [], True),
         ("файла не стало вовсе, а таблица говорит «есть»", TABLE,
