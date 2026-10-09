@@ -634,8 +634,8 @@
     },
     "081": {
       "status": "active",
-      "mechanism": "pipeline",
-      "where": "ВЕРДИКТ ИСПРАВЛЕН 9 ОКТЯБРЯ: стояло «исполняемых файлов витрина не создаёт». Создаёт и исполняет: дерево каталога по пину (.github/workflows/family-manifest.yml — в .family-gate, rules-inbox.yml — в .rules-sync) — в рабочем каталоге задания на одноразовой машине; наборы — во временном каталоге tempfile.TemporaryDirectory (права 0700, на один запуск): scripts/check_facts.py и scripts/facts_release.py копируют туда проверку и запускают, scripts/family_manifest.py кладёт подставной модуль формы каталога. Общий /tmp исполняемым кодом не используется; `curl | sh` нет. Шаг для CI издателя кладёт проверку в $RUNNER_TEMP/facts-contract — каталог одного задания.",
+      "mechanism": "gate",
+      "where": "scripts/check_mechanisms.py::shared_temp в .github/workflows/pr-check.yml — tempfile без dir= и gettempdir в scripts/ отвергаются: временный файл ложится в каталог, выданный прогону, а не в общий /tmp исполнителя. МЕХАНИЗМ ИСПРАВЛЕН 9 ОКТЯБРЯ: в #322 стояло `pipeline`, хотя гейт уже был. ВЕРДИКТ ИСПРАВЛЕН 9 ОКТЯБРЯ: стояло «исполняемых файлов витрина не создаёт». Создаёт и исполняет: дерево каталога по пину (.github/workflows/family-manifest.yml — в .family-gate, rules-inbox.yml — в .rules-sync) — в рабочем каталоге задания на одноразовой машине; наборы — во временном каталоге tempfile.TemporaryDirectory (права 0700, на один запуск): scripts/check_facts.py и scripts/facts_release.py копируют туда проверку и запускают, scripts/family_manifest.py кладёт подставной модуль формы каталога. Общий /tmp исполняемым кодом не используется; `curl | sh` нет. Шаг для CI издателя кладёт проверку в $RUNNER_TEMP/facts-contract — каталог одного задания.",
       "origin_kind": "own",
       "analysed": "2026-10-09",
       "decided": "2026-10-09"
@@ -893,10 +893,8 @@
     },
     "110": {
       "status": "active",
-      "mechanism": "none",
-      "where": "ВЕРДИКТ ИСПРАВЛЕН 9 ОКТЯБРЯ: стояло «захватов ресурсов и подмен общего состояния нет». Подмены есть: scripts/family_manifest.py::judged ставит каталог в sys.path и импортирует его код — отказать может только сам импорт, поэтому откат гарантирован `finally` (граница правила); наборы подменяют sys.argv и глобальные пути (scripts/check_facts.py, scripts/facts_release.py, scripts/collect_changelog.py) тоже под `finally`. Держится привычкой, а не механизмом.",
-      "machine_half": "возможна: гейт по дереву scripts/ — присваивание sys.path, sys.argv, sys.modules или globals() стоит в try с восстановлением в finally",
-      "holdable": "not-yet",
+      "mechanism": "gate",
+      "where": "scripts/check_mechanisms.py::shared_swaps в .github/workflows/pr-check.yml — подмена sys.argv, sys.path, sys.modules, os.environ или globals() внутри функции обязана стоять под try с finally либо сразу перед таким try; иначе исключение оставляет процесс подменённым. Формы взяты замером 9 октября по scripts/ (206): присваивание, подписка и вызов метода. Тем же заходом снята единственная подмена без отката — scripts/neighbours.py::main брал адрес ответа подменой модульного имени, теперь местным. ГРАНИЦА: уровень модуля не судится — sys.path.insert своего каталога при импорте есть настройка на жизнь процесса; что finally восстанавливает именно подменённое, гейт не проверяет (057). ДОЛГ ЗАКРЫТ 9 ОКТЯБРЯ: вердикт стоял `none` с holdable not-yet (#322).",
       "origin_kind": "own",
       "analysed": "2026-10-09",
       "decided": "2026-10-09"

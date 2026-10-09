@@ -163,11 +163,13 @@ def selftest() -> int:
 def main() -> int:
     if "--selftest" in sys.argv[1:]:
         return selftest()
-    if "--selftest-broken-bindings" in sys.argv[1:]:
-        # Ветка для набора: ответ витрины намеренно не читается.
-        globals()["BINDINGS"] = pathlib.Path("/nonexistent/bindings.json")
+    # Ветка для набора: ответ витрины намеренно не читается. Адрес — местный,
+    # а не подменённый модульный: подмена общего состояния жила бы до конца
+    # процесса (110).
+    bindings = (pathlib.Path("/nonexistent/bindings.json")
+                if "--selftest-broken-bindings" in sys.argv[1:] else BINDINGS)
     try:
-        rules = json.loads(BINDINGS.read_text(encoding="utf-8"))["rules"]
+        rules = json.loads(bindings.read_text(encoding="utf-8"))["rules"]
     except (OSError, ValueError, KeyError) as broken:
         print(checks.annotate("error", f"не разобран ответ витрины: {broken}"),
               file=sys.stderr)
