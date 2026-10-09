@@ -2,8 +2,8 @@
   "schema": "1.1",
   "project": "ArtVsMark/ArtVsMark",
   "release": {
-    "tag": "facts-v1.5.0",
-    "sha": "d03fcebe3d9ccf6ffe887d2af88188d2dab60d19"
+    "tag": "facts-v1.6.0",
+    "sha": "d620f14dee618f17862a09ab0c270bdf76bf2a54"
   },
   "gives": {
     "facts": "1.6"
