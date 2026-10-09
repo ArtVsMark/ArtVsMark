@@ -1,6 +1,6 @@
 {
   "_": "Образец facts.json по договору фактов витрины: всё, что витрина показывает о проекте, — значение или причина в none; своё сверх договора — в exchange по темам. Проверка — check_facts.py из того же выпуска.",
-  "schema": "1.4",
+  "schema": "1.5",
   "schema_of": "договор фактов витрины профиля ArtVsMark/ArtVsMark — .rules/facts-contract.md",
   "repo": "Owner/Project",
   "generated_at": "2026-10-09T09:00:00+00:00",

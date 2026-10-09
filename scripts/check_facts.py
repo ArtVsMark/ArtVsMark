@@ -236,6 +236,19 @@ def contract_version(text: str) -> str:
     return number
 
 
+#: Метки шага для CI издателя в прозе договора: между ними — блок YAML, который
+#: издатель вставляет к себе и который страница выпуска берёт отсюда же.
+STEP_OPEN, STEP_CLOSE = "<!-- facts-ci-step -->", "<!-- /facts-ci-step -->"
+
+
+def ci_step(prose: str) -> str | None:
+    """Шаг для CI издателя из прозы договора — текст между метками. Нет меток — ``None``."""
+    start, end = prose.find(STEP_OPEN), prose.find(STEP_CLOSE)
+    if start < 0 or end < start:
+        return None
+    return prose[start + len(STEP_OPEN):end].strip()
+
+
 def contract_drift(number: str, schema: dict, prose: str) -> list[str]:
     """Заголовки схемы и прозы против номера договора. Пусто — номер один.
 
@@ -251,6 +264,13 @@ def contract_drift(number: str, schema: dict, prose: str) -> list[str]:
     if f"## Единые требования · договор {series}" not in prose:
         found.append(f"facts-contract.md: нет заголовка «## Единые требования · "
                      f"договор {series}»")
+    # Тег в шаге для CI — третье место номера: устаревший тег прибил бы
+    # издателей к прошлому выпуску молча, и шаг остался бы зелёным.
+    step = ci_step(prose)
+    if step is None:
+        found.append(f"facts-contract.md: нет шага для CI между {STEP_OPEN} и {STEP_CLOSE}")
+    elif f"FACTS_CONTRACT: facts-v{number}" not in step:
+        found.append(f"facts-contract.md: шаг для CI прибит не к facts-v{number}")
     if f"^{series.split('.')[0]}\\." not in schema.get("properties", {}).get(
             "schema", {}).get("pattern", ""):
         found.append(f"facts.schema.json: schema.pattern не принимает мажор "
@@ -397,14 +417,18 @@ def selftest() -> int:
 
     # Номер договора один: заголовки схемы и прозы сверяются с источником.
     titled = {**schema, "title": "facts.json — договор 1.4"}
-    prose = "x\n## Единые требования · договор 1.4\n"
+    prose = ("x\n## Единые требования · договор 1.4\n"
+             f"{STEP_OPEN}\n    FACTS_CONTRACT: facts-v1.4.0\n{STEP_CLOSE}\n")
     drift_cases = [
         ("заголовки совпадают с номером", "1.4.0", titled, prose, 0),
         ("схема на прежнем номере", "1.4.0", {**titled, "title": "договор 1.3"}, prose, 1),
-        ("проза на прежнем номере", "1.4.0", titled, prose.replace("1.4", "1.3"), 1),
+        ("проза на прежнем номере", "1.4.0", titled, prose.replace("договор 1.4", "договор 1.3"), 1),
         ("мажор договора не принят схемой", "2.0.0",
          {**titled, "title": "договор 2.0"}, prose.replace("1.4", "2.0"), 1),
-        ("патч не трогает заголовков", "1.4.7", titled, prose, 0),
+        ("тег шага на прежнем номере", "1.4.7", titled, prose, 1),
+        ("шага для CI нет вовсе", "1.4.0", titled, prose.split(STEP_OPEN)[0], 1),
+        ("метки шага перепутаны", "1.4.0", titled,
+         prose.replace(STEP_OPEN, "@@").replace(STEP_CLOSE, STEP_OPEN).replace("@@", STEP_CLOSE), 1),
     ]
     for name, number_, schema_, prose_, expected in drift_cases:
         got = len(contract_drift(number_, schema_, prose_))

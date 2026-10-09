@@ -94,9 +94,20 @@ def verify(dist: pathlib.Path, repo: str) -> list[str]:
     return found
 
 
+def step_files(step: str) -> list[str]:
+    """Имена файлов, которые шаг для CI скачивает со страницы выпуска (строка ``for f in``)."""
+    for line in step.splitlines():
+        words = line.split()
+        if words[:2] == ["for", "f"] and "in" in words:
+            return [word.rstrip(";") for word in words[words.index("in") + 1:]
+                    if word not in (";", "do")]
+    return []
+
+
 def notes(number: str, repo: str) -> str:
-    """Текст страницы выпуска: что приложено, как запустить, где источник по тегу."""
+    """Текст страницы выпуска: что приложено, как запустить, шаг для CI, где источник."""
     tag = tag_for(number)
+    step = check_facts.ci_step(check_facts.CONTRACT_PATH.read_text(encoding="utf-8")) or ""
     tree = f"https://github.com/{repo}/blob/{tag}"
     series = ".".join(number.split(".")[:2])
     return "\n".join([
@@ -115,6 +126,10 @@ def notes(number: str, repo: str) -> str:
         "",
         "Исход `0` — договору отвечает, `1` — расхождения названы, `2` — проверка не "
         "отработала; предупреждения `⚠` кода не меняют.",
+        "",
+        "Шаг для CI — вставить в прогон, публикующий `facts.json`, перед публикацией:",
+        "",
+        step,
         "",
         f"Источник по тегу — [`.rules/facts-contract.md`]({tree}/.rules/facts-contract.md); "
         f"как договор меняется — там же, раздел «Как контракт меняется».",
@@ -138,6 +153,22 @@ def selftest() -> int:
         except ValueError:
             pass
     print("  да  — тег: facts-v и три числа, иная форма номера — отказ")
+
+    # Шаг для CI издателя: скачивает только то, что лежит в выпуске (иначе у
+    # издателя curl упадёт на 404), прибит к тегу текущего номера и попадает
+    # на страницу выпуска — из прозы, а не копией.
+    number = check_facts.contract_version(check_facts.VERSION_PATH.read_text(encoding="utf-8"))
+    step = check_facts.ci_step(check_facts.CONTRACT_PATH.read_text(encoding="utf-8")) or ""
+    wanted = step_files(step)
+    shipped = {source.name for source in ASSETS}
+    if not wanted or set(wanted) - shipped:
+        broken.append(f"шаг для CI скачивает {wanted}, а в выпуске {sorted(shipped)}")
+    if f"FACTS_CONTRACT: {tag_for(number)}" not in step or step not in notes(number, repo):
+        broken.append("шаг для CI не прибит к текущему тегу или не попал на страницу")
+    if step_files("    for f in a.py b.json; do") != ["a.py", "b.json"] or step_files("x") != []:
+        broken.append("разбор строки for f in в шаге для CI неверен")
+    print(f"  {'да ' if wanted and not set(wanted) - shipped else 'НЕТ'} — шаг для CI: "
+          f"скачивает {len(wanted)} файла из выпуска, прибит к {tag_for(number)}")
 
     with tempfile.TemporaryDirectory(dir=checks.runner_temp()) as tmp:
         dist = pathlib.Path(tmp) / "dist"
@@ -236,6 +267,12 @@ def main() -> int:
         return 2
 
     refusals = list(drift)
+    # Шаг для CI раздаётся пятерым издателям разом: скачивай он файл, которого
+    # на странице нет, — у всех пятерых curl упал бы на 404 после выпуска.
+    step = check_facts.ci_step(check_facts.CONTRACT_PATH.read_text(encoding="utf-8")) or ""
+    missing = sorted(set(step_files(step)) - {source.name for source in ASSETS})
+    if not step_files(step) or missing:
+        refusals.append(f"шаг для CI скачивает того, чего в выпуске нет: {missing or 'ничего'}")
     if standing:
         refusals.append(f"тег {tag} уже стоит: выпуск, на который прибились, не "
                         f"переставляется — поднимите номер в .rules/facts.version")
