@@ -45,7 +45,7 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     # Без этого действует умолчание GitHub в шесть часов.
     timeout-minutes: 10
     # ПРАВА ПОДНЯТЫ РАДИ ОДНОГО ШАГА — публикации картинок в ветку `assets`.

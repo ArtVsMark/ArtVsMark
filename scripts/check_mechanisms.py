@@ -384,6 +384,12 @@ TOP_KEY = re.compile(r"^(\w[\w-]*):", re.M)
 JOB_KEY = re.compile(r"^  (\w[\w-]*):\s*$", re.M)
 JOB_TIMEOUT = re.compile(r"^    timeout-minutes:", re.M)
 PY_VERSION = re.compile(r"^\s*python-version:\s*[\"']?([\d.]+)", re.M)
+#: Метка исполнителя, которую двигает площадка: ``ubuntu-latest``,
+#: ``macos-latest``, ``windows-latest``. Образ под ней меняется без правки
+#: нашего кода — 19 октября 2026 ``ubuntu-latest`` уехала на Ubuntu 26
+#: (actions/runner-images#14748). Выражение матрицы ``${{ … }}`` не предмет:
+#: его значения стоят в самом файле и судятся там (176, #314).
+FLOATING_RUNNER = re.compile(r"^\s*runs-on:\s*[\"']?([\w.-]+-latest)\b", re.M)
 
 
 #: Ссылка на чужое действие в шаге. Берётся вся строка `uses:`, включая форму
@@ -1207,6 +1213,9 @@ def audit_runners(flows: dict[str, str]) -> list[str]:
         if SHARED_TMP.search(text):
             found.append(f"{name}: пишет в общий /tmp — площадка выдаёт "
                          f"$RUNNER_TEMP каждому прогону свой (149)")
+        found += [f"{name}: исполнитель {label} — плавающая метка, образ под ней "
+                  f"меняет площадка, а не этот файл; назовите версию явно (176)"
+                  for label in FLOATING_RUNNER.findall(text)]
 
     # Версия языка задана в ОДНОМ месте: две разные означают, что проверки и
     # сборка бегут на разных языках, и разойдутся они молча (022).
@@ -2189,7 +2198,7 @@ GOOD_FLOW = (
     "  workflow_dispatch:\n"
     "jobs:\n"
     "  one:\n"
-    "    runs-on: ubuntu-latest\n"
+    "    runs-on: ubuntu-26.04\n"
     "    timeout-minutes: 10\n"
     "    steps:\n"
     "      - run: echo\n"
@@ -2200,7 +2209,7 @@ PY_FLOW = (
     "  workflow_dispatch:\n"
     "jobs:\n"
     "  one:\n"
-    "    runs-on: ubuntu-latest\n"
+    "    runs-on: ubuntu-26.04\n"
     "    timeout-minutes: 10\n"
     "    steps:\n"
     "      - uses: actions/setup-python@v6\n"
@@ -2516,6 +2525,15 @@ def selftest() -> int:
          {"a.yml": PY_FLOW.format(v="3.12"), "b.yml": PY_FLOW.format(v="3.12")}, False),
         ("две разные версии языка", audit_runners,
          {"a.yml": PY_FLOW.format(v="3.12"), "b.yml": PY_FLOW.format(v="3.11")}, True),
+        # Плавающая метка исполнителя (176, #314) — обе стороны и граница.
+        ("исполнитель ubuntu-latest", audit_runners,
+         {"a.yml": GOOD_FLOW.replace("ubuntu-26.04", "ubuntu-latest")}, True),
+        ("исполнитель macos-latest в кавычках", audit_runners,
+         {"a.yml": GOOD_FLOW.replace("ubuntu-26.04", '"macos-latest"')}, True),
+        ("исполнитель из матрицы — не предмет", audit_runners,
+         {"a.yml": GOOD_FLOW.replace("ubuntu-26.04", "${{ matrix.os }}")}, False),
+        ("latest в шаге, а не в runs-on — не предмет", audit_runners,
+         {"a.yml": GOOD_FLOW.replace("run: echo", "run: echo ubuntu-latest")}, False),
 
         ("гейт зовёт помощника и проверен набором", audit_voice, {"a.py": VOICE_OK}, False),
         ("причина печатается в поток", audit_voice,
@@ -2690,7 +2708,7 @@ def selftest() -> int:
     LABELS_TWO = 'PIPELINE = frozenset({"hold", "wip"})\n'
     FLOW_ONE = "jobs:\n  a:\n    if: >-\n      !contains(fromJSON('[\"hold\"]'), x)\n"
     FLOW_TWO = "jobs:\n  a:\n    if: >-\n      !contains(fromJSON('[\"hold\",\"wip\"]'), x)\n"
-    FLOW_NONE = "jobs:\n  a:\n    runs-on: ubuntu-latest\n"
+    FLOW_NONE = "jobs:\n  a:\n    runs-on: ubuntu-26.04\n"
     pipeline_cases = [
         ("список и копия сходятся", LABELS_SRC, FLOW_ONE, False),
         ("в коде добавилась метка, в копии нет", LABELS_TWO, FLOW_ONE, True),
