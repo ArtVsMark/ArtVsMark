@@ -24,6 +24,10 @@
 режиму соседей. Без него схема и номер ищутся рядом со скриптом. Держит набор
 пробой переноса: файл, скопированный в пустой каталог, обязан отработать.
 
+МАНИФЕСТ СЕМЬИ (С 1.6, #316). Рядом с фактами издатель кладёт
+``contracts.json`` — форму держит каталог (контракт ``family``), здесь читается
+только её мажор. Нет манифеста или мажор не тот — совет ``⚠``; в 2.0 — отказ.
+
 Запуск::
 
     python scripts/check_facts.py              # все проекты из projects.json
@@ -80,6 +84,11 @@ PROJECTS_PATH = ROOT / "projects.json"
 #: Адрес файла у издателя. Один на всех — в этом и решение.
 FACTS_PATH = ".github/badges/facts.json"
 FACTS_REF = "badges"
+#: Манифест семьи — рядом с фактами, на той же ветке (договор 1.6, #316).
+MANIFEST_PATH = ".github/badges/contracts.json"
+#: Мажор формы ``family``, на который договор соглашается. Номер, а не форма:
+#: форму целиком судит каталог (``family.изъян_формы``), копии здесь нет (090).
+FAMILY_MAJOR = "1"
 
 #: Ключевые слова, которые разбор понимает. Служебные — только подписи.
 KEYWORDS = {"type", "required", "properties", "additionalProperties", "items",
@@ -228,6 +237,27 @@ def advise(facts: object, schema: dict, current: str) -> list[str]:
     return said
 
 
+def advise_family(manifest: object | None) -> list[str]:
+    """Совет договора 1.6 о манифесте семьи — наличие и мажор формы. Кода не меняет.
+
+    Каталог собирает манифесты семьи в сводку, и семейный значок каждого
+    проекта сверяет по ней издателей; без манифеста издатель для семьи серый.
+    Здесь читается только номер формы (157) — форму целиком держит каталог
+    своим кодом, и вторая её запись разошлась бы с первой (090). В 2.0
+    манифест обязателен (решение владельца 9 октября, #309, #316).
+    """
+    if manifest is None:
+        return [f"манифеста семьи нет: {MANIFEST_PATH} в ветке {FACTS_REF} рядом с "
+                f"facts.json — форма у каталога (контракт family {FAMILY_MAJOR}.x); "
+                f"в 2.0 обязателен"]
+    published = manifest.get("schema") if isinstance(manifest, dict) else None
+    if not (isinstance(published, str) and re.fullmatch(r"\d+\.\d+", published)
+            and published.split(".")[0] == FAMILY_MAJOR):
+        return [f"манифест семьи: формат {published!r} — не family {FAMILY_MAJOR}.x "
+                f"строкой; форму держит каталог (scripts/family.py, изъян_формы)"]
+    return []
+
+
 def contract_version(text: str) -> str:
     """Номер договора ``X.Y.Z`` из ``.rules/facts.version``. Иная форма — ``ValueError``."""
     number = text.strip()
@@ -278,7 +308,7 @@ def contract_drift(number: str, schema: dict, prose: str) -> list[str]:
     return found
 
 
-def fetch(repo: str) -> object | None:
+def fetch(repo: str, path: str = FACTS_PATH) -> object | None:
     """Файл соседа по адресу договора. ``None`` — файла нет (404).
 
     Иной отказ площадки — исключение: «не ответил» и «нет файла» разные вещи.
@@ -289,12 +319,22 @@ def fetch(repo: str) -> object | None:
         raise OSError("режим соседей — витринный: рядом нет checks.py, "
                       "издателю нужен --file")
     try:
-        payload = checks.rest(f"/repos/{repo}/contents/{FACTS_PATH}?ref={FACTS_REF}")
+        payload = checks.rest(f"/repos/{repo}/contents/{path}?ref={FACTS_REF}")
     except urllib.error.HTTPError as refusal:
         if refusal.code == 404:
             return None
         raise
     return json.loads(base64.b64decode(payload["content"]))
+
+
+def read_manifest(path: pathlib.Path) -> object | None:
+    """Манифест семьи с диска. ``None`` — файла нет; не JSON — строка-причина для совета."""
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None
+    except ValueError:
+        return "не JSON"
 
 
 def selftest() -> int:
@@ -415,6 +455,25 @@ def selftest() -> int:
             broken.append(f"совет, {name}: ждали {expected or 'молчание'}, вышло {said}")
         print(f"  {'да ' if ok else 'НЕТ'} — совет: {name}")
 
+    # Манифест семьи (1.6) — обе стороны: нет файла, не та форма — совет;
+    # family 1.x любого минора — молчание. Форму целиком судит каталог.
+    family_cases = [
+        ("манифест family 1.1 — молчит", {"schema": "1.1"}, None),
+        ("двузначный минор формы — законно", {"schema": "1.10"}, None),
+        ("манифеста нет", None, "манифеста семьи нет"),
+        ("мажор формы не тот", {"schema": "2.0"}, "не family 1.x"),
+        ("номер числом, а не строкой", {"schema": 1.1}, "не family 1.x"),
+        ("номер не той формы", {"schema": "1"}, "не family 1.x"),
+        ("файл не JSON", "не JSON", "не family 1.x"),
+        ("не объект", [1], "не family 1.x"),
+    ]
+    for name, manifest, expected in family_cases:
+        said = advise_family(manifest)
+        ok = (not said) if expected is None else any(expected in line for line in said)
+        if not ok:
+            broken.append(f"манифест, {name}: ждали {expected or 'молчание'}, вышло {said}")
+        print(f"  {'да ' if ok else 'НЕТ'} — манифест: {name}")
+
     # Номер договора один: заголовки схемы и прозы сверяются с источником.
     titled = {**schema, "title": "facts.json — договор 1.4"}
     prose = ("x\n## Единые требования · договор 1.4\n"
@@ -494,17 +553,28 @@ def selftest() -> int:
             shutil.copy(source, tmp)
         spoiled = pathlib.Path(tmp) / "spoiled.json"
         spoiled.write_text(json.dumps({**example, "commit": "abc"}), encoding="utf-8")
-        for name, target, expected in (("образец", EXAMPLE_PATH.name, 0),
-                                       ("испорченный образец", spoiled.name, 1)):
+        # Манифест рядом с фактами — так он лежит у издателя перед публикацией.
+        # Без него совет «манифеста нет», код тот же: 1.x советует (051).
+        family = pathlib.Path(tmp) / "family"
+        family.mkdir()
+        (family / "contracts.json").write_text('{"schema": "1.1"}', encoding="utf-8")
+        shutil.copy(EXAMPLE_PATH, family / "facts.json")
+        for name, target, expected, warns in (
+                ("образец", EXAMPLE_PATH.name, 0, True),
+                ("испорченный образец", spoiled.name, 1, True),
+                ("образец с манифестом рядом", "family/facts.json", 0, False)):
             run = subprocess.run([sys.executable, "-I", "check_facts.py", "--file", target,
                                   "--repo", str(example["repo"])], cwd=tmp,
                                  capture_output=True, text=True, encoding="utf-8")
-            if run.returncode != expected:
+            warned = "манифеста семьи нет" in run.stdout
+            ok = run.returncode == expected and warned == warns
+            if not ok:
                 last = (run.stderr.strip().splitlines() or ["вывода нет"])[-1]
-                broken.append(f"перенос, {name}: ждали исход {expected}, вышло "
-                              f"{run.returncode} — последняя строка: {last}")
-            print(f"  {'да ' if run.returncode == expected else 'НЕТ'} — перенос без "
-                  f"checks витрины: {name} — исход {run.returncode}")
+                broken.append(f"перенос, {name}: ждали исход {expected} и совет "
+                              f"{'есть' if warns else 'нет'}, вышло {run.returncode} и "
+                              f"{'есть' if warned else 'нет'} — последняя строка: {last}")
+            print(f"  {'да ' if ok else 'НЕТ'} — перенос без checks витрины: {name} — "
+                  f"исход {run.returncode}, совет о манифесте {'есть' if warned else 'нет'}")
 
     # Незнакомое ключевое слово в схеме — отказ, а не пропуск требования.
     try:
@@ -526,6 +596,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--file", help="проверить локальный файл вместо соседей")
     parser.add_argument("--repo", help="чей это файл — для --file")
+    parser.add_argument("--manifest", type=pathlib.Path,
+                        help="манифест семьи для --file; по умолчанию — contracts.json "
+                             "рядом с файлом фактов")
     parser.add_argument("--schema", type=pathlib.Path, default=SCHEMA_PATH,
                         help="схема договора; по умолчанию — из дерева или рядом")
     parser.add_argument("--version", type=pathlib.Path, default=VERSION_PATH,
@@ -567,12 +640,14 @@ def main() -> int:
         try:
             facts = json.loads(pathlib.Path(args.file).read_text(encoding="utf-8"))
             found = check(facts, args.repo, schema)
+            manifest = read_manifest(args.manifest
+                                     or pathlib.Path(args.file).parent / "contracts.json")
         except (OSError, ValueError) as error:
             print(f"проверка не отработала: файл не прочитан — {error}", file=sys.stderr)
             return 2
         for line in found:
             print(f"  • {line}")
-        for line in advise(facts, schema, current):
+        for line in advise(facts, schema, current) + advise_family(manifest):
             print(f"  ⚠ {line}")
         print(f"{args.repo}: {'договору отвечает' if not found else f'расхождений {len(found)}'}")
         return 1 if found else 0
@@ -593,7 +668,15 @@ def main() -> int:
             continue
         found = ([f"файла нет: {FACTS_PATH} в ветке {FACTS_REF}"] if facts is None
                  else check(facts, repo, schema))
-        said = advise(facts, schema, current)
+        try:
+            manifest = fetch(repo, MANIFEST_PATH)
+        except ValueError:      # файл есть, но не JSON — это форма, а не молчание
+            manifest = "не JSON"
+        except (urllib.error.URLError, OSError, KeyError) as error:
+            silent.append(repo)
+            print(annotate("warning", f"{repo}: площадка не ответила о contracts.json — {error}"))
+            continue
+        said = advise(facts, schema, current) + advise_family(manifest)
         total += len(found)
         advised += len(said)
         print(f"{repo}: {'договору отвечает' if not found else f'расхождений {len(found)}'}")
