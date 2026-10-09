@@ -39,7 +39,9 @@
 
     python scripts/stuck_prs.py [--minutes 5] [--dry-run]
 
-Исходы: 0 — застрявших нет; 1 — есть, задача заведена или обновлена;
+Исходы: 0 — застрявших и мигнувших нет; 1 — есть застрявшее изменение или
+прогон, позеленевший не с первой попытки (124), и задача по нему заведена или
+обновлена;
 2 — сторож не отработал (площадка не ответила, ответ не разобран).
 """
 
@@ -71,6 +73,16 @@ REQUIRED = "PR check"
 #: По этой строке задача находится снова. Одна задача на весь предмет: вторая
 #: означала бы, что о том же кричат дважды.
 MARKER = "<!-- stuck-prs: не удаляйте, по этой строке задача находится снова -->"
+
+#: Второй предмет сторожа — мигание (124): прогон, позеленевший не с первой
+#: попытки. Своя задача и свой маркер: застрявшее изменение и мигающая проверка
+#: чинятся по-разному, и одна задача на оба смешала бы адресатов.
+FLAKY_MARKER = "<!-- flaky-runs: не удаляйте, по этой строке задача находится снова -->"
+
+#: Окно, за которое спрашиваются успешные прогоны. Сторож ходит дважды в час,
+#: и сутки покрывают его с запасом, а задача обновляется, а не множится:
+#: тот же прогон в следующем окне — та же строка, не новая находка.
+FLAKY_HOURS = 24
 
 
 def stuck(change: dict, checked: str | None, now: dt.datetime,
@@ -107,6 +119,27 @@ def stuck(change: dict, checked: str | None, now: dt.datetime,
             f"{REQUIRED} зелёная, автомерж включён, конфликтов нет, "
             f"а состояние не менялось {idle:.0f} мин "
             f"(состояние: {change.get('mergeable_state', '—')})")
+
+
+def flaky(run: dict) -> str | None:
+    """Прогон, ставший зелёным не с первой попытки, — находка о мигании (124).
+
+    ПРИЗНАК ОТДАЁТ ПЛОЩАДКА: номер попытки (``run_attempt``) лежит в самом
+    прогоне. Зелёное со второго раза — не «прошло», а «прошло, когда
+    повторили»: дефект, который в следующий раз может и не пройти. Списать его
+    на случайность значило бы перестать его видеть.
+
+    Не находка: первая попытка, неуспешный исход (у красного свой адресат —
+    изменение или дежурный по общей ветке), отменённый прогон.
+    """
+    if run.get("conclusion") != "success":
+        return None
+    attempt = run.get("run_attempt") or 1
+    if attempt <= 1:
+        return None
+    return (f"«{checks.clip(str(run.get('name', '?')), 40)}» на "
+            f"{str(run.get('head_branch', '?'))} — зелёная с попытки {attempt}: "
+            f"{run.get('html_url', '')}")
 
 
 def required_verdict(number: int) -> str | None:
@@ -161,6 +194,31 @@ def body(found: list[str], minutes: int) -> str:
     return "\n".join(lines) + "\n"
 
 
+def flaky_body(found: list[str], hours: int) -> str:
+    """Тело задачи о мигании: что мигнуло и почему это не «прошло»."""
+    lines = [
+        FLAKY_MARKER,
+        "",
+        "Прогон **позеленел не с первой попытки**, и это заметил механизм.",
+        "",
+        "Зелёное со второго раза — не «прошло», а «прошло, когда повторили»:",
+        "дефект на месте и в следующий раз может не пройти вовсе (124). Номер",
+        "попытки отдаёт площадка, и списывать его на случайность значит",
+        "перестать видеть частоту.",
+        "",
+        "Разбирается причина первой попытки — её лог лежит у прогона, — а не",
+        "сам факт повтора.",
+        "",
+        "Задача ведётся одна: пока открыта, следующие прогоны обновляют её тело.",
+        "Закройте её сами — закрытие говорит «я посмотрел».",
+        "",
+        f"## Мигнуло за последние {hours} ч",
+        "",
+    ]
+    lines += [f"- {line}" for line in found]
+    return "\n".join(lines) + "\n"
+
+
 def reread(sent: str, returned: object) -> str:
     """Опубликованное перечитывается по ответу на запись (188). Пусто — то же.
 
@@ -175,18 +233,28 @@ def reread(sent: str, returned: object) -> str:
 
 
 def sync_issue(found: list[str], minutes: int, dry: bool) -> str:
-    """Заводит или обновляет ОДНУ задачу. Возвращает, что сделано."""
+    """Заводит или обновляет ОДНУ задачу о застрявших. Возвращает, что сделано."""
+    return _sync(MARKER, "Изменение готово и не слито дольше порога",
+                 body(found, minutes), dry)
+
+
+def sync_flaky(found: list[str], hours: int, dry: bool) -> str:
+    """Заводит или обновляет ОДНУ задачу о мигании. Возвращает, что сделано."""
+    return _sync(FLAKY_MARKER, "Прогон позеленел не с первой попытки",
+                 flaky_body(found, hours), dry)
+
+
+def _sync(marker: str, title: str, text: str, dry: bool) -> str:
+    """Одна задача на предмет: находится по маркеру, тело перечитывается (188)."""
     issues = checks.rest_list(f"/repos/{REPO}/issues?state=open&per_page=100")
-    existing = next((i for i in issues if MARKER in (i.get("body") or "")), None)
-    text = body(found, minutes)
+    existing = next((i for i in issues if marker in (i.get("body") or "")), None)
     if dry:
         return f"вхолостую: {'обновил бы' if existing else 'завёл бы'} задачу"
     if existing:
         done = checks.rest(f"/repos/{REPO}/issues/{existing['number']}", "PATCH", {"body": text})
         return f"задача #{existing['number']} обновлена" + reread(text, done)
     made = checks.rest(f"/repos/{REPO}/issues", "POST",
-                 {"title": "Изменение готово и не слито дольше порога",
-                  "body": text, "labels": ["bug"]})
+                 {"title": title, "body": text, "labels": ["bug"]})
     return f"задача #{made['number']} заведена" + reread(text, made)
 
 
@@ -241,6 +309,31 @@ def selftest() -> int:
             broken.append(f"тело задачи не несёт {part!r}")
     print("  да  — тело задачи: находка, способ, граница и кто закрывает")
 
+    # ── мигание (124) ──────────────────────────────────────────────────────
+    # Соседи признака поимённо: первая попытка, красное, отменённое, попытка
+    # не указана вовсе — не находка; зелёное со второй и с третьей — находка.
+    flaky_cases = [
+        ("зелёная со второй попытки", {"conclusion": "success", "run_attempt": 2}, True),
+        ("зелёная с третьей", {"conclusion": "success", "run_attempt": 3}, True),
+        ("зелёная с первой", {"conclusion": "success", "run_attempt": 1}, False),
+        ("красная со второй — свой адресат", {"conclusion": "failure", "run_attempt": 2}, False),
+        ("отменённая", {"conclusion": "cancelled", "run_attempt": 2}, False),
+        ("попытка не указана — первая", {"conclusion": "success"}, False),
+    ]
+    for name, run, expected in flaky_cases:
+        got = flaky({"name": REQUIRED, "head_branch": "agent/x", "html_url": "u", **run})
+        if bool(got) != expected:
+            broken.append(f"мигание, {name}: ожидалось {expected}, вышло {got!r}")
+        print(f"  {'найдено ' if got else 'пропущено'} — мигание: {name}")
+    said = flaky({"name": REQUIRED, "head_branch": "agent/x", "html_url": "https://r/1",
+                  "conclusion": "success", "run_attempt": 2})
+    for part in (REQUIRED, "agent/x", "попытки 2", "https://r/1"):
+        if part not in (said or ""):
+            broken.append(f"мигание: находка не называет {part!r}")
+    text = flaky_body([said or ""], FLAKY_HOURS)
+    if FLAKY_MARKER not in text or MARKER in text:
+        broken.append("мигание: тело задачи несёт не свой маркер — задачи смешаются")
+
     if broken:
         print(checks.annotate("error", "самопроверка провалена"), file=sys.stderr)
         for line in broken:
@@ -272,6 +365,13 @@ def main() -> int:
             reason = stuck(full, required_verdict(short["number"]), now, args.minutes)
             if reason:
                 found.append(reason)
+        # Окно по времени создания — фильтр площадки: обход всей истории
+        # прогонов страницами ради суток был бы тысячей лишних запросов.
+        since = (now - dt.timedelta(hours=FLAKY_HOURS)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        runs = checks.rest_list(
+            f"/repos/{REPO}/actions/runs?status=success&created=>={since}&per_page=100",
+            key="workflow_runs")
+        blinked = [line for line in map(flaky, runs) if line]
     except (urllib.error.URLError, OSError, ValueError, KeyError, TypeError) as refusal:
         # Третий исход: площадка не ответила. Чинит это тот, кто запускает, а не
         # автор изменения, и красным становится прогон, а не находка (039).
@@ -279,16 +379,26 @@ def main() -> int:
                               f"— {refusal}"), file=sys.stderr)
         return 2
 
-    if not found:
+    print(f"мигание: успешных прогонов за {FLAKY_HOURS} ч {len(runs)}, "
+          f"не с первой попытки {len(blinked)}")
+    if not found and not blinked:
         print(f"застрявших изменений нет: открытых {len(opened)}, "
               f"порог {args.minutes} мин")
         return 0
 
-    print(checks.annotate("warning", f"готовы и не слиты: {len(found)}"))
-    for line in found:
-        print(f"  • {line}")
+    if found:
+        print(checks.annotate("warning", f"готовы и не слиты: {len(found)}"))
+        for line in found:
+            print(f"  • {line}")
+    if blinked:
+        print(checks.annotate("warning", f"позеленели не с первой попытки: {len(blinked)}"))
+        for line in blinked:
+            print(f"  • {line}")
     try:
-        print(sync_issue(found, args.minutes, args.dry_run))
+        if found:
+            print(sync_issue(found, args.minutes, args.dry_run))
+        if blinked:
+            print(sync_flaky(blinked, FLAKY_HOURS, args.dry_run))
     except (urllib.error.URLError, OSError, ValueError, KeyError) as refusal:
         print(checks.annotate("error", f"находка есть, а адресата нет: задача не "
                               f"заведена — {refusal}"), file=sys.stderr)
