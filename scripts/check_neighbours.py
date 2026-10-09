@@ -38,10 +38,19 @@
 файле вне ``checks.BEHAVIOUR`` — разметки страницы, например. Обе стороны
 границы названы, а не подразумеваются (правило 057).
 
+ВТОРОЙ ПРЕДМЕТ — СТОП ПОЧИНКАМ ПО ОДНОЙ ФОРМЕ (210). Имя верхнего уровня в
+``scripts/*.py``, которое правили оба последних изменения общей ветки,
+тронувшие его файл, и правит этот заход, — третья правка одного места подряд.
+Тогда сообщения захода обязаны нести перечень форм с числом; нет —
+ПРЕДУПРЕЖДЕНИЕ, а не отказ (051): тождество места машина видит только по
+имени, а место — вопрос, который решает код, и совпадение имени его не
+доказывает.
+
 Запуск::  python scripts/check_neighbours.py [origin/main..HEAD]
 Исходы: 0 — чисто; 1 — правка поведения без ответа о соседях; 2 — не отработал.
 """
 
+import re
 import subprocess
 import sys
 
@@ -119,6 +128,58 @@ def audit(commits: list[tuple[str, str, int, list[str]]]) -> tuple[list[str], li
         else:
             said.append(f"{title}: {text}")
     return found, said
+
+
+#: Число форм в сообщении — формы взяты замером по истории общей ветки (206):
+#: «Итого форм 5», «**2 формы**», «Перечень форм:» со списком ниже.
+FORMS_COUNTED = re.compile(r"форм[а-яё]*\W{0,3}\d+|\d+\**\s*форм|перечень форм",
+                           re.IGNORECASE)
+#: Имя верхнего уровня в заголовке ханка или в самой строке правки.
+TOP_NAME = re.compile(r"^(?:async\s+)?(?:def|class)\s+(\w+)")
+HUNK = re.compile(r"^@@ [^@]* @@ ?(.*)$")
+#: Сборщики — не места. Место по 210 — вопрос, который решает код; ``main``
+#: подключает признаки, ``selftest`` их прогоняет, и правит их каждый новый
+#: признак. Замер 9 октября: ``check_mechanisms.main`` правили #327 и #329 —
+#: оба добавляли гейт, а не чинили один вопрос.
+GATHERERS = frozenset({"main", "selftest"})
+
+
+def touched_names(diff: str) -> set[tuple[str, str]]:
+    """Имена верхнего уровня в ``scripts/*.py``, которые правит дифф (-U0).
+
+    Имя берётся из заголовка ханка — git ставит туда ближайшую строку без
+    отступа, то есть ``def``/``class`` верхнего уровня, — и из самих строк
+    правки, если правится заголовок функции.
+    """
+    names: set[tuple[str, str]] = set()
+    path = ""
+    for line in diff.splitlines():
+        if line.startswith("+++ "):
+            target = line[4:].removeprefix("b/")
+            path = target if target.startswith("scripts/") and target.endswith(".py") else ""
+        elif not path:
+            continue
+        elif m := HUNK.match(line):
+            if top := TOP_NAME.match(m[1]):
+                names.add((path, top[1]))
+        elif line[:1] in "+-" and not line.startswith(("+++", "---")):
+            if top := TOP_NAME.match(line[1:]):
+                names.add((path, top[1]))
+    return names
+
+
+def repeated(now: set[tuple[str, str]], before: dict[str, list[set[tuple[str, str]]]]
+             ) -> list[tuple[str, str]]:
+    """Места, которые правили оба прошлых изменения их файла и правит этот (210)."""
+    return sorted(place for place in now
+                  if place[1] not in GATHERERS
+                  and len(before.get(place[0], [])) >= 2
+                  and all(place in earlier for earlier in before[place[0]][:2]))
+
+
+def forms_named(messages: list[str]) -> bool:
+    """Сообщения захода называют число форм — перечнем или итогом."""
+    return any(FORMS_COUNTED.search(message) for message in messages)
 
 
 def _git(*args: str) -> str:
@@ -228,6 +289,36 @@ def selftest() -> int:
         broken.append(f"коммит в претензии не назван: {found!r}")
     print(f"  назван    — коммит в претензии: {found[0].split(':')[0]}")
 
+    # Третья правка одного места (210) — обе стороны.
+    before_210 = len(broken)
+    diff = ("+++ b/scripts/a.py\n@@ -10,2 +10,3 @@ def parse(text):\n+    x = 1\n"
+            "+++ b/README.md\n@@ -1 +1 @@ def nope():\n+y\n"
+            "+++ b/scripts/b.py\n@@ -0,0 +1,2 @@\n+def fresh():\n+    pass\n")
+    got = touched_names(diff)
+    want = {("scripts/a.py", "parse"), ("scripts/b.py", "fresh")}
+    if got != want:
+        broken.append(f"имена правки: ждали {want}, вышло {got}")
+    place = ("scripts/a.py", "parse")
+    other = ("scripts/a.py", "other")
+    for name, before, expected in (
+            ("оба прошлых правили то же имя — третья подряд", {"scripts/a.py": [{place}, {place}]}, [place]),
+            ("одно из двух прошлых — другое имя", {"scripts/a.py": [{place}, {other}]}, []),
+            ("у файла одна прошлая правка", {"scripts/a.py": [{place}]}, []),
+            ("прошлых правок нет", {}, []),
+            ("сборщик main — не место", {"scripts/a.py": [{("scripts/a.py", "main")}] * 2}, [])):
+        got = repeated({place, ("scripts/a.py", "main")}, before)
+        if got != expected:
+            broken.append(f"повтор места, {name}: ждали {expected}, вышло {got}")
+    for message, expected in (("Итого форм 5, все в наборе.", True),
+                              ("(перечень по 210, **2 формы**)", True),
+                              ("Перечень форм:\n- a\n- b", True),
+                              ("Починка формы клетки.", False),
+                              ("Набор: восемь случаев.", False)):
+        if forms_named([message]) is not expected:
+            broken.append(f"число форм, {message!r}: ждали {expected}")
+    print(f"  {'верно' if len(broken) == before_210 else 'СБОЙ '} — третья правка места "
+          f"и число форм (210)")
+
     if broken:
         print(checks.annotate("error", "самопроверка провалена"), file=sys.stderr)
         for line in broken:
@@ -254,6 +345,27 @@ def main() -> int:
         return 2
 
     found, said = audit(commits)
+
+    # Третья правка одного места подряд (210) — предупреждение, исход не
+    # меняет. История — общей ветки до основания захода: её изменения слиты
+    # уплотнением, по коммиту на изменение.
+    try:
+        now = touched_names(_git("diff", "-U0", f"{base}...{head}", "--", "scripts/"))
+        before = {path: [touched_names(_git("show", "-U0", "--format=", sha, "--", path))
+                         for sha in _git("log", "-2", "--format=%H", base, "--",
+                                         path).split()]
+                  for path in {path for path, _ in now}}
+    except (subprocess.CalledProcessError, OSError) as e:
+        print(checks.annotate("warning", f"повтор места не проверен: история не "
+                              f"прочитана — {e}"))
+        now, before = set(), {}
+    places = repeated(now, before)
+    if places and not forms_named([message for message, *_ in commits]):
+        print(checks.annotate("warning", "третья правка одного места подряд, а перечня "
+                              "форм с числом в сообщениях нет: "
+                              + ", ".join(f"{path}::{name}" for path, name in places)
+                              + " — вторая находка по одному месту — стоп починкам по "
+                              "одной форме (210)"))
     if found:
         print(checks.annotate("error", f"о соседях не сказано: {len(found)}"),
               file=sys.stderr)
