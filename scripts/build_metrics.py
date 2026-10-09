@@ -3047,6 +3047,35 @@ def patch_readme(values: dict[str, object], fresh: dict[str, str],
 ZERO_IS_A_STATE: set[str] = set()
 
 
+#: Что двигает каждый показатель витрины (200). Число, у которого нет события,
+#: способного его сдвинуть, — не измерение, а константа в рамке: равное
+#: знаменателю по построению «100%» выглядит результатом, а результатом не
+#: является. Событие снято с источника показателя в этом же файле.
+METRIC_EVENTS: dict[str, str] = {
+    "projects": "пуш в любой проект меняет порядок; правка projects.json — состав",
+    "required": "правка набора обязательных проверок ветки main грейдера (required_checks)",
+    "os": "правка матрицы тестов грейдера — файл фактов, поле python (matrix_text)",
+    "py": "выход версии Python и правка планки грейдера — файл фактов (matrix_text)",
+    "exp": "предрелизная версия Python входит в матрицу грейдера или выходит из неё",
+    "releases": "новый выпуск грейдера (release_count)",
+    "rules": "каталог принял или удалил правило — выгрузка, поле count",
+    "signed": "коммит в main витрины с трейлерами или без; старый выходит из окна 30 дней",
+    "signed-total": "любой коммит в main витрины; старый выходит из окна 30 дней",
+    "profile-cards": "активность аккаунта: репозитории, звёзды, подписчики, вклад",
+}
+
+def unexplained_metrics(keys: set[str]) -> list[str]:
+    """Ключи сборки без объявленного события, которое их двигает (200).
+
+    Страницу — маркеры README — сверяет scripts/check_page.py::audit_metric_events:
+    README читает он, а сборке читать свой вывод с диска значило бы завести
+    четвёртого читателя к трём названным (119).
+    """
+    return [f"показатель {key}: не объявлено, какое событие его двигает — "
+            f"число без события неотличимо от константы (200)"
+            for key in sorted(keys) if not METRIC_EVENTS.get(key, "").strip()]
+
+
 def unanswered(measured: dict[str, object]) -> list[str]:
     """Метрики, по которым источник не ответил.
 
@@ -4275,6 +4304,18 @@ def selftest() -> int:
         broken.append(f"читаемость: числа .rules/roles.md разошлись с расчётом: {measured}")
     print(f"  {[round(v, 2) for v in measured]} — числа свода сходятся с расчётом")
 
+    # ── у показателя есть событие (200) ───────────────────────────────────
+    every = set(METRIC_EVENTS)
+    event_cases = [
+        ("все ключи объявлены", every, 0),
+        ("новый ключ сборки без события", every | {"fresh"}, 1),
+    ]
+    for name, keys, expected in event_cases:
+        got = len(unexplained_metrics(keys))
+        if got != expected:
+            broken.append(f"событие показателя, {name}: ожидалось {expected}, вышло {got}")
+        print(f"  {got} находок — событие показателя: {name}")
+
     if broken:
         print("\nсамопроверка провалена:", file=sys.stderr)
         for line in broken:
@@ -4449,6 +4490,15 @@ def main() -> int:
     # красоты. Пока «4000+» собиралось раньше проверки, ноль тестов давал
     # «0000+» — строку, в которой сторож ноля не находит: он сравнивал с "0".
     # Метрика, попадающая в сторож уже строкой для показа, не проверена.
+    # У каждого показателя — событие, которое его двигает (200). Отказ в обоих
+    # режимах: пишущий прогон не должен вписывать число, о котором не сказано,
+    # что его может сдвинуть.
+    loose = unexplained_metrics(set(values))
+    if loose:
+        for line in loose:
+            print(checks.annotate("error", line), file=sys.stderr)
+        return 1
+
     empty = unanswered(values)
     if empty:
         print(checks.annotate("error", f"метрика не собралась ({', '.join(empty)}) "
