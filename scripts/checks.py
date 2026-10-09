@@ -43,9 +43,11 @@ GitHub отдаёт по одному имени столько записей, 
 
 import json
 import os
+import pathlib
 import re
 import subprocess
 import sys
+import tempfile
 import urllib.request
 
 
@@ -628,6 +630,33 @@ def selftest() -> int:
             pass
         else:
             broken.append(f"обрыв: ширина {bad} принята молча")
+
+    # ── пути из git по NUL, а не по строкам (правило 165) ─────────────────
+    # Дерево подделано теми самыми тремя именами, на которых дефект
+    # воспроизвели 3 сентября. Обе стороны: git_paths видит три пути целыми, а
+    # разбор по строкам на том же дереве ошибается — иначе подделка не кусает,
+    # и зелёное здесь ничего бы не доказывало.
+    names = ["assets/normal-dark.svg", "assets/утечка-dark.svg", "assets/с пробелом.svg"]
+    with tempfile.TemporaryDirectory(dir=runner_temp()) as tmp:
+        try:
+            subprocess.run(["git", "-C", tmp, "init", "-q"], check=True)
+            (pathlib.Path(tmp) / "assets").mkdir()
+            for name in names:
+                (pathlib.Path(tmp) / name).write_text("<svg/>", encoding="utf-8")
+            subprocess.run(["git", "-C", tmp, "add", "."], check=True)
+            seen = git_paths("ls-files", cwd=tmp)
+            lines = subprocess.run(["git", "-C", tmp, "ls-files"], capture_output=True,
+                                   text=True, encoding="utf-8", check=True).stdout.splitlines()
+        except (OSError, subprocess.CalledProcessError) as err:
+            broken.append(f"пути из git: подделанное дерево не собралось — {err}")
+            seen, lines = [], []
+    if sorted(seen) != sorted(names):
+        broken.append(f"пути из git: ожидались три пути целыми, вышло {seen!r}")
+    if seen and sum(line.endswith(".svg") for line in lines) != 1:
+        broken.append("пути из git: разбор по строкам на подделке не ошибся — "
+                      "дерево не воспроизводит дефект, случай ничего не проверяет")
+    print(f"  {sum(path in names for path in seen)} из {len(names)} — пути из git по NUL; "
+          f"по строкам с фильтром .svg — {sum(line.endswith('.svg') for line in lines)}")
 
     saved = os.environ.get("GITHUB_ACTIONS")
     try:
