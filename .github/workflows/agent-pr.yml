@@ -61,7 +61,7 @@ concurrency:
 jobs:
   open:
     name: agent-pr
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     env:
       MERGE_QUEUE_TOKEN: ${{ secrets.MERGE_QUEUE_TOKEN }}
