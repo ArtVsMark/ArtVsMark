@@ -17,11 +17,23 @@
 ИЗДАТЕЛЬ ПРОВЕРЯЕТ СЕБЯ ТОЙ ЖЕ СХЕМОЙ — у себя, до публикации. Эта проверка —
 взгляд потребителя: кто из соседей сейчас договору не отвечает и чем именно.
 
+ФАЙЛ САМОСТОЯТЕЛЕН — У ИЗДАТЕЛЯ ОН ЛЕЖИТ ОДИН (#309). Выпуск договора
+``facts-vX.Y.Z`` прикладывает этот файл рядом со схемой, номером и образцом, и
+издатель гоняет у себя ровно то, чем витрина судит его. Поэтому здесь только
+стандартная библиотека: ``checks`` витрины — необязательный импорт, нужный лишь
+режиму соседей. Без него схема и номер ищутся рядом со скриптом. Держит набор
+пробой переноса: файл, скопированный в пустой каталог, обязан отработать.
+
 Запуск::
 
     python scripts/check_facts.py              # все проекты из projects.json
     python scripts/check_facts.py --file f.json --repo владелец/имя
+    python scripts/check_facts.py --contract   # номер договора против заголовков
     python scripts/check_facts.py --selftest
+
+У издателя, из выпуска — файлы лежат рядом::
+
+    python check_facts.py --file .github/badges/facts.json --repo владелец/имя
 
 Исходы: 0 — все файлы отвечают договору; 1 — есть расхождения, перечислены по
 проектам; 2 — проверка не отработала: схема не прочитана, площадка не ответила
@@ -31,18 +43,37 @@
 import argparse
 import base64
 import json
+import os
 import pathlib
 import re
 import sys
 import urllib.error
 
-import checks
+try:
+    import checks
+except ImportError:          # у издателя файл лежит один — выпуском договора
+    checks = None
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
-SCHEMA_PATH = ROOT / ".rules" / "facts.schema.json"
+HERE = pathlib.Path(__file__).resolve().parent
+ROOT = HERE.parent
+
+
+def beside(path: pathlib.Path) -> pathlib.Path:
+    """Путь в дереве витрины, а без него — тот же файл рядом со скриптом.
+
+    В выпуске договора файлы лежат плоско: ``check_facts.py``,
+    ``facts.schema.json``, ``facts.version`` и образец — в одном каталоге.
+    """
+    return path if path.exists() else HERE / path.name
+
+
+SCHEMA_PATH = beside(ROOT / ".rules" / "facts.schema.json")
 #: Номер договора — здесь и только здесь (035). Заголовки схемы и прозы
 #: сверяет с ним ``contract_drift``; выпуск договора ставит тег ``facts-v<номер>``.
-VERSION_PATH = ROOT / ".rules" / "facts.version"
+VERSION_PATH = beside(ROOT / ".rules" / "facts.version")
+#: Образец файла по текущему договору — прикладывается к выпуску; набор держит,
+#: что он отвечает схеме без единого совета.
+EXAMPLE_PATH = beside(ROOT / ".rules" / "facts.example.json")
 CONTRACT_PATH = ROOT / ".rules" / "facts-contract.md"
 PROJECTS_PATH = ROOT / "projects.json"
 
@@ -64,6 +95,18 @@ TYPES = {
     "number": lambda v: isinstance(v, (int, float)) and not isinstance(v, bool),
     "boolean": lambda v: isinstance(v, bool),
 }
+
+
+def annotate(level: str, text: str) -> str:
+    """Строка находки командой площадки в прогоне — через ``checks`` витрины.
+
+    КОПИЯ НАМЕРЕННАЯ И В ТРИ СТРОКИ (071): у издателя ``checks`` нет, а
+    тащить его в выпуск значит выпускать всё хозяйство витрины ради одной
+    приставки. Признак прогона тот же — ``GITHUB_ACTIONS`` площадки.
+    """
+    if checks is not None:
+        return checks.annotate(level, text)
+    return f"::{level}::{text}" if os.environ.get("GITHUB_ACTIONS") == "true" else text
 
 
 def validate(value: object, schema: dict, path: str = "") -> list[str]:
@@ -219,7 +262,12 @@ def fetch(repo: str) -> object | None:
     """Файл соседа по адресу договора. ``None`` — файла нет (404).
 
     Иной отказ площадки — исключение: «не ответил» и «нет файла» разные вещи.
+    Без ``checks`` витрины спрашивать площадку нечем — это ``OSError``, то есть
+    «не отработала», а не «не отвечает».
     """
+    if checks is None:
+        raise OSError("режим соседей — витринный: рядом нет checks.py, "
+                      "издателю нужен --file")
     try:
         payload = checks.rest(f"/repos/{repo}/contents/{FACTS_PATH}?ref={FACTS_REF}")
     except urllib.error.HTTPError as refusal:
@@ -372,7 +420,7 @@ def selftest() -> int:
     real_prose = CONTRACT_PATH.read_text(encoding="utf-8")
     before = len(broken)
     saved_path, saved_argv = CONTRACT_PATH, sys.argv
-    with tempfile.TemporaryDirectory(dir=checks.runner_temp()) as tmp:
+    with tempfile.TemporaryDirectory(dir=os.environ.get("RUNNER_TEMP")) as tmp:
         stale = pathlib.Path(tmp) / "facts-contract.md"
         stale.write_text(re.sub(r"(## Единые требования · договор )\d+\.\d+",
                                 r"\g<1>0.9", real_prose), encoding="utf-8")
@@ -400,6 +448,40 @@ def selftest() -> int:
         except ValueError:
             pass
 
+    # Образец выпуска — по текущему договору, без единой находки и совета:
+    # издатель берёт его за основу, и устаревший образец учил бы старому.
+    number = contract_version(VERSION_PATH.read_text(encoding="utf-8"))
+    current = ".".join(number.split(".")[:2])
+    example = json.loads(EXAMPLE_PATH.read_text(encoding="utf-8"))
+    said = check(example, str(example.get("repo")), schema) + advise(example, schema, current)
+    if said or example.get("schema") != current:
+        broken.append(f"образец: формат {example.get('schema')} при договоре {current}, "
+                      f"находок и советов {len(said)} — {said}")
+    print(f"  {'да ' if not said and example.get('schema') == current else 'НЕТ'} — "
+          f"образец по договору {current} без находок и советов")
+
+    # Проба переноса: файл, скопированный в пустой каталог со схемой, номером и
+    # образцом, — ровно так он лежит в выпуске, — работает без checks витрины.
+    # Обе стороны: образец — исход 0, испорченный образец — исход 1.
+    import shutil                                              # noqa: PLC0415
+    import subprocess                                          # noqa: PLC0415
+    with tempfile.TemporaryDirectory(dir=os.environ.get("RUNNER_TEMP")) as tmp:
+        for source in (pathlib.Path(__file__), SCHEMA_PATH, VERSION_PATH, EXAMPLE_PATH):
+            shutil.copy(source, tmp)
+        spoiled = pathlib.Path(tmp) / "spoiled.json"
+        spoiled.write_text(json.dumps({**example, "commit": "abc"}), encoding="utf-8")
+        for name, target, expected in (("образец", EXAMPLE_PATH.name, 0),
+                                       ("испорченный образец", spoiled.name, 1)):
+            run = subprocess.run([sys.executable, "-I", "check_facts.py", "--file", target,
+                                  "--repo", str(example["repo"])], cwd=tmp,
+                                 capture_output=True, text=True, encoding="utf-8")
+            if run.returncode != expected:
+                last = (run.stderr.strip().splitlines() or ["вывода нет"])[-1]
+                broken.append(f"перенос, {name}: ждали исход {expected}, вышло "
+                              f"{run.returncode} — последняя строка: {last}")
+            print(f"  {'да ' if run.returncode == expected else 'НЕТ'} — перенос без "
+                  f"checks витрины: {name} — исход {run.returncode}")
+
     # Незнакомое ключевое слово в схеме — отказ, а не пропуск требования.
     try:
         validate({}, {"type": "object", "dependentRequired": {}})
@@ -408,7 +490,7 @@ def selftest() -> int:
         print("  да  — незнакомое ключевое слово схемы — отказ")
 
     if broken:
-        print(checks.annotate("error", "самопроверка провалена"), file=sys.stderr)
+        print(annotate("error", "самопроверка провалена"), file=sys.stderr)
         for line in broken:
             print(f"  {line}", file=sys.stderr)
         return 1
@@ -420,6 +502,10 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--file", help="проверить локальный файл вместо соседей")
     parser.add_argument("--repo", help="чей это файл — для --file")
+    parser.add_argument("--schema", type=pathlib.Path, default=SCHEMA_PATH,
+                        help="схема договора; по умолчанию — из дерева или рядом")
+    parser.add_argument("--version", type=pathlib.Path, default=VERSION_PATH,
+                        help="номер договора; по умолчанию — из дерева или рядом")
     parser.add_argument("--contract", action="store_true",
                         help="только сверить номер договора со схемой и прозой — без сети")
     parser.add_argument("--selftest", action="store_true")
@@ -428,10 +514,10 @@ def main() -> int:
     if args.selftest:
         return selftest()
     try:
-        schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
-        number = contract_version(VERSION_PATH.read_text(encoding="utf-8"))
+        schema = json.loads(args.schema.read_text(encoding="utf-8"))
+        number = contract_version(args.version.read_text(encoding="utf-8"))
     except (OSError, ValueError) as error:
-        print(checks.annotate("error", f"проверка не отработала: схема или номер договора "
+        print(annotate("error", f"проверка не отработала: схема или номер договора "
                               f"не прочитаны — {error}"), file=sys.stderr)
         return 2
     current = ".".join(number.split(".")[:2])
@@ -444,7 +530,7 @@ def main() -> int:
                   file=sys.stderr)
             return 2
         for line in drift:
-            print(checks.annotate("error", line), file=sys.stderr)
+            print(annotate("error", line), file=sys.stderr)
         if drift:
             return 1
         print(f"договор фактов {number}: схема и проза говорят тот же номер")
@@ -467,6 +553,10 @@ def main() -> int:
         print(f"{args.repo}: {'договору отвечает' if not found else f'расхождений {len(found)}'}")
         return 1 if found else 0
 
+    if checks is None:
+        print("проверка не отработала: режим соседей — витринный, рядом нет checks.py; "
+              "издателю нужен --file <facts.json> --repo <владелец/имя>", file=sys.stderr)
+        return 2
     repos = [p["repo"] for p in json.loads(PROJECTS_PATH.read_text(encoding="utf-8"))["projects"]]
     silent: list[str] = []
     total = advised = 0
@@ -475,7 +565,7 @@ def main() -> int:
             facts = fetch(repo)
         except (urllib.error.URLError, OSError, ValueError, KeyError) as error:
             silent.append(repo)
-            print(checks.annotate("warning", f"{repo}: площадка не ответила о facts.json — {error}"))
+            print(annotate("warning", f"{repo}: площадка не ответила о facts.json — {error}"))
             continue
         found = ([f"файла нет: {FACTS_PATH} в ветке {FACTS_REF}"] if facts is None
                  else check(facts, repo, schema))
@@ -489,7 +579,7 @@ def main() -> int:
             print(f"  ⚠ {line}")
 
     if silent:
-        print(checks.annotate("error", f"проверка не отработала: не ответили о "
+        print(annotate("error", f"проверка не отработала: не ответили о "
                               f"{len(silent)} из {len(repos)}"), file=sys.stderr)
         return 2
     # Предупреждения считаются отдельно и кода не меняют: в 1.4 они совет, в
