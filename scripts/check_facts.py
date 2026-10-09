@@ -40,6 +40,10 @@ import checks
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SCHEMA_PATH = ROOT / ".rules" / "facts.schema.json"
+#: Номер договора — здесь и только здесь (035). Заголовки схемы и прозы
+#: сверяет с ним ``contract_drift``; выпуск договора ставит тег ``facts-v<номер>``.
+VERSION_PATH = ROOT / ".rules" / "facts.version"
+CONTRACT_PATH = ROOT / ".rules" / "facts-contract.md"
 PROJECTS_PATH = ROOT / "projects.json"
 
 #: Адрес файла у издателя. Один на всех — в этом и решение.
@@ -148,6 +152,69 @@ def check(facts: object, repo: str, schema: dict) -> list[str]:
     return found
 
 
+#: Поля корня, которые договор знает, но не держит: подпись-комментарий ``_``.
+COMMENT_KEYS = {"_"}
+
+
+def advise(facts: object, schema: dict, current: str) -> list[str]:
+    """Предупреждения договора 1.4 — то, что 2.0 запретит. Код возврата не меняют.
+
+    * поле корня вне договора: своё проекта живёт в ``exchange.<тема>``, корень —
+      только договор. В 1.4 это совет, в 2.0 — отказ (решение владельца, #309);
+    * ``rules`` отдельно и с причиной: доли механизмов считает каталог одной
+      формулой на всех, второй источник того же числа расходится (090) —
+      замер 9 октября: у пяти издателей пять форм;
+    * версия формата ниже договора: файл верен своему минору, но отстал, и без
+      сигнала отставание незаметно — схема пропускает любой ``1.x``.
+    """
+    if not isinstance(facts, dict):
+        return []
+    said: list[str] = []
+    known = set(schema.get("properties", {})) | COMMENT_KEYS
+    for name in sorted(set(facts) - known):
+        if name == "rules":
+            said.append("rules: доли механизмов считает каталог по ответу проекта — "
+                        "в фактах это второй источник того же числа (090); убрать")
+        else:
+            said.append(f"{name}: поле вне договора в корне — место ему в "
+                        f"exchange.<тема> со своей schema")
+    published = facts.get("schema")
+    if isinstance(published, str) and re.fullmatch(r"\d+\.\d+", published):
+        if tuple(map(int, published.split("."))) < tuple(map(int, current.split("."))):
+            said.append(f"schema: формат {published} при договоре {current} — файл отстал")
+    return said
+
+
+def contract_version(text: str) -> str:
+    """Номер договора ``X.Y.Z`` из ``.rules/facts.version``. Иная форма — ``ValueError``."""
+    number = text.strip()
+    if not re.fullmatch(r"\d+\.\d+\.\d+", number):
+        raise ValueError(f"номер договора «{number}» не формы X.Y.Z")
+    return number
+
+
+def contract_drift(number: str, schema: dict, prose: str) -> list[str]:
+    """Заголовки схемы и прозы против номера договора. Пусто — номер один.
+
+    Номер вписан в два заголовка руками — читатель видит его, не открывая
+    третьего файла, — и потому обязан сверяться с источником (005, 035):
+    поднятый в одном месте договор иначе расходится молча.
+    """
+    series = ".".join(number.split(".")[:2])
+    found: list[str] = []
+    if not str(schema.get("title", "")).endswith(f"договор {series}"):
+        found.append(f"facts.schema.json: заголовок «{schema.get('title')}» не "
+                     f"кончается на «договор {series}»")
+    if f"## Единые требования · договор {series}" not in prose:
+        found.append(f"facts-contract.md: нет заголовка «## Единые требования · "
+                     f"договор {series}»")
+    if f"^{series.split('.')[0]}\\." not in schema.get("properties", {}).get(
+            "schema", {}).get("pattern", ""):
+        found.append(f"facts.schema.json: schema.pattern не принимает мажор "
+                     f"{series.split('.')[0]} договора")
+    return found
+
+
 def fetch(repo: str) -> object | None:
     """Файл соседа по адресу договора. ``None`` — файла нет (404).
 
@@ -241,6 +308,98 @@ def selftest() -> int:
                           f"вышло {found}")
         print(f"  {'да ' if ok else 'НЕТ'} — {name}")
 
+    # Обмен между проектами (1.4): тема со своей версией — законна; тема без
+    # версии и тема с именем не той формы — находки, а не советы.
+    exchange_cases = [
+        ("тема обмена со своей версией", with_(exchange={"glossary": {"schema": "1.0",
+                                                                     "cards": 2817}}), None),
+        ("тема без своей версии", with_(exchange={"glossary": {"cards": 1}}),
+         "exchange.glossary: нет обязательного поля «schema»"),
+        ("версия темы числом", with_(exchange={"glossary": {"schema": 1}}), "ожидался string"),
+        ("имя темы не той формы", with_(exchange={"Glossary!": {"schema": "1.0"}}),
+         "имя не из допустимых"),
+    ]
+    for name, facts, expected in exchange_cases:
+        found = check(facts, repo, schema)
+        ok = (not found) if expected is None else any(expected in line for line in found)
+        if not ok:
+            broken.append(f"{name}: ждали {'чисто' if expected is None else expected!r}, "
+                          f"вышло {found}")
+        print(f"  {'да ' if ok else 'НЕТ'} — {name}")
+
+    # Советы 1.4 — обе стороны: что 2.0 запретит, названо; договорное и
+    # подпись «_» — молчат; свой минор не отстаёт от себя.
+    advise_cases = [
+        ("эталон текущего формата — молчит", with_(schema="1.4"), []),
+        ("подпись «_» — не поле корня", with_(schema="1.4", _="комментарий"), []),
+        ("обмен — не поле корня", with_(schema="1.4", exchange={"x": {"schema": "1.0"}}), []),
+        ("своё поле в корне", with_(schema="1.4", glossary={"cards": 1}), ["glossary:"]),
+        ("rules — отдельно и с причиной", with_(schema="1.4", rules={}), ["rules:", "090"]),
+        ("отставший формат", with_(schema="1.2"), ["формат 1.2 при договоре 1.4"]),
+        ("формат новее договора — не отставание", with_(schema="1.5"), []),
+        ("двузначный минор — сравнение числом", with_(schema="1.10"), []),
+    ]
+    for name, facts, expected in advise_cases:
+        said = advise(facts, schema, "1.4")
+        ok = (not said) if not expected else all(any(part in line for line in said)
+                                                 for part in expected)
+        if not ok:
+            broken.append(f"совет, {name}: ждали {expected or 'молчание'}, вышло {said}")
+        print(f"  {'да ' if ok else 'НЕТ'} — совет: {name}")
+
+    # Номер договора один: заголовки схемы и прозы сверяются с источником.
+    titled = {**schema, "title": "facts.json — договор 1.4"}
+    prose = "x\n## Единые требования · договор 1.4\n"
+    drift_cases = [
+        ("заголовки совпадают с номером", "1.4.0", titled, prose, 0),
+        ("схема на прежнем номере", "1.4.0", {**titled, "title": "договор 1.3"}, prose, 1),
+        ("проза на прежнем номере", "1.4.0", titled, prose.replace("1.4", "1.3"), 1),
+        ("мажор договора не принят схемой", "2.0.0",
+         {**titled, "title": "договор 2.0"}, prose.replace("1.4", "2.0"), 1),
+        ("патч не трогает заголовков", "1.4.7", titled, prose, 0),
+    ]
+    for name, number_, schema_, prose_, expected in drift_cases:
+        got = len(contract_drift(number_, schema_, prose_))
+        if got != expected:
+            broken.append(f"номер договора, {name}: ждали {expected}, вышло {got}")
+        print(f"  {'да ' if got == expected else 'НЕТ'} — номер договора: {name}")
+    # Живой путь --contract: main на подставной прозе. Старый номер в
+    # заголовке — исход 1, верный — 0; сравнение прямо с main(), так его
+    # считает и храповик непрогнанных исходов (check_mechanisms).
+    import contextlib                                          # noqa: PLC0415
+    import io                                                  # noqa: PLC0415
+    import tempfile                                            # noqa: PLC0415
+    real_prose = CONTRACT_PATH.read_text(encoding="utf-8")
+    before = len(broken)
+    saved_path, saved_argv = CONTRACT_PATH, sys.argv
+    with tempfile.TemporaryDirectory(dir=checks.runner_temp()) as tmp:
+        stale = pathlib.Path(tmp) / "facts-contract.md"
+        stale.write_text(re.sub(r"(## Единые требования · договор )\d+\.\d+",
+                                r"\g<1>0.9", real_prose), encoding="utf-8")
+        fresh = pathlib.Path(tmp) / "fresh.md"
+        fresh.write_text(real_prose, encoding="utf-8")
+        sys.argv = ["check_facts.py", "--contract"]
+        try:
+            with contextlib.redirect_stdout(io.StringIO()), \
+                    contextlib.redirect_stderr(io.StringIO()):
+                globals()["CONTRACT_PATH"] = stale
+                if main() != 1:
+                    broken.append("--contract: проза на старом номере не отвергнута")
+                globals()["CONTRACT_PATH"] = fresh
+                if main() != 0:
+                    broken.append("--contract: верная проза отвергнута")
+        finally:
+            globals()["CONTRACT_PATH"] = saved_path
+            sys.argv = saved_argv
+    print(f"  {'да ' if len(broken) == before else 'НЕТ'} — --contract: старый номер в прозе — 1, верный — 0")
+
+    for bad in ("1.4", "v1.4.0", " ", "1.4.0.1"):
+        try:
+            contract_version(bad)
+            broken.append(f"номер договора «{bad}» принят")
+        except ValueError:
+            pass
+
     # Незнакомое ключевое слово в схеме — отказ, а не пропуск требования.
     try:
         validate({}, {"type": "object", "dependentRequired": {}})
@@ -261,6 +420,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--file", help="проверить локальный файл вместо соседей")
     parser.add_argument("--repo", help="чей это файл — для --file")
+    parser.add_argument("--contract", action="store_true",
+                        help="только сверить номер договора со схемой и прозой — без сети")
     parser.add_argument("--selftest", action="store_true")
     args = parser.parse_args()
 
@@ -268,29 +429,47 @@ def main() -> int:
         return selftest()
     try:
         schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+        number = contract_version(VERSION_PATH.read_text(encoding="utf-8"))
     except (OSError, ValueError) as error:
-        print(checks.annotate("error", f"проверка не отработала: схема не прочитана — {error}"),
-              file=sys.stderr)
+        print(checks.annotate("error", f"проверка не отработала: схема или номер договора "
+                              f"не прочитаны — {error}"), file=sys.stderr)
         return 2
+    current = ".".join(number.split(".")[:2])
+
+    if args.contract:
+        try:
+            drift = contract_drift(number, schema, CONTRACT_PATH.read_text(encoding="utf-8"))
+        except OSError as error:
+            print(f"проверка не отработала: проза договора не прочитана — {error}",
+                  file=sys.stderr)
+            return 2
+        for line in drift:
+            print(checks.annotate("error", line), file=sys.stderr)
+        if drift:
+            return 1
+        print(f"договор фактов {number}: схема и проза говорят тот же номер")
+        return 0
 
     if args.file:
         if not args.repo:
             print("проверка не отработала: к --file нужен --repo", file=sys.stderr)
             return 2
         try:
-            found = check(json.loads(pathlib.Path(args.file).read_text(encoding="utf-8")),
-                          args.repo, schema)
+            facts = json.loads(pathlib.Path(args.file).read_text(encoding="utf-8"))
+            found = check(facts, args.repo, schema)
         except (OSError, ValueError) as error:
             print(f"проверка не отработала: файл не прочитан — {error}", file=sys.stderr)
             return 2
         for line in found:
             print(f"  • {line}")
+        for line in advise(facts, schema, current):
+            print(f"  ⚠ {line}")
         print(f"{args.repo}: {'договору отвечает' if not found else f'расхождений {len(found)}'}")
         return 1 if found else 0
 
     repos = [p["repo"] for p in json.loads(PROJECTS_PATH.read_text(encoding="utf-8"))["projects"]]
     silent: list[str] = []
-    total = 0
+    total = advised = 0
     for repo in repos:
         try:
             facts = fetch(repo)
@@ -300,16 +479,23 @@ def main() -> int:
             continue
         found = ([f"файла нет: {FACTS_PATH} в ветке {FACTS_REF}"] if facts is None
                  else check(facts, repo, schema))
+        said = advise(facts, schema, current)
         total += len(found)
+        advised += len(said)
         print(f"{repo}: {'договору отвечает' if not found else f'расхождений {len(found)}'}")
         for line in found:
             print(f"  • {line}")
+        for line in said:
+            print(f"  ⚠ {line}")
 
     if silent:
         print(checks.annotate("error", f"проверка не отработала: не ответили о "
                               f"{len(silent)} из {len(repos)}"), file=sys.stderr)
         return 2
-    print(f"проектов {len(repos)}, расхождений {total}")
+    # Предупреждения считаются отдельно и кода не меняют: в 1.4 они совет, в
+    # 2.0 — отказ. Ноль здесь и есть условие подъёма мажора (#309).
+    print(f"проектов {len(repos)}, расхождений {total}, предупреждений {advised} "
+          f"(договор {number})")
     return 1 if total else 0
 
 
