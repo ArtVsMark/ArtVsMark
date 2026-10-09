@@ -1,0 +1,91 @@
+# Манифест семьи витрины на ветке badges (#316, #318).
+#
+# ЗАЧЕМ. Каталог собирает манифесты проектов семьи в сводку, и семейный значок
+# каждого проекта сверяет по ней, не отстал ли он от издателей. Витрина —
+# издатель договора фактов; пока её манифеста нет, блок AVM у всей семьи серый.
+#
+# ПОЧЕМУ ВЕТКА badges, А НЕ main. Манифест — производное: он выводится из
+# .rules/facts.version и тегов facts-v*, и в общей ветке протухал бы молча при
+# первом же выпуске (160). Ветка та же, где его ищет каталог у всех соседей.
+#
+# ПОЧЕМУ ФОРМУ СУДИТ КАТАЛОГ. Своей копии формы нет (090): сборщик зовёт
+# family.изъян_формы из дерева каталога на том же пине, что и остальные
+# прогоны. Каталог поднимет формат — сборщик назовёт расхождение номера.
+name: family-manifest
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".rules/facts.version"
+      - "scripts/family_manifest.py"
+      - ".github/workflows/family-manifest.yml"
+  # Выпуск договора меняет release манифеста: тег ставит facts-release.yml
+  # токеном человека, и это событие площадка прогоном считает.
+  release:
+    types: [published]
+  # У событийной автоматики всегда есть ручная кнопка (правило 104).
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: family-manifest
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: family-manifest
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      # На событии release площадка выдаёт дерево тега; номер договора и теги
+      # берутся с общей ветки — там же, где их видит каталог.
+      - name: Забрать витрину
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+          fetch-tags: true
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+
+      - name: Забрать форму манифеста у каталога
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ArtVsMark/Engineering-Incidents-Playbook
+          ref: 5d10def7c6c86224c4e162422aa2f933c2808f68 # v1.11.0, 2026-10-09
+          path: .family-gate
+
+      - name: Собрать манифест и сверить форму кодом каталога
+        run: python scripts/family_manifest.py --out "$RUNNER_TEMP/contracts.json" --catalogue .family-gate/scripts
+
+      # Ветки может не быть вовсе — тогда она заводится сиротой: в badges
+      # лежит только производное, истории main ей не нужно.
+      - name: Положить манифест на ветку badges
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/badges"
+          if git ls-remote --exit-code --heads origin badges >/dev/null; then
+            git fetch --depth 1 origin badges
+            git worktree add --detach "$dir" FETCH_HEAD
+          else
+            git worktree add --detach "$dir"
+            git -C "$dir" checkout --orphan badges-new
+            git -C "$dir" rm -rfq --ignore-unmatch .
+          fi
+          mkdir -p "$dir/.github/badges"
+          cp "$RUNNER_TEMP/contracts.json" "$dir/.github/badges/contracts.json"
+          git -C "$dir" add .github/badges/contracts.json
+          if git -C "$dir" diff --cached --quiet; then
+            echo "::notice::Манифест семьи не изменился — публиковать нечего."
+            exit 0
+          fi
+          git -C "$dir" -c user.name="github-actions[bot]" \
+            -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -q -m "chore(badges): манифест семьи — $(python -c 'import json,sys;d=json.load(open(sys.argv[1]));print("facts", d["gives"]["facts"], (d["release"] or {}).get("tag", "без выпуска"))' "$RUNNER_TEMP/contracts.json")"
+          git -C "$dir" push origin HEAD:refs/heads/badges
+          echo "::notice::Манифест семьи опубликован на ветке badges."
