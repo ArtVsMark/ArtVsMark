@@ -2047,6 +2047,42 @@ def live_calls(flow: str) -> list[tuple[str, str, bool]]:
     return calls
 
 
+#: Хук старта окна — тоже живой вызов: план окна бежит только там (091).
+HOOK = ROOT / ".claude/hooks/session-start.sh"
+
+#: Форма вызова в хуке: интерпретатор планки по переменной, путь от корня.
+HOOK_CALL = re.compile(r'scripts/(?P<script>[\w]+\.py)"?(?P<args>[^\n]*)')
+
+#: Модули без живой половины по устройству — ЗАКРЫТЫЙ СПИСОК С ПРИЧИНОЙ (146).
+LIBRARIES = {
+    "checks.py": "общая библиотека гейтов: её живой прогон — импорт каждым из них",
+}
+
+
+def live_halves(sources: dict[str, str], flows: dict[str, str], hook: str) -> list[str]:
+    """Скрипты, у которых есть набор на подделках, а живого вызова нет (146).
+
+    ЗЕЛЁНОЕ НА ПОДДЕЛКАХ НЕ ЕСТЬ УТВЕРЖДЕНИЕ О ДЕРЕВЕ. Самопроверка доказывает,
+    что разбор устроен верно, и молчит о том, что разбирают. Утверждение о
+    живом предмете делает вызов без `--selftest` — в прогоне или в хуке старта
+    окна. Образец — test_live_surface глоссария: у каждого гейта обе половины.
+
+    ЧЕГО НЕ ДЕРЖИТ: содержательность живой половины. Вызов, который ничего не
+    утверждает о дереве, проверка примет: она видит вызов, а не смысл.
+    """
+    live: set[str] = set()
+    for flow in flows.values():
+        live |= {script for script, args, _ in live_calls(flow)
+                 if "--selftest" not in args.split()}
+    live |= {call.group("script")
+             for call in HOOK_CALL.finditer(COMMENT_LINE.sub("", hook))
+             if "--selftest" not in call.group("args").split()}
+    return [f"{name}: набор на подделках есть, а живого вызова нет ни в прогоне, ни "
+            f"в хуке старта — зелёное на подделках не утверждает ничего о дереве (146)"
+            for name, source in sorted(sources.items())
+            if "def selftest" in source and name not in live and name not in LIBRARIES]
+
+
 def gate_really_blocks(rules: dict[str, dict], flows: dict[str, str]) -> list[str]:
     """Слово `gate` в вердикте означает отказ изменению, а не просто прогон.
 
@@ -2995,6 +3031,25 @@ def selftest() -> int:
                           f"{'отказ' if must_reject else 'пропуск'}, вышло {found}")
         print(f"  {'отвергнут' if found else 'пропущен '} — списки: {name}")
 
+    # ── у набора есть живая половина (146) ────────────────────────────────
+    st = {"g.py": "def selftest():\n    pass\n"}
+    halves_cases = [
+        ("живой вызов в прогоне", st, {"a.yml": "      - run: python scripts/g.py\n"}, "", 0),
+        ("только самопроверка", st, {"a.yml": "      - run: python scripts/g.py --selftest\n"}, "", 1),
+        ("живой вызов в хуке старта", st, {},
+         '"$ENV_DIR/bin/python" "$ROOT/scripts/g.py" 2>&1 || true\n', 0),
+        ("вызов в комментарии прогона — не вызов", st,
+         {"a.yml": "      # python scripts/g.py\n"}, "", 1),
+        ("вызов в комментарии хука — не вызов", st, {}, "# python scripts/g.py --check\n", 1),
+        ("набора нет — не наше дело", {"g.py": "x = 1\n"}, {}, "", 0),
+        ("библиотека из закрытого списка", {"checks.py": "def selftest():\n    pass\n"}, {}, "", 0),
+    ]
+    for name, srcs, flws, hook_text, expected in halves_cases:
+        got = len(live_halves(srcs, flws, hook_text))
+        if got != expected:
+            broken.append(f"живая половина, {name}: ожидалось {expected}, вышло {got}")
+        print(f"  {got} находок — живая половина: {name}")
+
     # ── объявленный исход ждёт проверка (186) ─────────────────────────────
     # Формы прогона названы поимённо: вызов main() слева и справа, returncode
     # процесса, неравенство. Не прогон: код 0, литерал без вызова, чужой main.
@@ -3068,7 +3123,9 @@ def main() -> int:
              + claimed_rules({**sources, **flows}, rules) + required_job_conditions(flows)
              + source_next_to_derived(ROOT) + prose_cut_by_punctuation(sources)
              + derived_findings((ROOT / "README.md").read_text(encoding="utf-8"), tracked)
-             + outcomes_budget(sources))
+             + outcomes_budget(sources)
+             + live_halves(sources, flows, HOOK.read_text(encoding="utf-8")
+                           if HOOK.exists() else ""))
     if found:
         print(checks.annotate("error", f"механизмы держат не то, что объявили: {len(found)}"), file=sys.stderr)
         for line in found:
