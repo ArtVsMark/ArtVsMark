@@ -366,7 +366,7 @@ def selftest() -> int:
             broken.append(f"раздел, {name}: ожидалось находок {expected}, вышло {got}")
         print(f"  {'найдено ' if got else 'пропущено'} — раздел: {name}")
 
-    # Словарь предела — обе стороны (140): законные слова проходят, чужое слово
+    # Словари предела и механизма — обе стороны (140): законные слова проходят, чужое слово
     # и отказ без замера краснеют.
     limit_cases = [
         ("три слова без отказа законны", {str(n): {"holdable": w} for n, w in
@@ -393,8 +393,8 @@ def selftest() -> int:
     for name, rules, expected in limit_cases:
         got = len(limits(rules))
         if got != expected:
-            broken.append(f"предел, {name}: ожидалось находок {expected}, вышло {got}")
-        print(f"  {got} находок — предел: {name}")
+            broken.append(f"словарь, {name}: ожидалось находок {expected}, вышло {got}")
+        print(f"  {got} находок — словарь: {name}")
 
     # Исполняемый адрес у ответа gate/pipeline (139) — шесть видов адреса
     # проходят, документ и пустота краснеют, document и неприменимое не предмет.
