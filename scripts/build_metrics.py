@@ -597,6 +597,22 @@ def share_text(part: int, whole: int) -> str:
     return "<0.1%" if share < 0.05 else f"{share:.1f}%"
 
 
+def profile_or_nothing(fetch) -> dict[str, object]:
+    """Профильные числа или пусто: необязательный канал отказывает тихо (084).
+
+    Отказ — третий исход, а не поломка: карточка не перерисовывается, прежняя
+    остаётся, предупреждение называет причину, пересчёт идёт дальше. Вынесено
+    из ``main``, чтобы набор мог позвать путь отказа с подставным ``fetch`` —
+    встроенный перехват держался одной прозой.
+    """
+    try:
+        return fetch()
+    except (urllib.error.URLError, OSError, ValueError, KeyError, SystemExit) as refusal:
+        print(checks.annotate("warning", f"профильные числа не собраны ({refusal}) — "
+                              f"карточка не перерисовывается, прежняя остаётся"))
+        return {}
+
+
 def profile_stats() -> dict[str, object]:
     """Профильные числа витрины. Ключ отсутствует — значит источник промолчал.
 
@@ -3550,6 +3566,64 @@ def selftest() -> int:
             broken.append(f"пустая область, {name}: ожидалось {expected}, вышло {got}")
         print(f"  {'найдена  ' if got else 'пропущена'} — пустая область: {name}")
 
+    # ── необязательные каналы отказывают тихо (правило 084) ───────────────
+    # Обе ветки ходят в сеть, поэтому вход подставной: _api подменяется на
+    # время случая. Обе стороны: отказ и битый ответ — None, а не исключение;
+    # исправный ответ — слой змейки. Профильные числа — пусто и предупреждение
+    # на отказе, сами числа — на успехе.
+    snake_svg = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">'
+                 '<style>.c{fill:red}</style><rect class="c"/></svg>')
+
+    def answering(payload):
+        def fake(_path: str) -> object:
+            if isinstance(payload, BaseException):
+                raise payload
+            return payload
+        return fake
+
+    snake_cases = [
+        ("ветки змейки нет — отказ площадки", urllib.error.URLError("404"), False),
+        ("ответ без содержимого", {}, False),
+        ("содержимое не base64-svg", {"content": "!!!"}, False),
+        ("svg без габарита", {"content": base64.b64encode(b"<svg><style/></svg>").decode()}, False),
+        ("исправная змейка", {"content": base64.b64encode(snake_svg.encode()).decode()}, True),
+    ]
+    real_api = _api
+    try:
+        for name, payload, drawn_ in snake_cases:
+            globals()["_api"] = answering(payload)
+            try:
+                got = snake_layer("dark")
+            except Exception as err:  # noqa: BLE001 — исключение и есть находка
+                broken.append(f"змейка, {name}: отказ бросил {type(err).__name__} вместо None")
+                continue
+            if (got is not None) is not drawn_:
+                broken.append(f"змейка, {name}: ожидался {'слой' if drawn_ else 'None'}, "
+                              f"вышло {'слой' if got else 'None'}")
+            print(f"  {'слой' if got else 'None'} — змейка: {name}")
+    finally:
+        globals()["_api"] = real_api
+
+    said = io.StringIO()
+
+    def refused() -> dict[str, object]:
+        raise urllib.error.URLError("403")
+
+    try:
+        with contextlib.redirect_stdout(said):
+            nothing = profile_or_nothing(refused)
+    except urllib.error.URLError:
+        nothing = None
+        broken.append("профильные числа: отказ проброшен — необязательный канал "
+                      "уронил бы весь пересчёт (084)")
+    if nothing is not None and nothing != {}:
+        broken.append(f"профильные числа: отказ дал {nothing!r}, а не пусто")
+    if nothing is not None and "не собраны" not in said.getvalue():
+        broken.append("профильные числа: отказ не назван предупреждением")
+    if profile_or_nothing(lambda: {"stars": 3}) != {"stars": 3}:
+        broken.append("профильные числа: успех не прошёл насквозь")
+    print("  пусто — профильные числа: отказ назван, успех насквозь")
+
     # ── календарь активности ──────────────────────────────────────────────
     year = [day(i, i % 5) for i in range(364, -1, -1)]
     grid = render_activity(year, True)
@@ -4579,12 +4653,7 @@ def main() -> int:
     # Пустыми прежние картинки не перезаписываются — этого прямо требует
     # задача, и механизм тут простой: не нарисовали, значит не положили в
     # `drawn`, а публикуется только то, что в нём.
-    try:
-        profile = profile_stats()
-    except (urllib.error.URLError, OSError, ValueError, KeyError, SystemExit) as refusal:
-        profile = {}
-        print(checks.annotate("warning", f"профильные числа не собраны ({refusal}) — "
-                              f"карточка не перерисовывается, прежняя остаётся"))
+    profile = profile_or_nothing(profile_stats)
 
     # СОСТАВ ВИТРИНЫ СВЕРЯЕТСЯ С РЕАЛЬНОСТЬЮ, А НЕ С ПАМЯТЬЮ АВТОРА. Имена
     # репозиториев уже прочитаны вместе с числами профиля — второго похода в
