@@ -377,6 +377,11 @@ def selftest() -> int:
         ("отказ без замера", {"001": {"holdable": "refused"}}, 1),
         ("отказ с пустым замером", {"001": {"holdable": "refused", "machine_half": " "}}, 1),
         ("слово вне словаря", {"001": {"holdable": "impossible"}}, 1),
+        ("пять слов механизма законны", {str(n): {"mechanism": w} for n, w in
+                                     enumerate(("gate", "pipeline", "skill", "document"), 1)}
+         | {"005": {"mechanism": "none", "machine_half": "строится с #9"}}, 0),
+        ("механизм code — вне словаря", {"001": {"mechanism": "code"}}, 1),
+        ("устаревший process-step — вне словаря", {"001": {"mechanism": "process-step"}}, 1),
         ("ничем, с машинной половиной — законно",
          {"001": {"status": "active", "mechanism": "none", "machine_half": "строится с #9"}}, 0),
         ("ничем без машинной половины", {"001": {"status": "active", "mechanism": "none"}}, 1),
@@ -392,7 +397,7 @@ def selftest() -> int:
         print(f"  {got} находок — предел: {name}")
 
     # Исполняемый адрес у ответа gate/pipeline (139) — шесть видов адреса
-    # проходят, документ и пустота краснеют, code и неприменимое не предмет.
+    # проходят, документ и пустота краснеют, document и неприменимое не предмет.
     run_cases = [
         ("прогон .yml", "gate", ".github/workflows/pr-check.yml — шаг", 0),
         ("прогон .yaml", "pipeline", ".github/workflows/x.yaml", 0),
@@ -404,7 +409,7 @@ def selftest() -> int:
         ("только документ", "gate", "CLAUDE.md § Гейты — абзац", 1),
         ("документ и пустота", "pipeline", "", 1),
         ("путь в чужом каталоге не свой", "gate", "x/scripts/y.py", 1),
-        ("code не предмет", "code", "README.md", 0),
+        ("document не предмет", "document", "README.md", 0),
     ]
     for name, mechanism, where_, expected in run_cases:
         got = len(unrunnable({"001": {"status": "active", "mechanism": mechanism,
@@ -476,9 +481,16 @@ def selftest() -> int:
 #: список.
 LIMITS = ("no", "not-yet", "conditional", "refused")
 
+#: Слова механизма — закрытый словарь того же контракта (поле `mechanism`).
+#: КОПИЯ НАМЕРЕННАЯ, как LIMITS (071). `process-step` каталог ещё принимает как
+#: устаревшее, но здесь его нет: витрина им не пишет, и вернуть его — значит
+#: сказать «чем-то держится», не сказав чем. Свой `code` жил вне словаря
+#: месяц у 14 ответов, и не спрашивал никто (#267).
+MECHANISMS = ("gate", "pipeline", "skill", "document", "none")
+
 
 def limits(rules: dict[str, dict]) -> list[str]:
-    """Слова предела вне словаря и отказы без замера. Пусто — словарь соблюдён.
+    """Слова предела и механизма вне словаря, отказы без замера. Пусто — чисто.
 
     ЧЕТВЁРТОЕ СЛОВО ЗАКОННО ТОЛЬКО С ЧИСЛОМ. `refused` — машинная половина
     есть, замерена, и строить её отказались, потому что сигнал бил бы по
@@ -490,6 +502,10 @@ def limits(rules: dict[str, dict]) -> list[str]:
     """
     found: list[str] = []
     for number, binding in sorted(rules.items()):
+        mechanism = binding.get("mechanism")
+        if mechanism is not None and mechanism not in MECHANISMS:
+            found.append(f"{number}: слово механизма {mechanism!r} не из словаря "
+                         f"({', '.join(MECHANISMS)}) — сводка каталога его не считает")
         # «ДЕРЖИТСЯ НИЧЕМ» НЕ БЕСПЛАТНО (182, контракт ответа). Ответ
         # `mechanism: none` обязан назвать машинную половину — что следует из
         # данных и почему не построено. Спрашивалось это только у `refused`;
@@ -534,8 +550,9 @@ def unrunnable(rules: dict[str, dict]) -> list[str]:
     у витрины на 8 октября таких ответов 0 — гейт держит регресс.
 
     ЧЕГО НЕ ДЕРЖИТ: что названный скрипт держит ИМЕННО это правило — это
-    суждение; и ответ `code` — код держит правило поведением, а не проверкой,
-    и его адресом законно бывает функция сборки.
+    суждение. Ответа `code` («код держит поведением») больше нет: слова нет в
+    словаре контракта, и ``limits`` его отвергает. Поведение, которое не
+    краснеет ни в одном наборе, — это `none` с машинной половиной (#267).
     """
     return [f"{number}: «{binding['mechanism']}» без исполняемого адреса — ни прогона, "
             f"ни скрипта, ни теста в where; документ прогоном не подтверждается (139)"
@@ -741,11 +758,12 @@ def main() -> int:
               file=sys.stderr)
 
     if vocabulary:
-        print(checks.annotate("error", f"слова предела вне словаря: {len(vocabulary)}"),
+        print(checks.annotate("error", f"слова вне словаря контракта: {len(vocabulary)}"),
               file=sys.stderr)
         for line in vocabulary:
             print(f"  {line}", file=sys.stderr)
-        print(f"\nСловарь закрыт: {', '.join(LIMITS)}. Отказ строить механизм законен "
+        print(f"\nСловари закрыты: предел — {', '.join(LIMITS)}; механизм — "
+              f"{', '.join(MECHANISMS)}. Отказ строить механизм законен "
               "только с замером — что считается командой и сколько раз сигнал сработал "
               "бы на законном.", file=sys.stderr)
 
