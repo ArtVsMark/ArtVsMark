@@ -54,6 +54,15 @@ FORBIDDEN = {"Claude <noreply@anthropic.com>"}
 #: умолчание — 5 коммитов, подпись приложения — 2 (#19, #67), и прежний гейт
 #: видел только первую (206).
 FORBIDDEN_NAMES = {"claude[bot]"}
+#: Третья форма: имя выставлено, а адрес остался контейнерным —
+#: ``ArtVsMark <noreply@anthropic.com>``. Площадка при уплотнении дописывает
+#: такого автора соавтором, и трейлер вне .github/authors.txt красит
+#: attribution-history там, где прошлое не переписать (114). Замер 9 октября:
+#: десять слияний подряд, #304–#315, — окно выставило user.name и не тронуло
+#: user.email. Адрес законен только у исполнителя, названного моделью
+#: («Claude Opus 5.5»): это прежнее решение, и оно в наборе (210, #277).
+CONTAINER_EMAIL = "noreply@anthropic.com"
+EXECUTOR_PREFIX = "Claude "
 
 #: Что писать, а не «добавьте атрибуцию»: имя сверяется со списком в
 #: .github/authors.txt гейтом каталога, поэтому образец здесь — из него, а не
@@ -147,7 +156,9 @@ def body_attribution(body: str, author: str = "", branch: str = "") -> str:
 def offenders(authors: list[str]) -> list[str]:
     """Подписи из списка запрещённых, встретившиеся среди авторов."""
     return [a for a in authors
-            if a.strip() in FORBIDDEN or checks.author_name(a) in FORBIDDEN_NAMES]
+            if a.strip() in FORBIDDEN or checks.author_name(a) in FORBIDDEN_NAMES
+            or (checks.author_email(a) == CONTAINER_EMAIL
+                and not checks.author_name(a).startswith(EXECUTOR_PREFIX))]
 
 
 
@@ -196,6 +207,12 @@ def selftest() -> int:
         ("бот площадки — не предмет этой проверки",
          ["github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>"], False),
         ("коммитов нет", [], False),
+        # Третья форма (210, #277): имя человека, адрес контейнера.
+        ("имя выставлено, адрес контейнерный", ["ArtVsMark <noreply@anthropic.com>"], True),
+        ("то же другим именем", ["Artem Markitanov <noreply@anthropic.com>"], True),
+        ("адрес контейнера в верхнем регистре имени не спасает",
+         ["artvsmark <noreply@anthropic.com>"], True),
+        ("имя без адреса — сверять нечем", ["ArtVsMark"], False),
     ]
     broken = []
     # ── атрибуция в ТЕЛЕ изменения (готовность к PR_BODY) ────────────────

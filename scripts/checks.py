@@ -213,6 +213,14 @@ def author_name(author: str) -> str:
     return name
 
 
+def author_email(author: str) -> str:
+    """Адрес из подписи ``%an <%ae>``; у голой подписи — пустая строка."""
+    sign = author.strip()
+    if sign.endswith(">") and " <" in sign:
+        return sign[sign.rindex(" <") + 2:-1].strip()
+    return ""
+
+
 #: Знак обрыва. Один на весь репозиторий: восемь мест обрезали вывод каждое
 #: по-своему, а половина — вовсе без знака (правило 016).
 ELLIPSIS = "…"
