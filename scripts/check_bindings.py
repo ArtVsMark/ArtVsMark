@@ -396,6 +396,29 @@ def selftest() -> int:
             broken.append(f"словарь, {name}: ожидалось находок {expected}, вышло {got}")
         print(f"  {got} находок — словарь: {name}")
 
+    # Очередь на перечитывание (207) — обе стороны: «предмета нет» на одной
+    # прозе в очереди, с пробой опровержения — нет; пустая проба ничего не
+    # доказывает и очереди не покидает; действующее — не предмет. Порядок —
+    # по номеру, чтобы заход брал предметы один за другим, а не вразброс.
+    probe = {"globs": ["*.yml"], "contains": []}
+    queue_cases = [
+        ("проза без пробы — в очереди",
+         {"001": {"status": "not-applicable", "why": "предмета нет"}}, ["001"]),
+        ("с пробой опровержения — не в очереди",
+         {"001": {"status": "not-applicable", "why": "нет", "refuted_by": probe}}, []),
+        ("пустая проба — всё ещё проза",
+         {"001": {"status": "not-applicable", "why": "нет", "refuted_by": {}}}, ["001"]),
+        ("действующее — не предмет", {"001": {"status": "active", "why": "x"}}, []),
+        ("порядок по номеру",
+         {"010": {"status": "not-applicable"}, "002": {"status": "not-applicable"},
+          "005": {"status": "not-applicable", "refuted_by": probe}}, ["002", "010"]),
+    ]
+    for name, rules, expected in queue_cases:
+        got = [number for number, _ in unchecked(rules)]
+        if got != expected:
+            broken.append(f"очередь, {name}: ожидалось {expected}, вышло {got}")
+        print(f"  {len(got)} в очереди — {name}")
+
     # Исполняемый адрес у ответа gate/pipeline (139) — шесть видов адреса
     # проходят, документ и пустота краснеют, document и неприменимое не предмет.
     run_cases = [
