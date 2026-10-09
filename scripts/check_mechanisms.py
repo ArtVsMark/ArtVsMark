@@ -2143,8 +2143,10 @@ def live_calls(flow: str) -> list[tuple[str, str, bool]]:
     return calls
 
 
-#: Хук старта окна — тоже живой вызов: план окна бежит только там (091).
-HOOK = ROOT / ".claude/hooks/session-start.sh"
+#: Хуки окна — тоже живой вызов: план окна бежит только в хуке старта (091),
+#: сторож толчка — только в хуке перед командой (012, 202). Читаются все
+#: ``.claude/hooks/*.sh``, а не один файл: второй хук иначе был бы невидим.
+HOOKS = ROOT / ".claude/hooks"
 
 #: Форма вызова в хуке: интерпретатор планки по переменной, путь от корня.
 HOOK_CALL = re.compile(r'scripts/(?P<script>[\w]+\.py)"?(?P<args>[^\n]*)')
@@ -3335,8 +3337,8 @@ def main() -> int:
              + source_next_to_derived(ROOT) + prose_cut_by_punctuation(sources)
              + derived_findings((ROOT / "README.md").read_text(encoding="utf-8"), tracked)
              + outcomes_budget(sources)
-             + live_halves(sources, flows, HOOK.read_text(encoding="utf-8")
-                           if HOOK.exists() else ""))
+             + live_halves(sources, flows, "\n".join(
+                 hook.read_text(encoding="utf-8") for hook in sorted(HOOKS.glob("*.sh")))))
     if found:
         print(checks.annotate("error", f"механизмы держат не то, что объявили: {len(found)}"), file=sys.stderr)
         for line in found:
