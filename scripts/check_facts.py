@@ -74,7 +74,7 @@ VERSION_PATH = beside(ROOT / ".rules" / "facts.version")
 #: Образец файла по текущему договору — прикладывается к выпуску; набор держит,
 #: что он отвечает схеме без единого совета.
 EXAMPLE_PATH = beside(ROOT / ".rules" / "facts.example.json")
-CONTRACT_PATH = ROOT / ".rules" / "facts-contract.md"
+CONTRACT_PATH = beside(ROOT / ".rules" / "facts-contract.md")
 PROJECTS_PATH = ROOT / "projects.json"
 
 #: Адрес файла у издателя. Один на всех — в этом и решение.
