@@ -419,6 +419,21 @@ def selftest() -> int:
             broken.append(f"очередь, {name}: ожидалось {expected}, вышло {got}")
         print(f"  {len(got)} в очереди — {name}")
 
+    # Храповик очереди (205) — обе стороны: рост и сокращение называются,
+    # совпадение молчит.
+    prose = {"001": {"status": "not-applicable", "why": "нет"}}
+    probed = {"001": {"status": "not-applicable", "why": "нет", "refuted_by": probe}}
+    for name, rules, budget, expected in (
+            ("очередь выросла сверх бюджета", prose, 0, "при бюджете 0"),
+            ("очередь сократилась — бюджет опустить", probed, 1, "опустите"),
+            ("очередь равна бюджету", prose, 1, None),
+            ("все с пробой при нулевом бюджете", probed, 0, None)):
+        said = prose_budget(rules, budget)
+        right = (not said) if expected is None else any(expected in line for line in said)
+        if not right:
+            broken.append(f"храповик очереди, {name}: ждали {expected or 'молчание'}, вышло {said}")
+        print(f"  {'верно' if right else 'СБОЙ '} — храповик очереди: {name}")
+
     # Исполняемый адрес у ответа gate/pipeline (139) — шесть видов адреса
     # проходят, документ и пустота краснеют, document и неприменимое не предмет.
     run_cases = [
@@ -670,9 +685,10 @@ def declared_counts(rules: dict[str, dict]) -> list[str]:
 def unchecked(rules: dict[str, dict]) -> list[tuple[str, str]]:
     """Ответы «предмета нет», которые не проверяет ничто. Очередь на перечитывание.
 
-    НЕ ГЕЙТ, А ПОДСКАЗКА, и это решение, а не слабость. Перечитан ли ответ,
+    САМА ОЧЕРЕДЬ — ПОДСКАЗКА, и это решение, а не слабость. Перечитан ли ответ,
     машине не видно: отметка «проверено» устарела бы ровно так же, как сам
     ответ, и заводить её значило бы завести второе враньё поверх первого.
+    Гейтом стала её ДЛИНА: с 9 октября её держит храповик ``prose_budget``.
 
     Зато видно, какие ответы держатся **одной прозой**. Их и печатает эта
     очередь — по одному предмету за заход, а не «когда-нибудь целиком».
@@ -685,6 +701,36 @@ def unchecked(rules: dict[str, dict]) -> list[tuple[str, str]]:
     return [(number, str(binding.get("why", "")))
             for number, binding in sorted(rules.items())
             if binding.get("status") == "not-applicable" and not binding.get("refuted_by")]
+
+
+#: Сколько ответов «предмета нет» вправе держаться одной прозой (205). Храповик:
+#: число только опускается. 9 октября очередь перечитана целиком (#322), и с
+#: тех пор ноль — новый ответ без пробы краснеет, пока бюджет не поднят здесь
+#: же, то есть вслух и правкой кода, как правило и требует от ответа без
+#: предиката: «объявляется таким вслух и идёт в очередь».
+PROSE_BUDGET = 0
+
+
+def prose_budget(rules: dict[str, dict], budget: int = PROSE_BUDGET) -> list[str]:
+    """Очередь ответов на одной прозе против храповика. Пусто — число сходится.
+
+    ДО 9 ОКТЯБРЯ ОЧЕРЕДЬ БЫЛА ПОДСКАЗКОЙ, А НЕ ГЕЙТОМ, и это было верно:
+    гейт по наличию пробы краснел бы тридцать раз, а строится он после
+    перечитывания, а не вместо него. Перечитывание сделано — и без храповика
+    очередь снова росла бы молча: ответ, написанный по заголовку, выглядит так
+    же осознанно, как проверенный. Истинность пробы гейт не судит — её судит
+    ``refuted`` по дереву.
+    """
+    queue = [number for number, _ in unchecked(rules)]
+    if len(queue) > budget:
+        return [f"ответов «предмета нет» на одной прозе {len(queue)} при бюджете {budget}: "
+                f"{', '.join(queue)} — назовите пробу refuted_by или поднимите "
+                f"PROSE_BUDGET вслух (205)"]
+    if len(queue) < budget:
+        return [f"ответов «предмета нет» на одной прозе {len(queue)} при бюджете {budget}: "
+                f"очередь сократилась — опустите PROSE_BUDGET тем же заходом, иначе запас "
+                f"съест следующий ответ без пробы молча (205)"]
+    return []
 
 
 def debt(rules: dict) -> tuple[int, int]:
@@ -756,6 +802,7 @@ def main() -> int:
         dead += dead_sections(bindings["rules"], sections)
         vocabulary = limits(bindings["rules"])
         unrun = unrunnable(bindings["rules"])
+        ratchet = prose_budget(bindings["rules"])
         counts = declared_counts(bindings["rules"])
         unsaid = unsaid_statuses(STATUS_DOC.read_text(encoding="utf-8"), bindings["rules"])
         # Существование предмета спрашивается у дерева одной командой — без
@@ -798,6 +845,9 @@ def main() -> int:
         print("\nНазовите прогон, скрипт или тест, которым правило держится, — или "
               "поменяйте механизм на document: абзац не запускается.", file=sys.stderr)
 
+    for line in ratchet:
+        print(checks.annotate("error", line), file=sys.stderr)
+
     if unsaid:
         print(checks.annotate("error", f"статусы без «не означает»: {len(unsaid)}"),
               file=sys.stderr)
@@ -824,7 +874,7 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
-    if alive or vocabulary or unrun or counts or unsaid:
+    if alive or vocabulary or unrun or counts or unsaid or ratchet:
         return 1
 
     checkable = sum(1 for b in bindings["rules"].values() if b.get("refuted_by"))
