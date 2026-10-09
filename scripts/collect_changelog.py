@@ -373,6 +373,45 @@ def selftest() -> int:
     if take or later != ["a.fixed.md"]:
         broken.append("октябрьский фрагмент унесён сбором за сентябрь")
 
+    # ── отказ записи — исход 2, а не успех (правило 067) ──────────────────
+    # Живой путь сбора на подставном корне: фрагмент закоммичен (landed
+    # подменён), клон не мелкий, а CHANGELOG.md — КАТАЛОГ, и чтение журнала
+    # падает OSError. Сборщик обязан вернуть 2, назвать причину и не тронуть
+    # фрагмент: отказ, превращённый в ноль, и есть то, против чего правило.
+    # Сравнение — прямо с вызовом main(): так его считает и храповик
+    # непрогнанных исходов (check_mechanisms::exercised_outcomes).
+    import contextlib                                          # noqa: PLC0415
+    import io                                                  # noqa: PLC0415
+    saved = {key: globals()[key] for key in ("ROOT", "FRAGMENTS", "CHANGELOG",
+                                              "shallow", "landed")}
+    saved_argv = sys.argv
+    before = len(broken)
+    with tempfile.TemporaryDirectory(dir=checks.runner_temp()) as tmp:
+        root = pathlib.Path(tmp)
+        (root / "changelog.d").mkdir()
+        (root / "CHANGELOG.md").mkdir()
+        fragment = root / "changelog.d" / "probe.fixed.md"
+        fragment.write_text("отказ записи журнала — исход 2 (#1)", encoding="utf-8")
+        said = io.StringIO()
+        globals().update(ROOT=root, FRAGMENTS=root / "changelog.d",
+                         CHANGELOG=root / "CHANGELOG.md",
+                         shallow=lambda: False, landed=lambda _path: "2026-10")
+        sys.argv = ["collect_changelog.py", "--collect", "--month", "2026-10"]
+        try:
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(said):
+                if main() != 2:
+                    broken.append("отказ записи журнала: сборщик вернул не 2 — отказ "
+                                  "превращён в другой исход (067)")
+        finally:
+            globals().update(saved)
+            sys.argv = saved_argv
+        if not fragment.exists():
+            broken.append("отказ записи журнала: фрагмент удалён, хотя журнал не записан")
+        if "собрать не удалось" not in said.getvalue():
+            broken.append(f"отказ записи журнала: причина не названа — {said.getvalue()!r}")
+    print(f"  {'исход 2 ' if len(broken) == before else 'СЛОМАН  '} — отказ записи "
+          f"журнала: причина названа, фрагмент на месте")
+
     if broken:
         print(checks.annotate("error", "самопроверка провалена"), file=sys.stderr)
         for line in broken:

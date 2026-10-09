@@ -184,7 +184,8 @@ def script_polls(sources: dict[str, str]) -> list[str]:
 #: ХРАПОВИК, а не порог (186): долг выше — находка, долг ниже — тоже находка,
 #: «опустите число» тем же заходом, что и починка. Замер на включении
 #: (2026-10-08): 32 из 34; прогнаны два — check_author 2 и check_labels 1.
-OUTCOMES_BUDGET = 32
+#: 2026-10-09: 31 — collect_changelog 2, отказ записи журнала (067).
+OUTCOMES_BUDGET = 31
 
 
 def declared_outcomes(source: str) -> set[int]:
