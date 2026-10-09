@@ -91,6 +91,26 @@ def _body_trailers(body: str) -> set[str]:
     return {name for name, pattern in BODY_TRAILERS.items() if pattern.search(body or "")}
 
 
+#: Ссылка тела на задачу трекера: ключевое слово площадки или ``Refs``/``Part of``.
+ISSUE_LINK = re.compile(r"\b(?:refs|closes|close|closed|fixes|fix|fixed|resolves|resolve|"
+                        r"resolved|part of)\s+#\d+", re.IGNORECASE)
+#: Освобождение с причиной — третий ответ, который правило 173 оставляет работе
+#: без задачи. Пустая причина освобождением не считается.
+NO_ISSUE = re.compile(r"^Без задачи:\s*\S", re.MULTILINE)
+
+
+def unlinked(body: str) -> bool:
+    """Тело не называет задачу и не освобождает себя от неё с причиной (173).
+
+    ПРЕДУПРЕЖДЕНИЕ, А НЕ ОТКАЗ — решение владельца 28 сентября. Замер того
+    дня: из 143 слитых изменений на задачу ссылались 34, и сигнал сработал бы
+    109 раз — каждый на законном: свод разрешает работу без задачи (CLAUDE.md
+    § Метки). Отказ здесь красил бы законное (051); предупреждение говорит,
+    что изменение идёт без задачи, и предлагает сказать это вслух.
+    """
+    return not (ISSUE_LINK.search(body) or NO_ISSUE.search(body))
+
+
 def body_attribution(body: str, author: str = "", branch: str = "") -> str:
     """Претензия к телу изменения, если атрибуции в нём нет. Пусто — есть.
 
@@ -241,6 +261,25 @@ def selftest() -> int:
             broken.append(f"тело изменения, {name}: ожидалось "
                           f"{'отказ' if must_reject else 'пропуск'}, вышло {said!r}")
         print(f"  {'отвергнуто' if said else 'принято   '} — тело изменения: {name}")
+
+    # Связь с задачей (173) — обе стороны: ссылка любым словом площадки и
+    # освобождение с причиной молчат; номер без слова, пустое освобождение и
+    # тело без ссылки — предупреждение.
+    link_cases = [
+        ("Refs #N", "Разбор.\n\nRefs #281.", False),
+        ("Closes #N", "Разбор.\n\nCloses #12", False),
+        ("Part of #N", "Разбор. Part of #318.", False),
+        ("освобождение с причиной", "Разбор.\n\nБез задачи: правка опечатки в своде", False),
+        ("номер без слова — не связь", "Как в #255, число снято командой.", True),
+        ("пустое освобождение", "Разбор.\n\nБез задачи:", True),
+        ("ссылки нет вовсе", "Разбор.", True),
+    ]
+    for name, body, must_warn in link_cases:
+        got = unlinked(body)
+        if got is not must_warn:
+            broken.append(f"связь с задачей, {name}: ожидалось "
+                          f"{'предупреждение' if must_warn else 'молчание'}, вышло {got}")
+        print(f"  {'предупреждение' if got else 'молчит        '} — связь с задачей: {name}")
 
     # Тело машинного изменения пишет площадка: хвостового блока там нет и
     # дописать его некому. Обратная сторона обязательна — живой автор с тем же
@@ -402,10 +441,16 @@ def main() -> int:
                   "  строк «Ключ: значение» — проза внутри него отменяет весь блок.",
                   file=sys.stderr)
             return 1
+        machine = bool(body_author and checks.machine_made(body_author)
+                       or checks.machine_branch(body_branch))
         print("тело изменения несёт атрибуцию: соавтор и след сессии на месте"
-              if not (body_author and checks.machine_made(body_author)
-                      or checks.machine_branch(body_branch))
+              if not machine
               else "тело составила машина — хвостового блока с неё не спрашивают")
+        # У машины нет ни задачи, ни решения о ней — спрашивать нечего (051).
+        if not machine and unlinked(body):
+            print(checks.annotate("warning", "изменение не называет задачу: ни «Refs #N» "
+                                  "(Closes, Fixes, Part of), ни строки «Без задачи: "
+                                  "<причина>» — работа без задачи законна, но вслух (173)"))
         return 0
 
     rng = next((a for a in argv if not a.startswith("-")), "origin/main..HEAD")
