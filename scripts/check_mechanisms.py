@@ -375,6 +375,92 @@ def shared_temp(sources: dict[str, str]) -> list[str]:
     return found
 
 
+#: Общее состояние процесса, подмену которого судит ``shared_swaps`` (110).
+#: Формы взяты замером 9 октября по scripts/: ``sys.argv`` и ``globals()`` —
+#: присваиванием, ``sys.path`` и ``sys.modules`` — вызовом метода,
+#: ``os.environ`` — тем и другим, ``globals().update`` — вызовом.
+SHARED_STATE = frozenset({"sys.argv", "sys.path", "sys.modules", "os.environ", "globals()"})
+SHARED_MUTATORS = frozenset({"insert", "append", "extend", "update", "setdefault", "pop",
+                             "popitem", "remove", "clear"})
+
+
+def _shared_owner(target: ast.AST) -> str:
+    """Имя общего состояния, которое правит цель; пусто — цель своя."""
+    base = target.value if isinstance(target, ast.Subscript) else target
+    if (isinstance(base, ast.Call) and isinstance(base.func, ast.Name)
+            and base.func.id == "globals" and not base.args):
+        return "globals()"
+    name = _dotted(base)
+    return name if name in SHARED_STATE else ""
+
+
+def _swapped(stmt: ast.stmt) -> str:
+    """Что подменяет оператор: имя общего состояния или пусто."""
+    if isinstance(stmt, (ast.Assign, ast.AugAssign, ast.AnnAssign)):
+        targets = stmt.targets if isinstance(stmt, ast.Assign) else [stmt.target]
+        return next((name for t in targets if (name := _shared_owner(t))), "")
+    if (isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call)
+            and isinstance(stmt.value.func, ast.Attribute)
+            and stmt.value.func.attr in SHARED_MUTATORS):
+        return _shared_owner(stmt.value.func.value)
+    return ""
+
+
+def _unguarded_swaps(body: list[ast.stmt], guarded: bool) -> list[tuple[int, str]]:
+    """Подмены в блоке операторов, которых не откатит ``finally``."""
+    found: list[tuple[int, str]] = []
+    for index, stmt in enumerate(body):
+        if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            continue                     # вложенная функция — свой обход
+        if (what := _swapped(stmt)) and not guarded:
+            # Подмена, за которой подряд идут подмены и затем try с finally,
+            # — законная форма: сама подмена отказать не может, отказ живёт
+            # внутри try, и откат гарантирован (граница правила 110).
+            rest = body[index + 1:]
+            following = next((s for s in rest if not _swapped(s)), None)
+            if not (isinstance(following, ast.Try) and following.finalbody):
+                found.append((stmt.lineno, what))
+        if isinstance(stmt, ast.Try):
+            inner = guarded or bool(stmt.finalbody)
+            for part in (stmt.body, stmt.orelse, *(h.body for h in stmt.handlers)):
+                found += _unguarded_swaps(part, inner)
+            found += _unguarded_swaps(stmt.finalbody, True)
+            continue
+        for field in ("body", "orelse"):
+            part = getattr(stmt, field, None)
+            if isinstance(part, list) and part and isinstance(part[0], ast.stmt):
+                found += _unguarded_swaps(part, guarded)
+        if isinstance(stmt, ast.Match):
+            for case in stmt.cases:
+                found += _unguarded_swaps(case.body, guarded)
+    return found
+
+
+def shared_swaps(sources: dict[str, str]) -> list[str]:
+    """Подмена общего состояния внутри функции без отката в ``finally`` (110).
+
+    ВСЁ, ЧТО МОЖЕТ ОТКАЗАТЬ, — ДО ПОДМЕНЫ ИЛИ ПОД ГАРАНТИРОВАННЫМ ОТКАТОМ.
+    Подмена ``sys.argv``, ``sys.path``, ``sys.modules``, ``os.environ`` или
+    ``globals()`` в функции, не прикрытая ``try … finally``, переживает
+    исключение: набор, упавший на середине, оставляет процесс подменённым, и
+    следующий случай проверяет уже не то. Законных форм две: подмена внутри
+    ``try`` с ``finally`` и подмена, за которой сразу идёт такой ``try``.
+
+    ГРАНИЦА НАЗВАНА. Уровень модуля не судится: ``sys.path.insert`` своего
+    каталога при импорте — настройка на всю жизнь процесса, откатывать её
+    некому и незачем. Что ``finally`` восстанавливает именно подменённое,
+    гейт не проверяет — только что откат есть.
+    """
+    found: list[str] = []
+    for name, source in sorted(sources.items()):
+        for fn in ast.walk(ast.parse(source)):
+            if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                found += [f"{name}: строка {line} — {what} подменяется в {fn.name}() вне "
+                          f"try/finally: исключение оставит процесс подменённым (110)"
+                          for line, what in _unguarded_swaps(fn.body, False)]
+    return found
+
+
 #: Ключ верхнего уровня и ключ работы. Разбор по отступам, а не библиотекой:
 #: у витрины нет ни одной сторонней зависимости, и заводить первую ради четырёх
 #: проверок дороже, чем прочитать два уровня отступов. Цена решения названа:
@@ -2270,6 +2356,25 @@ def selftest() -> int:
          {"a.py": "import tempfile\ntempfile.gettempdir()\n"}, True),
         ("tempfile в комментарии — не вызов", shared_temp,
          {"a.py": "# tempfile.mkdtemp() так нельзя\n"}, False),
+        ("подмена под try/finally", shared_swaps,
+         {"a.py": "import sys\ndef f():\n    try:\n        sys.argv = ['x']\n"
+                  "    finally:\n        sys.argv = []\n"}, False),
+        ("подмены подряд перед try/finally", shared_swaps,
+         {"a.py": "import sys\ndef f():\n    globals().update(A=1)\n    sys.argv = ['x']\n"
+                  "    try:\n        g()\n    finally:\n        sys.argv = []\n"}, False),
+        ("sys.path без отката", shared_swaps,
+         {"a.py": "import sys\ndef f():\n    sys.path.insert(0, 'x')\n    import y\n"}, True),
+        ("globals()[…] без отката", shared_swaps,
+         {"a.py": "def f():\n    globals()['A'] = 1\n    g()\n"}, True),
+        ("os.environ в with без отката", shared_swaps,
+         {"a.py": "import os\ndef f():\n    with g():\n        os.environ['A'] = '1'\n"}, True),
+        ("try без finally — не откат", shared_swaps,
+         {"a.py": "import sys\ndef f():\n    try:\n        sys.argv = ['x']\n"
+                  "    except OSError:\n        pass\n"}, True),
+        ("уровень модуля — настройка, не подмена", shared_swaps,
+         {"a.py": "import sys\nsys.path.insert(0, 'x')\n"}, False),
+        ("своё имя — не общее состояние", shared_swaps,
+         {"a.py": "def f():\n    argv = ['x']\n    path = []\n    path.insert(0, 1)\n"}, False),
         ("ожидание в цикле скрипта", script_polls,
          {"a.py": "import time\nwhile True:\n    time.sleep(30)\n"}, True),
         ("ожидание по прямому имени", script_polls,
@@ -3129,7 +3234,7 @@ def main() -> int:
     found = (audit_scripts(sources) + audit_calls(sources) + audit_voice(sources)
              + single_catalogue_address(sources)
              + audit_gaps(rules) + audit_workflows(flows) + audit_runners(flows)
-             + shared_temp(sources) + script_polls(sources)
+             + shared_temp(sources) + shared_swaps(sources) + script_polls(sources)
              + gate_really_blocks(rules, flows)
              + audit_harness(sources, flows) + audit_charter(ROOT)
              + list_reads(sources, flows) + unreached_names(sources)
