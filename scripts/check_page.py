@@ -55,6 +55,7 @@ import pathlib
 import re
 import sys
 
+import build_metrics
 import checks
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -305,6 +306,28 @@ def audit_derived_links(page: str) -> list[str]:
             for url in sorted(set(targets)) if DERIVED_URL.search(url)]
 
 
+#: Показатель на странице — маркер С ЗАКРЫВАЮЩЕЙ ПАРОЙ: совпадение одним
+#: началом приняло бы вложенный ключ за свой (141).
+METRIC_PAIR = re.compile(r"<!--m:([\w-]+)-->.*?<!--/m:\1-->", re.S)
+
+
+def audit_metric_events(page: str, events: dict[str, str]) -> list[str]:
+    """Показатели страницы против объявленных событий сборки (200).
+
+    Маркер без события — число, о котором не сказано, что его может
+    сдвинуть; событие без маркера — объявление, пережившее предмет.
+    Словарь событий — scripts/build_metrics.py::METRIC_EVENTS: одно место.
+    """
+    shown = set(METRIC_PAIR.findall(page))
+    found = [f"показатель {key} на странице, а события, которое его двигает, "
+             f"не объявлено — число без события неотличимо от константы (200)"
+             for key in sorted(shown) if not events.get(key, "").strip()]
+    found += [f"событие объявлено для {key}, а на странице такого показателя нет — "
+              f"объявление пережило предмет (200)"
+              for key in sorted(set(events) - shown)]
+    return found
+
+
 def english_part(page: str) -> str:
     """Витрина до заголовка русского пересказа; без него — целиком."""
     heading = RUSSIAN_HEADING.search(page)
@@ -411,6 +434,22 @@ def selftest() -> int:
     if not any("stack-dark.svg" in line for line in audit_derived_links(f"[x]({raw})")):
         broken.append("отказ на ссылке в производное не называет адрес")
 
+    # ── событие у каждого показателя страницы (200) ───────────────────────
+    ev = {"a": "двигает выпуск", "b": "двигает коммит"}
+    pair = "<!--m:a-->1<!--/m:a--> <!--m:b-->2<!--/m:b-->"
+    metric_cases = [
+        ("маркеры и события сходятся", pair, ev, 0),
+        ("маркер без события", pair + " <!--m:c-->3<!--/m:c-->", ev, 1),
+        ("событие без маркера", "<!--m:a-->1<!--/m:a-->", ev, 1),
+        ("маркер без закрывающей пары — не показатель", pair + " <!--m:c-->", ev, 0),
+        ("пустое событие", pair, {"a": "двигает выпуск", "b": " "}, 1),
+    ]
+    for name, page, events, expected in metric_cases:
+        got = len(audit_metric_events(page, events))
+        if got != expected:
+            broken.append(f"показатели, {name}: ожидалось {expected}, вышло {got}")
+        print(f"  {got} находок — показатели: {name}")
+
     # ── объём прозы ────────────────────────────────────────────────────────
     # Граница считается и с той, и с другой стороны: ровно на пределе — пропуск.
     # Формы того, что не читается глазами, названы поимённо: тег, маркер-
@@ -511,6 +550,7 @@ def main() -> int:
         charter = (ROOT / CHARTER).read_text(encoding="utf-8")
         found = audit_page(page) + audit_alt(page, assets) + audit_prose(page, charter)
         found += audit_derived_links(page)
+        found += audit_metric_events(page, build_metrics.METRIC_EVENTS)
         for name in SERVICE:
             found += audit_service(name, (ROOT / name).read_text(encoding="utf-8"))
     except OSError as e:
