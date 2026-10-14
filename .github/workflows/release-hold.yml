@@ -21,12 +21,14 @@ name: release-hold
 
 on:
   workflow_run:
-    # имя «PR check» — копия прогона .github/workflows/pr-check.yml; его же
-    # читает scripts/stuck_prs.py::REQUIRED. Переименуют — меняются все три
-    # (071). «review» — копия имени .github/workflows/review.yml: слияние ждёт
+    # имя «PR check» — копия прогона .github/workflows/pr-check.yml;
+    # переименуют — меняются обе строки (071). «review» — копия имени .github/workflows/review.yml: слияние ждёт
     # вердикта ревью (105), и его завершение — такой же повод решить, как
-    # завершение проверки.
-    workflows: ["PR check", "review"]
+    # завершение проверки. «ci-complete» — копия имени
+    # .github/workflows/ci-complete.yml: сводный гейт тоже проверка головы, и
+    # закончи он последним, будить release-hold было бы некому (#345); его же
+    # имя читает scripts/stuck_prs.py::REQUIRED.
+    workflows: ["PR check", "review", "ci-complete"]
     types: [completed]
   # ВТОРОЙ ПОВОД ПРОСНУТЬСЯ: ТЕЛО ОТРЕДАКТИРОВАЛИ.
   #

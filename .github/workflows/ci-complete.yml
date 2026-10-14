@@ -1,0 +1,97 @@
+# Сводный гейт — ЕДИНСТВЕННЫЙ обязательный контекст защиты `main` (#345, шаг 1).
+#
+# ЧТО ЗАКРЫВАЕТ. С #343 release-hold держит стоп-кран, пока не зелены ВСЕ
+# проверки головы, но после снятия `hold` толчок в ту же ветку сливался по одной
+# обязательной `PR check`: ни «тесты на 3.15», ни `review` автомерж не ждал.
+# Здесь ждёт защита ветки — через один контекст, а что он ждёт, объявлено
+# данными в `.pipeline.yml`.
+#
+# ФОРМА — У МЕХАНИЗМОВ, И ЭТО ПЕРВЫЙ ШАГ ПЕРЕЕЗДА. Файл прогона — копия
+# `.github/workflows/ci-complete.yml` Engineering-Pipeline-Mechanisms: сводный
+# гейт по их договору не зовётся, а копируется (его имя живёт в защите ветки,
+# вне дерева). Код — НЕ копия: `scripts/ci_complete.py` берётся из их дерева
+# по коммиту выпуска v1.5.0, как берут свои скрипты их общие шаги. Копия кода
+# разошлась бы с поставщиком на первой его правке — ровно то, ради чего
+# заведён общий конвейер.
+#
+# `needs` ЗДЕСЬ НЕТ И БЫТЬ НЕ МОЖЕТ: агрегатор на зависимостях при падении
+# соседа не краснеет, а пропускается, — а пропущенную запись защита засчитывает
+# за пройденную (168, 187). Гейт сам спрашивает у площадки записи на голове.
+#
+# ОТДЕЛЬНЫЙ ПРОГОН СО СВОЕЙ ГРУППОЙ, а не работа в `PR check`: тот гасится
+# каждым событием метки целиком, и вместе с ним гас бы сводный, оставляя на
+# голове `cancelled` там, где защита ждёт вердикт.
+name: ci-complete
+
+on:
+  pull_request:
+    branches: [main]
+    # Те же типы, что у `PR check`: метка — вход механизма.
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+  # У события всегда есть ручная кнопка (104).
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  checks: read
+  pull-requests: read
+
+concurrency:
+  # Голова в имени группы (179): последнее слово не за заходом на старом коммите.
+  group: ci-complete-${{ github.event.pull_request.number || github.ref }}-${{ github.event.pull_request.head.sha || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  ci-complete:
+    # Имя работы и есть имя контекста в защите ветки (168).
+    name: ci-complete
+    runs-on: ubuntu-26.04
+    # Ревью идёт до пяти минут, опрос ждёт его до 15 (умолчание скрипта).
+    timeout-minutes: 30
+    steps:
+      - name: Забрать витрину
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Забрать код сводного гейта у механизмов
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ArtVsMark/Engineering-Pipeline-Mechanisms
+          # Коммит выпуска, а не тег: подвижная метка меняла бы исполняемый
+          # код без нашего ведома (152).
+          ref: c36d16b1abe889e16be1b4a4b2fbd7a165a2e147 # v1.5.0
+          path: .pipeline-mechanisms
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+
+      - run: python -m pip install --quiet "pyyaml>=6,<7" ./.pipeline-mechanisms/packages/transport
+
+      - name: Опросить проверки на голове
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        # ВЫВОД — В АННОТАЦИЮ: логи прогонов облачному окну закрыты (151), и от
+        # красного без аннотации остался бы один код возврата. Сводимый прогон
+        # у витрины зовётся «PR check», а не «ci», как у механизмов.
+        run: |
+          set -uo pipefail
+          rc=0
+          python .pipeline-mechanisms/scripts/ci_complete.py \
+            --policy .pipeline.yml \
+            --self-name "ci-complete" \
+            --summarises "PR check" > "${RUNNER_TEMP}/verdict.txt" 2>&1 || rc=$?
+          cat "${RUNNER_TEMP}/verdict.txt"
+          # Порядок замен обязателен: сперва знак процента (находка механизмов, #265).
+          said="$(sed -z 's/%/%25/g; s/\r/%0D/g; s/\n/%0A/g' "${RUNNER_TEMP}/verdict.txt")"
+          # Зелёными считаются только объявленные коды (068).
+          case "$rc" in
+            0) echo "все обязательные проверки на голове пройдены" ;;
+            1) echo "::error::сводный гейт: красно%0A${said}" ;;
+            2) echo "::error::сводный гейт: опрос не отработал%0A${said}" ;;
+            *) echo "::error::сводный гейт: код ${rc} не объявлен%0A${said}"
+               rc=2 ;;
+          esac
+          exit "${rc}"
