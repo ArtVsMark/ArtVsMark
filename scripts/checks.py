@@ -281,6 +281,15 @@ LEVELS = ("error", "warning", "notice")
 TRAILER_LINE = re.compile(r"^([A-Za-z][A-Za-z0-9-]*):\s*(.+?)\s*$")
 
 
+def paragraphs(text: str) -> list[str]:
+    """Абзацы текста — блоки между пустыми строками, пустые отброшены.
+
+    Один разбор на витрину: им режут и хвост сообщения коммита, и свод в гейте
+    источников истины. Вторая копия разошлась бы с первой молча (214).
+    """
+    return [block for block in re.split(r"\n\s*\n", text or "") if block.strip()]
+
+
 def trailers(body: str) -> dict[str, list[str]]:
     """Трейлеры сообщения — из ХВОСТОВОГО блока, а не из любой строки.
 
@@ -301,10 +310,10 @@ def trailers(body: str) -> dict[str, list[str]]:
     авторства коммитов, и решению о стоп-кране, и вторая копия разошлась бы с
     первой молча (правило 090).
     """
-    paragraphs = [block for block in re.split(r"\n\s*\n", body or "") if block.strip()]
-    if not paragraphs:
+    blocks = paragraphs(body)
+    if not blocks:
         return {}
-    lines = [line for line in paragraphs[-1].split("\n") if line.strip()]
+    lines = [line for line in blocks[-1].split("\n") if line.strip()]
     parsed = [TRAILER_LINE.match(line) for line in lines]
     if not all(parsed):
         return {}

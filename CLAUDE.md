@@ -290,6 +290,7 @@ CI (договор [`facts.schema.json`](.rules/facts.schema.json)); облач�
 
 ## 📚 Источники истины (не дублировать)
 
+<!-- sources -->
 | Тема | Канонический документ |
 |---|---|
 | что показывает витрина | [`README.md`](README.md) |
@@ -299,6 +300,15 @@ CI (договор [`facts.schema.json`](.rules/facts.schema.json)); облач�
 | роли и пласты | [`.rules/roles.md`](.rules/roles.md) |
 | как страница дошла до нынешнего вида | [`HISTORY.md`](HISTORY.md) |
 | почему правило именно такое | каталог, по номеру из `bindings.json` |
+| статусы открытой работы | задачи этого репозитория |
+<!-- /sources -->
+
+Таблицу собирает `python scripts/check_sources.py --write` из
+[`.rules/sources.json`](.rules/sources.json), руками она не правится. Там же
+объявляется каждое исключительное утверждение свода (обороты — `MARKERS`
+гейта): гейт краснеет на необъявленном, на объявлении, пережившем текст, и на
+двух адресах у одного предмета.
+→ [`181`](https://github.com/ArtVsMark/Engineering-Incidents-Playbook/blob/main/rules/ru/181-an-exclusive-claim-binds-the-document.md)
 
 ## 🎯 Открытая работа
 
