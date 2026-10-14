@@ -100,6 +100,7 @@ jobs:
             --label bug \
             --body-file .github/main-red-issue.md \
             --run-url "$RUN" \
+            --exclude python-next \
             --apply
           rc=$?
           set -e

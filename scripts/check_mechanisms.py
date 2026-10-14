@@ -1262,7 +1262,7 @@ def _constant_cut(cut: ast.Slice) -> str:
     return ""
 
 
-def audit_runners(flows: dict[str, str]) -> list[str]:
+def audit_runners(flows: dict[str, str], floor: str = "") -> list[str]:
     """Утверждения о прогонах, которые до 28 августа держались одной прозой.
 
     Четыре вердикта говорили «у ВСЕХ прогонов так», и проверялось это чтением
@@ -1305,9 +1305,18 @@ def audit_runners(flows: dict[str, str]) -> list[str]:
 
     # Версия языка задана в ОДНОМ месте: две разные означают, что проверки и
     # сборка бегут на разных языках, и разойдутся они молча (022).
-    if len(versions) > 1:
+    #
+    # С ПЛАНКОЙ — НЕСКОЛЬКО ВЕРСИЙ ЗАКОННЫ, ЕСЛИ МЛАДШАЯ ИЗ НИХ ПЛАНКА (решение
+    # владельца 14 октября, #337): сборка и гейты бегут на планке, старшие
+    # версии — только наборы («тесты на 3.15», python-next). Тот же признак у
+    # гейта версий каталога. Без планки — прежнее «одна версия».
+    key = lambda v: tuple(int(part) for part in v.split("."))  # noqa: E731
+    lowest = min(versions, key=key) if versions else ""
+    if len(versions) > 1 and (not floor or lowest != floor):
         where = "; ".join(f"{v} — {', '.join(sorted(f))}" for v, f in sorted(versions.items()))
-        found.append(f"версий Python в прогонах больше одной: {where} (022, 073)")
+        why = (f"младшая {lowest}, а планка {floor} — сборка и гейты бегут не на планке"
+               if floor else "планка не названа")
+        found.append(f"версий Python в прогонах больше одной: {where}; {why} (022, 073)")
     return found
 
 
@@ -2719,6 +2728,12 @@ def selftest() -> int:
          {"a.yml": PY_FLOW.format(v="3.12"), "b.yml": PY_FLOW.format(v="3.12")}, False),
         ("две разные версии языка", audit_runners,
          {"a.yml": PY_FLOW.format(v="3.12"), "b.yml": PY_FLOW.format(v="3.11")}, True),
+        ("планка и старшая — законно", lambda f: audit_runners(f, "3.14"),
+         {"a.yml": PY_FLOW.format(v="3.14"), "b.yml": PY_FLOW.format(v="3.15")}, False),
+        ("младшая не планка — сборка не на планке", lambda f: audit_runners(f, "3.14"),
+         {"a.yml": PY_FLOW.format(v="3.15"), "b.yml": PY_FLOW.format(v="3.16")}, True),
+        ("ниже планки — отказ", lambda f: audit_runners(f, "3.14"),
+         {"a.yml": PY_FLOW.format(v="3.13"), "b.yml": PY_FLOW.format(v="3.14")}, True),
         # Плавающая метка исполнителя (176, #314) — обе стороны и граница.
         ("исполнитель ubuntu-latest", audit_runners,
          {"a.yml": GOOD_FLOW.replace("ubuntu-26.04", "ubuntu-latest")}, True),
@@ -3308,6 +3323,11 @@ def main() -> int:
         # git — это «проверка не отработала», третий исход, а не находка о
         # витрине (правило 039). Молчаливый пропуск выглядел бы как зелёное.
         tracked = tracked_assets(ROOT)
+        # Планка — из pyproject.toml, тем же разбором, что у хука старта:
+        # «>=3.14» → «3.14». Нет строки — пусто, и гейт держит одну версию.
+        planka = re.search(r'^requires-python\s*=\s*"[^0-9]*([0-9]+\.[0-9]+)',
+                           (ROOT / "pyproject.toml").read_text(encoding="utf-8"), re.M)
+        floor = planka.group(1) if planka else ""
     except (OSError, ValueError, SyntaxError, subprocess.SubprocessError) as e:
         print(f"проверка не отработала: {e}", file=sys.stderr)
         return 2
@@ -3322,7 +3342,7 @@ def main() -> int:
 
     found = (audit_scripts(sources) + audit_calls(sources) + audit_voice(sources)
              + single_catalogue_address(sources)
-             + audit_gaps(rules) + audit_workflows(flows) + audit_runners(flows)
+             + audit_gaps(rules) + audit_workflows(flows) + audit_runners(flows, floor)
              + shared_temp(sources) + shared_swaps(sources) + script_polls(sources)
              + gate_really_blocks(rules, flows) + called_pins(rules, flows)
              + audit_harness(sources, flows) + audit_charter(ROOT)
