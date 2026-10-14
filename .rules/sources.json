@@ -13,7 +13,7 @@
     {"subject": "список проектов и их порядок", "address": "projects.json"},
     {"subject": "ответ по каждому правилу каталога", "address": ".rules/bindings.json"},
     {"subject": "атрибуция, конвейер, названные пробелы", "address": ".rules/README.md"},
-    {"subject": "роли и пласты", "address": ".rules/roles.md"},
+    {"subject": "роли и пласты", "address": "docs/agent/roles.md"},
     {"subject": "как страница дошла до нынешнего вида", "address": "HISTORY.md"},
     {"subject": "почему правило именно такое", "address": "каталог, по номеру из `bindings.json`",
      "external": true},

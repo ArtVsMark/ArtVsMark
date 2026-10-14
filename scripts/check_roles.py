@@ -28,7 +28,7 @@ import sys
 import checks
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-ROLES = ROOT / ".rules/roles.md"
+ROLES = ROOT / "docs/agent/roles.md"
 # Таблица живёт между маркерами: так её видно и человеку, и разбору, а
 # соседние таблицы файла под проверку не попадают.
 COVERAGE = re.compile(r"<!--покрытие-->(.*?)<!--/покрытие-->", re.DOTALL)
@@ -39,7 +39,7 @@ def patterns(text: str) -> list[str]:
     """Образцы артефактов из таблицы покрытия."""
     table = COVERAGE.search(text)
     if table is None:
-        raise SystemExit("в .rules/roles.md нет таблицы покрытия между маркерами")
+        raise SystemExit("в docs/agent/roles.md нет таблицы покрытия между маркерами")
     return [match.group("glob") for match in ROW.finditer(table.group(1))]
 
 
@@ -106,7 +106,7 @@ def main() -> int:
             print(f"  {path}", file=sys.stderr)
         print(
             "\nАртефакт без владельца называет недостающее направление сам "
-            "(правило 082). Допишите строку в .rules/roles.md — с пластом и тем, "
+            "(правило 082). Допишите строку в docs/agent/roles.md — с пластом и тем, "
             "кто его ведёт, а не только с именем файла.",
             file=sys.stderr,
         )
