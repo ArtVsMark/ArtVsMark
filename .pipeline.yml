@@ -22,9 +22,50 @@ checks:
   # Обязательная работа на 3.15 (#340). До сводного гейта её не ждал никто,
   # кроме release-hold, — толчок после снятия `hold` сливался без неё.
   "тесты на 3.15": required
-  # Решение владельца 14.10.2026: слияние ждёт ВЕРДИКТА ревью, а не его
-  # содержания (105). Находки — комментарии к строкам, работа зелёная.
-  review: required
+  # ВЗГЛЯД — ШАГ МЕХАНИЗМОВ `step-review.yml` (#345, шаг B), И ОН СОВЕЩАТЕЛЬНЫЙ,
+  # как у самих механизмов. `required` дал бы взаимное ожидание: взгляд ждёт
+  # зелёного `ci-complete` (look_waits.py механизмов), а `ci-complete` ждал бы
+  # взгляда. Решение владельца 14.10.2026 «слияние ждёт ВЕРДИКТА, а не его
+  # содержания» (105) держит release-hold.yml: он будится прогоном `review` и
+  # снимает стоп-кран только при зелёных ВСЕХ проверках головы, `review /
+  # review` среди них. Адресат — файл прогона, пока шаг не завёл задачу-реестр
+  # находок; заведёт — адресатом станет её номер.
+  #
+  # `who` — СВОЯ работа поверх тонкого вызова: у шага нет входа «эту ветку не
+  # смотреть». Обход объявлен механизмам расхождением —
+  # ArtVsMark/Engineering-Pipeline-Mechanisms#1342; появится вход — `who` уйдёт.
+  who:
+    class: advisory
+    why: решает, машинная ли ветка, по списку с общей ветки; не ответил — взгляд не позван, и это видно его записью
+    addressee: .github/workflows/review.yml
+  "review / map":
+    class: advisory
+    why: собирает карту для взгляда кодом общей ветки; не собралась — взгляд идёт без неё
+    addressee: .github/workflows/review.yml
+  "review / review":
+    class: advisory
+    why: вердикт взгляда; слияние его ждёт через release-hold, а не через сводный гейт — иначе взаимное ожидание
+    addressee: .github/workflows/review.yml
+  "review / findings":
+    class: advisory
+    why: запись находок в реестр слияния не держит; её отказ значит, что находки остались комментарием
+    addressee: .github/workflows/review.yml
+  "review / sweep":
+    class: advisory
+    why: снимает с реестра разобранное по слитым изменениям; на голове изменения предмета не имеет
+    addressee: .github/workflows/review.yml
+  "review / verify":
+    class: advisory
+    why: проверяет премису одной находки по кнопке; слияния не касается
+    addressee: .github/workflows/review.yml
+  "review / late-queue":
+    class: advisory
+    why: собирает очередь позднего взгляда по расписанию; на голове изменения предмета не имеет
+    addressee: .github/workflows/review.yml
+  "review / late-look":
+    class: advisory
+    why: поздний взгляд по слитому, по расписанию и кнопкой, а не на изменении
+    addressee: .github/workflows/review.yml
   automerge:
     class: "off"
     why: это сам шаг слияния, а не проверка перед ним

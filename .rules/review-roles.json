@@ -1,0 +1,15 @@
+{
+  "_": "Кем смотреть на изменение витрины: обязательные роли идут на каждом изменении, контекстные — по тронутым путям. Форма — договор шага step-review механизмов (#345, шаг B); образец — .rules/review-roles.json Engineering-Pipeline-Mechanisms. Таблица читается механизмом (scripts/review_map.py механизмов) с ОБЩЕЙ ветки, а не с головы изменения (085): правка действует со следующего изменения. Имена ролей — заголовки раздела «Профили ролей взгляда» в docs/agent/roles.md. Процедура взгляда — docs/agent/review.md.",
+  "schema": 1,
+  "_schema": "версия формы этого файла: ключи required, ignored и by_path (paths — образцы путей fnmatch от корня: `*` проходит и через `/`, а образец без `/` берёт только путь в корне; ignored.except — пути, которые ролей зовут, хотя подпадают под ignored.paths; roles — имена профилей); читает scripts/review_map.py механизмов",
+  "required": ["ревизор", "тестировщик"],
+  "ignored": {"paths": ["changelog.d/*"], "except": ["changelog.d/README.md"], "why": "фрагмент журнала приносит почти каждое изменение: роли, которые он звал бы, стали бы обязательными по факту. README в `except` — не фрагмент, а правила их записи, и он зовёт свои роли"},
+  "by_path": [
+    {"paths": ["README.md", "assets/*"], "roles": ["редактор"]},
+    {"paths": ["docs/*", "*.md", "changelog.d/README.md", ".rules/*.md"], "roles": ["редактор"]},
+    {"paths": [".rules/*", ".pipeline.yml", "projects.json", "pyproject.toml"], "roles": ["архитектор"]},
+    {"paths": [".github/*"], "roles": ["инженер площадки", "безопасность"]},
+    {"paths": ["scripts/*"], "roles": ["механик"]},
+    {"paths": ["CLAUDE.md", ".claude/*"], "roles": ["методолог процесса"]}
+  ]
+}
