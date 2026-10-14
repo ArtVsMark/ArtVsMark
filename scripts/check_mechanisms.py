@@ -469,6 +469,10 @@ def shared_swaps(sources: dict[str, str]) -> list[str]:
 TOP_KEY = re.compile(r"^(\w[\w-]*):", re.M)
 JOB_KEY = re.compile(r"^  (\w[\w-]*):\s*$", re.M)
 JOB_TIMEOUT = re.compile(r"^    timeout-minutes:", re.M)
+#: Работа, которая ЗОВЁТ переиспользуемый прогон: `uses:` на уровне работы, а
+#: не у шага. Площадка `timeout-minutes` у такой работы отвергает — предел
+#: ставят работы вызванного прогона (у `step-review.yml` механизмов он у каждой).
+CALLING_JOB = re.compile(r"^    uses:", re.M)
 PY_VERSION = re.compile(r"^\s*python-version:\s*[\"']?([\d.]+)", re.M)
 #: Метка исполнителя, которую двигает площадка: ``ubuntu-latest``,
 #: ``macos-latest``, ``windows-latest``. Образ под ней меняется без правки
@@ -1291,7 +1295,7 @@ def audit_runners(flows: dict[str, str], floor: str = "") -> list[str]:
         for i, (job, begin) in enumerate((m.group(1), m.start())
                                          for m in JOB_KEY.finditer(jobs)):
             body = jobs[begin:bounds[i + 1]]
-            if not JOB_TIMEOUT.search(body):
+            if not JOB_TIMEOUT.search(body) and not CALLING_JOB.search(body):
                 found.append(f"{name}: у работы {job} нет timeout-minutes — "
                              f"умолчание площадки шесть часов (100)")
         for version in PY_VERSION.findall(text):
@@ -2716,6 +2720,13 @@ def selftest() -> int:
          {"a.yml": GOOD_FLOW.replace("  workflow_dispatch:\n", "")}, True),
         ("нет таймаута у работы", audit_runners,
          {"a.yml": GOOD_FLOW.replace("    timeout-minutes: 10\n", "")}, True),
+        ("работа зовёт переиспользуемый прогон — таймаут не её", audit_runners,
+         {"a.yml": GOOD_FLOW.replace("    runs-on: ubuntu-26.04\n    timeout-minutes: 10\n"
+                                     "    steps:\n      - run: echo\n",
+                                     "    uses: o/r/.github/workflows/s.yml@abc\n")}, False),
+        ("действие у шага не делает работу вызывающей", audit_runners,
+         {"a.yml": GOOD_FLOW.replace("    timeout-minutes: 10\n", "")
+                            .replace("      - run: echo\n", "      - uses: o/a@abc\n")}, True),
         ("таймаут у шага, а не у работы", audit_runners,
          {"a.yml": GOOD_FLOW.replace("    timeout-minutes: 10\n", "")
                             .replace("      - run: echo\n",
