@@ -52,7 +52,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ArtVsMark/Engineering-Incidents-Playbook
-          ref: 5d10def7c6c86224c4e162422aa2f933c2808f68 # v1.11.0, 2026-10-09
+          ref: b577c644d62b08a8b5a1bc27180ea84ed8363c28 # v1.12.0, 2026-10-14
           path: .attribution-gate
           fetch-depth: 1
 
