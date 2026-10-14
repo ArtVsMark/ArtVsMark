@@ -41,6 +41,7 @@ GitHub отдаёт по одному имени столько записей, 
 (модуль не разобрался — это видно трассировкой импорта, а не кодом).
 """
 
+import contextlib
 import json
 import os
 import pathlib
@@ -48,7 +49,11 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
+import urllib.error
 import urllib.request
+from collections.abc import Callable
+from email.utils import parsedate_to_datetime
 
 
 #: Сводка каталога о своих потребителях: чем у каждого держится каждое правило.
@@ -437,6 +442,77 @@ def next_page(link: str | None) -> str:
     return found.group(1) if found else ""
 
 
+#: Временные отказы площадки: перегрузка, сбой шлюза, лимит частоты (101).
+#: 403 сюда не входит: без заголовков квоты это ответ «нельзя», а не «позже».
+TRANSIENT = frozenset({429, 500, 502, 503, 504})
+#: Сколько всего попыток и самая долгая пауза, которую сборка согласна ждать.
+#: Пауза длиннее — отказ сразу: прогон по расписанию не держит исполнителя
+#: минутами ради одного источника.
+ATTEMPTS = 3
+PAUSE_CAP = 60.0
+
+
+def retry_after(refusal: Exception) -> float | None:
+    """Пауза, названная сервером в ``Retry-After``: секунды или HTTP-дата."""
+    headers = getattr(refusal, "headers", None)
+    said = headers.get("Retry-After") if headers is not None else None
+    if not said:
+        return None
+    if said.strip().isdigit():
+        return float(said.strip())
+    try:
+        moment = parsedate_to_datetime(said)
+    except (TypeError, ValueError):
+        return None
+    return max(0.0, moment.timestamp() - time.time())
+
+
+def transient(refusal: Exception) -> bool:
+    """Отказ, который может пройти сам: временный код или обрыв связи (101)."""
+    if isinstance(refusal, urllib.error.HTTPError):
+        return refusal.code in TRANSIENT
+    return isinstance(refusal, (urllib.error.URLError, TimeoutError, ConnectionError))
+
+
+def patiently[T](open_once: Callable[[], T], idempotent: bool = True,
+                 pause: Callable[[float], None] = time.sleep) -> T:
+    """Обращение к площадке с повтором временных отказов (101).
+
+    ИНЦИДЕНТ ЗДЕСЬ. 12 октября суточная сборка упала на одном ``502 Bad
+    Gateway`` от площадки — запрос прогонов грейдера. Сборка назвала это
+    третьим исходом, как и обязана, но повторить было нечем: витрина сутки не
+    обновлялась, и сработали оба сторожа — #277 и #334. Следующий прогон
+    прошёл без единой правки.
+
+    ПОВТОРЯЕТСЯ ТОЛЬКО ТО, ЧТО МОЖЕТ ПРОЙТИ САМО: коды ``TRANSIENT`` и обрыв
+    связи. 404, 401, 403 — ответ, а не молчание, и второй вопрос его не
+    изменит. Запись (``idempotent=False`` — POST и PATCH задач) не
+    повторяется вовсе: дважды созданная задача хуже упавшего прогона.
+
+    ПАУЗА СЕРВЕРА ВАЖНЕЕ СВОЕЙ: ``Retry-After`` берёт верх над расчётной
+    (2, 4 с); длиннее ``PAUSE_CAP`` — отказ сразу, с причиной.
+
+    ЭТО НЕ ОПРОС (011): цикл ограничен ``ATTEMPTS``, а пауза стоит только в
+    ветке отказа — ожидания состояния здесь нет. Последний отказ уходит
+    вызывающему как есть, и третий исход решает он.
+    """
+    for attempt in range(1, ATTEMPTS + 1):
+        try:
+            return open_once()
+        except (urllib.error.URLError, TimeoutError, ConnectionError) as refusal:
+            if not idempotent or attempt == ATTEMPTS or not transient(refusal):
+                raise
+            wait = retry_after(refusal)
+            wait = float(2 ** attempt) if wait is None else wait
+            if wait > PAUSE_CAP:
+                raise
+            print(annotate("warning", f"временный отказ площадки ({clip(str(refusal), 80)}) — "
+                           f"повтор через {wait:g} с, попытка {attempt + 1} из {ATTEMPTS} (101)"),
+                  file=sys.stderr)
+            pause(wait)
+    raise AssertionError("недостижимо: цикл либо вернул ответ, либо поднял отказ")
+
+
 def _request(url: str, method: str = "GET",
              payload: dict | None = None) -> tuple[object, str]:
     """Один запрос к площадке: разобранное тело и заголовок ``Link``.
@@ -456,9 +532,13 @@ def _request(url: str, method: str = "GET",
             **({"Authorization": f"Bearer {token}"} if token else {}),
         },
     )
-    with urllib.request.urlopen(request, timeout=30) as response:
-        body = json.load(response) if response.status != 204 else None
-        return body, response.headers.get("Link", "") or ""
+    def once() -> tuple[object, str]:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            body = json.load(response) if response.status != 204 else None
+            return body, response.headers.get("Link", "") or ""
+
+    # Чтение повторяется, запись — нет: POST и PATCH задач не идемпотентны.
+    return patiently(once, idempotent=method == "GET")
 
 
 def rest(path: str, method: str = "GET", payload: dict | None = None) -> object:
@@ -788,9 +868,55 @@ def selftest() -> int:
             or machine_branch(""):
         broken.append("машинная ветка: признак отвечает не то")
 
+    # ── повтор временных отказов (101) — обе стороны ──────────────────────
+    # Временный код и обрыв связи повторяются; ответ «нельзя», запись и
+    # слишком долгая пауза — нет; пауза сервера берёт верх над расчётной.
+    import email.message                                      # noqa: PLC0415
+    import io                                                 # noqa: PLC0415
+
+    def refused(code: int, after: str = "") -> urllib.error.HTTPError:
+        headers = email.message.Message()
+        if after:
+            headers["Retry-After"] = after
+        return urllib.error.HTTPError("https://x", code, "отказ", headers, io.BytesIO())
+
+    def script(*answers):
+        queue = list(answers)
+
+        def once():
+            got = queue.pop(0)
+            if isinstance(got, Exception):
+                raise got
+            return got
+        return once
+
+    retry_cases = [
+        ("502, затем ответ", script(refused(502), "ok"), True, "ok", [2.0]),
+        ("обрыв связи, затем ответ",
+         script(urllib.error.URLError("connection reset"), "ok"), True, "ok", [2.0]),
+        ("404 — ответ, а не молчание", script(refused(404)), True, "raise", []),
+        ("403 без квоты — не лимит", script(refused(403)), True, "raise", []),
+        ("три 502 — отказ после третьей", script(refused(502), refused(502), refused(502)),
+         True, "raise", [2.0, 4.0]),
+        ("Retry-After сервера важнее своей", script(refused(503, "7"), "ok"), True, "ok", [7.0]),
+        ("пауза длиннее предела — отказ сразу", script(refused(429, "120")), True, "raise", []),
+        ("запись не повторяется", script(refused(502)), False, "raise", []),
+    ]
+    with contextlib.redirect_stderr(io.StringIO()):
+        for name, once, idempotent, expected, pauses in retry_cases:
+            waited: list[float] = []
+            try:
+                got = patiently(once, idempotent=idempotent, pause=waited.append)
+            except urllib.error.URLError:
+                got = "raise"
+            if got != expected or waited != pauses:
+                broken.append(f"повтор, {name}: ждали {expected} и паузы {pauses}, "
+                              f"вышло {got} и {waited}")
+
     for line in broken:
         print(f"  {line}")
-    print("  свёртка имён, разметка находок, обход страниц, строка ответа и последняя "
+    print("  повтор временных отказов, свёртка имён, разметка находок, обход страниц, "
+          "строка ответа и последняя "
           "запись проверены" if not broken else "")
     return 1 if broken else 0
 
