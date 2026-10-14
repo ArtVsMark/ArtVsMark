@@ -502,7 +502,7 @@ def pinned_actions(flows: dict[str, str]) -> list[str]:
     отдельным изменением, то есть переезд становится видимым и обратимым.
 
     ЗАЧЕМ ГЕЙТ, ЕСЛИ ВСЁ И ТАК ПРИБИТО. Критерий «действия прибиты по SHA»
-    объявлен профилем «зависимости и внешний артефакт» в .rules/roles.md и до
+    объявлен профилем «зависимости и внешний артефакт» в docs/agent/roles.md и до
     8 сентября держался ЧТЕНИЕМ: двадцать пять ссылок сверены разово и вручную,
     а двадцать шестая пришла бы с новым прогоном.
 
@@ -3336,7 +3336,7 @@ def main() -> int:
     # обходить всё дерево значило бы требовать ссылок от цитат в наборах.
     prose = {name: (ROOT / name).read_text(encoding="utf-8")
              for name in ("CLAUDE.md", "HISTORY.md", "README.md",
-                          ".rules/README.md", ".rules/roles.md",
+                          ".rules/README.md", "docs/agent/roles.md",
                           ".rules/facts-contract.md")
              if (ROOT / name).exists()}
 

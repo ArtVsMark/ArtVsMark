@@ -385,7 +385,7 @@ def selftest() -> int:
         ("правка скрипта без записи", ["scripts/a.py"], "", True),
         ("правка прогона без записи", [".github/workflows/a.yml"], "", True),
         ("оба вида сразу без записи", ["scripts/a.py", ".github/workflows/a.yml"], "", True),
-        ("документация без записи — не предмет", ["README.md", ".rules/roles.md"], "", False),
+        ("документация без записи — не предмет", ["README.md", "docs/agent/roles.md"], "", False),
         ("ответ каталогу без записи — не предмет", [".rules/bindings.json"], "", False),
         ("дифф не прочитан", [], "", False),
         ("осознанный отказ с причиной",

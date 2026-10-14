@@ -232,11 +232,11 @@ def selftest() -> int:
         ("правка прогона без github_actions", {"bug"}, [".github/workflows/pr-check.yml"], True),
         ("правка dependabot без dependencies", {"bug"}, [".github/dependabot.yml"], True),
         ("изменение целиком из документации без documentation", {"bug"},
-         ["HISTORY.md", ".rules/roles.md"], True),
+         ["HISTORY.md", "docs/agent/roles.md"], True),
         ("дифф не прочитан — пустой список файлов", {"bug"}, [], True),
         ("метка содержания и зона совпали", {"bug", "github_actions"},
          [".github/workflows/pr-check.yml"], False),
-        ("изменение целиком из документации", {"documentation"}, ["HISTORY.md", ".rules/roles.md"], False),
+        ("изменение целиком из документации", {"documentation"}, ["HISTORY.md", "docs/agent/roles.md"], False),
         ("hold рядом с содержанием не мешает", {"bug", "hold"}, plain, False),
         ("правка скрипта своей зоны не требует", {"bug"}, plain, False),
         ("смешанный дифф: документация не требуется", {"bug"},
@@ -312,7 +312,7 @@ def selftest() -> int:
     for files, expected in (
         ([".github/workflows/pr-check.yml"], {"github_actions"}),
         ([".github/dependabot.yml"], {"dependencies"}),
-        (["HISTORY.md", ".rules/roles.md"], {"documentation"}),
+        (["HISTORY.md", "docs/agent/roles.md"], {"documentation"}),
         (["scripts/checks.py"], set()),
         ([], set()),
     ):
