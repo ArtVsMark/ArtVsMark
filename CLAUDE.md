@@ -173,6 +173,11 @@ CI (договор [`facts.schema.json`](.rules/facts.schema.json)); облач�
 
 - **автомерж по умолчанию**: отключается меткой `hold` или черновиком, а не
   включается флажком;
+- **слияние ждёт вердикта ревью**: `review.yml` — внешний взгляд отдельным
+  прогоном, и `release-hold` снимает стоп-кран только при зелёных **всех**
+  проверках головы. Находки — комментарии к строкам, слияния они не держат:
+  их разбирает окно, подписанное на изменение
+  → [`105`](https://github.com/ArtVsMark/Engineering-Incidents-Playbook/blob/main/rules/ru/105-an-outside-audit-needs-outside-eyes.md);
 - **сообщение пересобирается** из тел коммитов ветки вместе с трейлерами:
   кнопка «Merge pull request» теряет и то и другое
   → [`123`](https://github.com/ArtVsMark/Engineering-Incidents-Playbook/blob/main/rules/ru/123-attribution-is-verified-on-the-final-history.md);

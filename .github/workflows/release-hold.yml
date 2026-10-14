@@ -21,9 +21,12 @@ name: release-hold
 
 on:
   workflow_run:
-    # имя — копия прогона .github/workflows/pr-check.yml; его же читает
-    # scripts/stuck_prs.py::REQUIRED. Переименуют — меняются все три (071).
-    workflows: ["PR check"]
+    # имя «PR check» — копия прогона .github/workflows/pr-check.yml; его же
+    # читает scripts/stuck_prs.py::REQUIRED. Переименуют — меняются все три
+    # (071). «review» — копия имени .github/workflows/review.yml: слияние ждёт
+    # вердикта ревью (105), и его завершение — такой же повод решить, как
+    # завершение проверки.
+    workflows: ["PR check", "review"]
     types: [completed]
   # ВТОРОЙ ПОВОД ПРОСНУТЬСЯ: ТЕЛО ОТРЕДАКТИРОВАЛИ.
   #
@@ -97,7 +100,6 @@ jobs:
           # будить умеет — кнопкой. Лишний секрет — лишние права (131, 135).
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BRANCH: ${{ github.event.workflow_run.head_branch }}
-          RESULT: ${{ github.event.workflow_run.conclusion }}
           PR_INPUT: ${{ inputs.pr }}
           PR_EDITED: ${{ github.event.pull_request.number }}
           # Имя СВОЕЙ работы: его же площадка кладёт в список проверок
@@ -110,12 +112,30 @@ jobs:
           # «изменения нет».
           if [ -n "$PR_INPUT" ]; then
             number="$PR_INPUT"; result="success"
-          elif [ -n "$PR_EDITED" ]; then
-            # Событие про ТЕЛО, и исхода проверок в нём нет вовсе — его
-            # спрашивают у площадки. Разбор ответа живёт в scripts/hold.py
-            # рядом с решением о стоп-кране: у скрипта есть набор, у шага его
-            # не бывает (правило 090).
-            number="$PR_EDITED"
+          else
+            if [ -n "$PR_EDITED" ]; then
+              number="$PR_EDITED"
+            else
+              # предел: умолчание gh — 30 записей; с фильтром по ветке открытое
+              # изменение одно, и берётся первое — другого у ветки не бывает.
+              number=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" \
+                         --state open --json number --jq '.[0].number // empty')
+            fi
+            if [ -z "$number" ]; then
+              # Печатается командой площадки, а не в обычный вывод: логи прогонов
+              # облачному окну закрыты (правило 151), и до него доходят только
+              # аннотации. Этот выход стоил расследования ровно потому, что был
+              # тихим: прогон отработал «успешно» и не сказал, почему ничего не
+              # сделал.
+              echo "::notice::Открытого изменения на ${BRANCH:-«ветка не задана»} нет — снимать нечего"
+              exit 0
+            fi
+            # ИСХОД СПРАШИВАЕТСЯ У ПЛОЩАДКИ, А НЕ БЕРЁТСЯ ИЗ СОБЫТИЯ. У события
+            # про тело исхода проверок нет вовсе, а исход одного прогона — не
+            # исход изменения: с 14 октября слияние ждёт ещё и вердикта ревью
+            # (105), и зелёный «PR check» при идущем ревью стоп-кран не снимает.
+            # Разбор ответа живёт в scripts/hold.py рядом с решением о
+            # стоп-кране: у скрипта есть набор, у шага его не бывает (090).
             rollup=$(gh pr view "$number" --repo "$GITHUB_REPOSITORY" \
                        --json statusCheckRollup --jq '.statusCheckRollup' 2>&1)
             if [ $? -ne 0 ]; then
@@ -134,21 +154,6 @@ jobs:
               exit 1
             fi
             echo "::notice::Проверки #$number: $result (спрашивающий «$JOB_NAME» не в счёт)"
-          else
-            # предел: умолчание gh — 30 записей; с фильтром по ветке открытое
-            # изменение одно, и берётся первое — другого у ветки не бывает.
-            number=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" \
-                       --state open --json number --jq '.[0].number // empty')
-            result="$RESULT"
-          fi
-          if [ -z "$number" ]; then
-            # Печатается командой площадки, а не в обычный вывод: логи прогонов
-            # облачному окну закрыты (правило 151), и до него доходят только
-            # аннотации. Этот выход стоил расследования ровно потому, что был
-            # тихим: прогон отработал «успешно» и не сказал, почему ничего не
-            # сделал.
-            echo "::notice::Открытого изменения на ${BRANCH:-«ветка не задана»} нет — снимать нечего"
-            exit 0
           fi
 
           gh pr view "$number" --repo "$GITHUB_REPOSITORY" --json body \
