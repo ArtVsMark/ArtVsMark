@@ -462,7 +462,7 @@ def retry_after(refusal: Exception) -> float | None:
         return float(said.strip())
     try:
         moment = parsedate_to_datetime(said)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
     return max(0.0, moment.timestamp() - time.time())
 
