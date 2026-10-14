@@ -1,0 +1,82 @@
+# Следующая версия Python — вопрос, а не проверка (#263, #337). Решение
+# владельца 14 октября: 3.15 обязательна (работа «тесты на 3.15» в
+# pr-check.yml), совещательная — 3.16: гоняется затем, чтобы заранее знать,
+# будут ли наборы витрины на ней работать. Образец — python-next.yml каталога.
+#
+# ПОКА СБОРКИ 3.16 НЕТ, ПРОВЕРЯТЬ НЕЧЕМ, И ЭТО НЕ КРАСНОЕ. Первый шаг смотрит
+# в манифест сборок setup-python: версии там нет — наборы пропускаются. Вышла
+# альфа — прогон начинает проверять сам, без правки. Сбой чтения манифеста —
+# не «ещё не вышла», а упавший шаг (039): иначе прогон зеленел бы, ничего не
+# проверив. Манифест читает jq, а не python: до setup-python python раннера
+# не той версии (217).
+#
+# ПОЧЕМУ НЕ НА ИЗМЕНЕНИИ. Необязательный канал на изменении не просыпается: его
+# отказ не должен ни задерживать слияние, ни ронять его (084). Поэтому на
+# толчке в общую ветку, раз в неделю и по кнопке (104).
+#
+# КРАСНОЕ ЧЕСТНОЕ, А НЕ continue-on-error: ответ на вопрос и есть цвет прогона.
+# Тревогу по общей ветке он не поднимает — main-red.yml его исключает.
+#
+# `allow-prereleases: true` — условие работы setup-python на предрелизе, и по
+# нему же гейт версий каталога узнаёт предварительный прогон.
+#
+# ЗНАЧКА НЕТ — решение владельца: витрина его не выводит.
+name: python-next
+
+on:
+  push:
+    branches: [main]
+  # Расписание — НЕ страховка толчка, а свой вопрос: предрелиз меняется и без
+  # наших слияний, и раз в неделю он спрашивается заново (169). Потерянный
+  # толчок оно не подхватывает — площадка обещает его «когда-нибудь».
+  schedule:
+    # Минута не круглая — в 0 и 30 площадка обслуживает расписания всей планеты.
+    - cron: "23 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: python-next
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    env:
+      NEXT: "3.16"
+    steps:
+      - name: Вышла ли следующая версия
+        id: released
+        run: |
+          set -euo pipefail
+          manifest="$RUNNER_TEMP/versions-manifest.json"
+          curl -fsSL -o "$manifest" \
+            https://raw.githubusercontent.com/actions/python-versions/main/versions-manifest.json
+          if jq -e --arg v "$NEXT." 'any(.[]; .version | startswith($v))' "$manifest" >/dev/null; then
+            echo "ok=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::сборки $NEXT у setup-python ещё нет — проверять нечем"
+          fi
+
+      - name: Забрать витрину
+        if: steps.released.outputs.ok == '1'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        if: steps.released.outputs.ok == '1'
+        with:
+          python-version: "3.16"
+          allow-prereleases: true
+
+      - name: Наборы проходят на следующей версии
+        if: steps.released.outputs.ok == '1'
+        run: |
+          set -euo pipefail
+          for script in scripts/*.py; do
+            grep -q '^def selftest' "$script" || continue
+            echo "::group::$script"
+            python "$script" --selftest
+            echo "::endgroup::"
+          done
