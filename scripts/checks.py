@@ -51,6 +51,7 @@ import sys
 import tempfile
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from collections.abc import Callable
 from email.utils import parsedate_to_datetime
@@ -443,12 +444,35 @@ API = "https://api.github.com"
 #: вправе отдать страницу короче ``per_page`` не последней, а последнюю —
 #: ровно полной, и счёт по длине страницы ошибается в обе стороны (212).
 NEXT_PAGE = re.compile(r'<([^>]+)>\s*;\s*rel="next"')
+#: Один ресурс в двух написаниях: по числовому id (так пишет ``Link``) и по
+#: имени (так спрашивает код и так пропускает прокси облачного окна).
+BY_ID_PATH = re.compile(r"^/repositories/\d+(?P<rest>/.*)?$")
+BY_NAME_PATH = re.compile(r"^/repos/[^/]+/[^/]+(?P<rest>/.*)?$")
 
 
-def next_page(link: str | None) -> str:
-    """Адрес следующей страницы из заголовка ``Link``. Пусто — страниц больше нет."""
+def next_page(link: str | None, current: str | None = None) -> str:
+    """Адрес следующей страницы из заголовка ``Link``. Пусто — страниц больше нет.
+
+    ``current`` — адрес только что прочитанной страницы. Площадка пишет в
+    ``Link`` путь по числовому id — ``/repositories/1340711219/commits``, —
+    а прокси облачного окна пропускает только ``/repos/<владелец>/<имя>/…``
+    и на id отвечает 403. Если ``Link`` ведёт на тот же ресурс по id, путь
+    остаётся свой, а из ``Link`` берётся одна строка запроса (``page=`` или
+    курсор ``after=``). Любая другая ссылка берётся как есть: подменять путь
+    вслепую — значит при ссылке на другой путь читать ту же страницу вечно.
+    """
     found = NEXT_PAGE.search(link or "")
-    return found.group(1) if found else ""
+    if not found:
+        return ""
+    target = found.group(1)
+    if current is None:
+        return target
+    there, here = urllib.parse.urlsplit(target), urllib.parse.urlsplit(current)
+    by_id = BY_ID_PATH.match(there.path)
+    by_name = BY_NAME_PATH.match(here.path)
+    if by_id and by_name and by_id["rest"] == by_name["rest"]:
+        return here._replace(query=there.query).geturl()
+    return target
 
 
 #: Временные отказы площадки: перегрузка, сбой шлюза, лимит частоты (101).
@@ -601,7 +625,7 @@ def rest_list(path: str, key: str | None = None) -> list:
             raise ValueError(f"{url}: ожидался список"
                              f"{f' в поле {key!r}' if key else ''}, пришло иное")
         items.extend(page)
-        url = next_page(link)
+        url = next_page(link, url)
     return items
 
 
@@ -794,6 +818,28 @@ def selftest() -> int:
     for name, link, expected in page_cases:
         if next_page(link) != expected:
             broken.append(f"страницы, {name}: вышло {next_page(link)!r}")
+
+    # ── путь свой, из Link — только запрос: прокси окна не пускает /repositories/<id> ──
+    asked = "https://api.github.com/repos/O/R/commits?sha=main&per_page=100"
+    by_id = "https://api.github.com/repositories/7/commits"
+    path_cases = [
+        ("номер страницы по id", f'<{by_id}?sha=main&per_page=100&page=2>; rel="next"',
+         "https://api.github.com/repos/O/R/commits?sha=main&per_page=100&page=2"),
+        ("курсор по id", f'<{by_id}?per_page=100&after=Y2>; rel="next"',
+         "https://api.github.com/repos/O/R/commits?per_page=100&after=Y2"),
+        ("последняя страница", f'<{by_id}?page=1>; rel="prev"', ""),
+        ("по id, но другой ресурс — как есть",
+         '<https://api.github.com/repositories/7/pulls?page=2>; rel="next"',
+         "https://api.github.com/repositories/7/pulls?page=2"),
+        ("другой путь без id — как есть", '<https://api.github.com/x?page=2>; rel="next"',
+         "https://api.github.com/x?page=2"),
+        ("по имени — как есть",
+         '<https://api.github.com/repos/O/R/commits?page=2>; rel="next"',
+         "https://api.github.com/repos/O/R/commits?page=2"),
+    ]
+    for name, link, expected in path_cases:
+        if (got := next_page(link, asked)) != expected:
+            broken.append(f"страницы с путём, {name}: вышло {got!r}")
 
     # ── последний прогон выбирается из списка, а не фильтром (#247) ──────
     # Двусторонне: свежий удачный находится и тогда, когда площадка отдала его

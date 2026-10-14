@@ -232,7 +232,7 @@ def _api_list(path: str, key: str | None = None) -> list:
                 raise ValueError(f"{url}: ожидался список"
                                  f"{f' в поле {key!r}' if key else ''}, пришло иное")
         items.extend(page)
-        url = checks.next_page(link)
+        url = checks.next_page(link, url)
     return items
 
 
