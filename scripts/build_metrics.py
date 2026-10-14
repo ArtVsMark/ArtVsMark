@@ -191,8 +191,14 @@ def _fetch(url: str, authenticated: bool = True) -> tuple[bytes, str]:
             ),
         },
     )
-    with naming(url), urllib.request.urlopen(request, timeout=30) as response:
-        return response.read(), response.headers.get("Link", "") or ""
+    def once() -> tuple[bytes, str]:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            return response.read(), response.headers.get("Link", "") or ""
+
+    # Временный отказ повторяется (101): 12 октября сутки витрины ушли на
+    # один 502 площадки. Адрес прикрепляется к последнему отказу.
+    with naming(url):
+        return checks.patiently(once)
 
 
 def _get(url: str, authenticated: bool = True) -> bytes:
@@ -263,8 +269,13 @@ def _graphql(query: str) -> dict:
     token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
     if token:
         request.add_header("Authorization", f"Bearer {token}")
-    with naming(f"{API}/graphql"), urllib.request.urlopen(request, timeout=30) as response:
-        answer = json.loads(response.read())
+    def once() -> bytes:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            return response.read()
+
+    # Запрос GraphQL здесь — чтение, хоть и методом POST: повторять его можно.
+    with naming(f"{API}/graphql"):
+        answer = json.loads(checks.patiently(once))
     if "errors" in answer:
         # Ошибка GraphQL приезжает с кодом 200 — молча принять её значило бы
         # показать пустые числа как измеренные.
