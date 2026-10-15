@@ -185,7 +185,9 @@ def script_polls(sources: dict[str, str]) -> list[str]:
 #: «опустите число» тем же заходом, что и починка. Замер на включении
 #: (2026-10-08): 32 из 34; прогнаны два — check_author 2 и check_labels 1.
 #: 2026-10-09: 31 — collect_changelog 2, отказ записи журнала (067).
-OUTCOMES_BUDGET = 31
+#: 2026-10-15: 30 — непрогнанный исход ушёл вместе со своим скриптом договора
+#: фактов в каталог (#353), а не прогнан.
+OUTCOMES_BUDGET = 30
 
 
 def declared_outcomes(source: str) -> set[int]:
@@ -3347,8 +3349,7 @@ def main() -> int:
     # обходить всё дерево значило бы требовать ссылок от цитат в наборах.
     prose = {name: (ROOT / name).read_text(encoding="utf-8")
              for name in ("CLAUDE.md", "HISTORY.md", "README.md",
-                          ".rules/README.md", "docs/agent/roles.md",
-                          ".rules/facts-contract.md")
+                          ".rules/README.md", "docs/agent/roles.md")
              if (ROOT / name).exists()}
 
     found = (audit_scripts(sources) + audit_calls(sources) + audit_voice(sources)
