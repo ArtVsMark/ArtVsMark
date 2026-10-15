@@ -187,8 +187,10 @@ CI (договор [`facts.schema.json`](.rules/facts.schema.json)); облач�
   Кем смотреть — [`.rules/review-roles.json`](.rules/review-roles.json),
   что держит проект — [`docs/agent/review.md`](docs/agent/review.md)
   → [`105`](https://github.com/ArtVsMark/Engineering-Incidents-Playbook/blob/main/rules/ru/105-an-outside-audit-needs-outside-eyes.md);
-- **сообщение пересобирается** из тел коммитов ветки вместе с трейлерами:
-  кнопка «Merge pull request» теряет и то и другое
+- **тело уплотнения собирает шаг**, а не площадка (`squash_body` механизмов):
+  заголовки коммитов списком, связи с задачами, трейлеры — один раз. Тела
+  коммитов в общую ветку не идут, они остаются в изменении: «почему» живёт в
+  теле изменения и в `HISTORY.md`. Кнопка «Merge pull request» теряет трейлеры
   → [`123`](https://github.com/ArtVsMark/Engineering-Incidents-Playbook/blob/main/rules/ru/123-attribution-is-verified-on-the-final-history.md);
 - **автор коммита слияния — человек**: нужен секрет `MERGE_QUEUE_TOKEN`
   (имя общее с грейдером и каталогом), штатный
