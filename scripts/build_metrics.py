@@ -110,6 +110,8 @@ def readable_schema(schema: str) -> bool:
     местах буквой, подъём номера пришлось бы чинить дважды (209).
     """
     return schema.split(".")[0] in FACTS_MAJORS
+
+
 # Порог устаревания фактов. Не «сколько живёт число», а «за сколько молчание
 # издателя перестаёт быть тишиной выходных»: файл пересобирается на каждом пуше
 # в main, витрина собирается ежесуточно. Две недели без пуша у активного
@@ -3280,11 +3282,13 @@ def selftest() -> int:
     ]
     # Мажоры договора фактов: 1 и 2 читаются (2.0 — переезд к каталогу, форма
     # та же), 3 — нет; номер без мажора — не тот номер (#358).
-    for schema, expected in (("1.6", True), ("1.2", True), ("2.0", True), ("2.1", True),
-                             ("3.0", False), ("0.9", False), ("", False), ("v2.0", False)):
-        if readable_schema(schema) != expected:
-            broken.append(f"мажор фактов {schema!r}: ждали {expected}, вышло {not expected}")
-    print("  да  — факты: мажоры 1 и 2 читаются, 3 и чужая форма — нет")
+    majors_wrong = [schema for schema, expected in (
+        ("1.6", True), ("1.2", True), ("2.0", True), ("2.1", True),
+        ("3.0", False), ("0.9", False), ("", False), ("v2.0", False))
+        if readable_schema(schema) != expected]
+    broken += [f"мажор фактов {schema!r}: признак ответил наоборот" for schema in majors_wrong]
+    print(f"  {'да ' if not majors_wrong else 'НЕТ'} — факты: мажоры 1 и 2 читаются, "
+          f"3 и чужая форма — нет")
     # Пороги покрытия — с обеих сторон каждой границы: граница в старшем тоне.
     for percent, tone in ((100, "ok"), (90, "ok"), (89.9, "fair"), (75, "fair"),
                           (74.9, "low"), (0, "low")):
