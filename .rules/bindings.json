@@ -499,9 +499,10 @@
       "status": "active",
       "mechanism": "gate",
       "where": ".github/workflows/automerge.yml — общий шаг автомержа механизмов (с 15.10, #345 шаг C): кандидат очереди — конъюнкция: база — main И не черновик И нет стоп-метки hold или заморозки И есть согласие automerge; каждое остановленное изменение называется в отчёте захода с меткой, которая его держит. Согласие ставит .github/workflows/agent-pr.yml вместе с hold, а hold снимает .github/workflows/release-hold.yml только при зелёных всех проверках головы. ПРЕЖДЕ условие держал свой прогон: не черновик И открыт И без hold И защита с обязательной проверкой есть.",
-      "origin_kind": "own",
+      "origin_kind": "called",
       "analysed": "2026-10-15",
-      "decided": "2026-10-15"
+      "decided": "2026-10-15",
+      "origin": "ArtVsMark/Engineering-Pipeline-Mechanisms:.github/workflows/step-automerge.yml@c36d16b1abe889e16be1b4a4b2fbd7a165a2e147"
     },
     "064": {
       "status": "active",

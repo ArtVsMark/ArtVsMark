@@ -191,7 +191,7 @@ jobs:
             out=$(gh workflow run automerge.yml --repo "$GITHUB_REPOSITORY" \
                     --ref main 2>&1) && rc=0 || rc=$?
             if [ "$rc" -eq 0 ]; then
-              echo "::notice::#$1: автомерж передан automerge.yml — он вооружит или сольёт, если сливаемо уже сейчас"
+              echo "::notice::#$1: стоп-кран снят, очередь разбужена — automerge.yml берёт кандидатов сам: с согласием automerge и без hold, голову первой"
               return 0
             fi
             # слова ok/state/broken — договор scripts/gh_outcome.py::classify; case ниже
@@ -219,17 +219,11 @@ jobs:
               # до окна, когда прогон отработал и ничего не изменил (151).
               echo "::notice::#$number: стоп-кран остаётся — ${verdict#keep: }" ;;
             *)
-              echo "::notice::#$number: ${verdict#nothing: }"
-              # ПОВТОР ДОВООРУЖАЕТ. Стоп-крана нет, но это не значит «всё
-              # сделано»: метку мог снять прошлый прогон, проигравший гонку, —
-              # тогда изменение открыто, не вооружено, и других событий не
-              # будет. Спрашивается площадка, а не память; решает automerge.yml.
-              state=$(gh pr view "$number" --repo "$GITHUB_REPOSITORY" \
-                        --json state,isDraft,autoMergeRequest \
-                        --jq '"\(.state) \(.isDraft) \(.autoMergeRequest != null)"' 2>&1) \
-                || { echo "::warning::Состояние #$number не прочитано — довооружение пропущено: $state"; exit 0; }
-              if [ "$state" = "OPEN false false" ]; then
-                echo "::notice::#$number открыто и не вооружено — довооружение"
-                arm "$number"
-              fi ;;
+              # ДОВООРУЖЕНИЯ ЗДЕСЬ БОЛЬШЕ НЕТ (#345, шаг C). Прежде пустой
+              # `autoMergeRequest` значил «метку снял проигравший гонку прогон,
+              # и автомерж не включён». У очереди механизмов значок несёт только
+              # взведённая голова, и пустое поле у остальных — норма: повтор жал
+              # бы automerge.yml впустую на каждом событии. А automerge.yml сам
+              # будится теми же завершениями PR check, review и ci-complete.
+              echo "::notice::#$number: ${verdict#nothing: }" ;;
           esac
