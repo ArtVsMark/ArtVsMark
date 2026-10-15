@@ -95,7 +95,23 @@ ANSWER_CONTRACT = "https://raw.githubusercontent.com/ArtVsMark/Engineering-Incid
 # тесты и как устроена его матрица, жило здесь. Перенеси он каталог — у витрины
 # молча изменилось бы число, а не сломалась сборка.
 FACTS_PATH = ".github/badges/facts.json"
-FACTS_SCHEMA = "1"  # мажор ЧУЖОГО контракта, который умеет читать эта сборка
+#: Мажоры ЧУЖОГО контракта, которые умеет читать эта сборка. С 15.10 договор
+#: фактов держит каталог, и 2.0 у него — переезд, а не строгость: форма та же,
+#: что в 1.6, отличаются держатель и адрес (#358, Engineering-Incidents-Playbook#843).
+#: Мажор 3 — уже другая форма, и читать его наугад нельзя.
+FACTS_MAJORS = frozenset({"1", "2"})
+
+
+def readable_schema(schema: str) -> bool:
+    """Умеет ли сборка читать факты этого номера: мажор из ``FACTS_MAJORS``.
+
+    ОДИН ПРИЗНАК НА ДВА ЧТЕНИЯ — грейдера (молчание роняет сборку) и соседа
+    (молчание откладывается в ``silent``). Пока сравнение было записано в обоих
+    местах буквой, подъём номера пришлось бы чинить дважды (209).
+    """
+    return schema.split(".")[0] in FACTS_MAJORS
+
+
 # Порог устаревания фактов. Не «сколько живёт число», а «за сколько молчание
 # издателя перестаёт быть тишиной выходных»: файл пересобирается на каждом пуше
 # в main, витрина собирается ежесуточно. Две недели без пуша у активного
@@ -1788,8 +1804,9 @@ def grader_facts() -> dict:
         ) from error
 
     schema = str(facts.get("schema", ""))
-    if schema.split(".")[0] != FACTS_SCHEMA:
-        raise SystemExit(f"схема фактов грейдера {schema!r}, а сборка умеет мажор {FACTS_SCHEMA}.x")
+    if not readable_schema(schema):
+        raise SystemExit(f"схема фактов грейдера {schema!r}, а сборка умеет мажоры "
+                         f"{', '.join(sorted(FACTS_MAJORS))}")
     return facts
 
 
@@ -1827,7 +1844,7 @@ def project_facts(repo: str, silent: list[str] | None = None) -> dict:
             silent.append(repo)
         return {}
     schema = str(facts.get("schema", ""))
-    if schema and schema.split(".")[0] != FACTS_SCHEMA:
+    if schema and not readable_schema(schema):
         # Несовместимый мажор читать нельзя, но и ронять сборку из-за соседа,
         # ушедшего вперёд, — значит останавливать витрину чужой правкой.
         if silent is not None:
@@ -3263,6 +3280,15 @@ def selftest() -> int:
          [("release", "—"), ("CI", "success"), ("coverage", "92.1%"),
           ("version", "1.3.47")], 1),
     ]
+    # Мажоры договора фактов: 1 и 2 читаются (2.0 — переезд к каталогу, форма
+    # та же), 3 — нет; номер без мажора — не тот номер (#358).
+    majors_wrong = [schema for schema, expected in (
+        ("1.6", True), ("1.2", True), ("2.0", True), ("2.1", True),
+        ("3.0", False), ("0.9", False), ("", False), ("v2.0", False))
+        if readable_schema(schema) != expected]
+    broken += [f"мажор фактов {schema!r}: признак ответил наоборот" for schema in majors_wrong]
+    print(f"  {'да ' if not majors_wrong else 'НЕТ'} — факты: мажоры 1 и 2 читаются, "
+          f"3 и чужая форма — нет")
     # Пороги покрытия — с обеих сторон каждой границы: граница в старшем тоне.
     for percent, tone in ((100, "ok"), (90, "ok"), (89.9, "fair"), (75, "fair"),
                           (74.9, "low"), (0, "low")):
