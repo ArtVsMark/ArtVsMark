@@ -53,7 +53,7 @@ CONTENT = frozenset({"bug", "enhancement", "documentation", "github_actions", "d
 # Метки конвейера классификацией не считаются: они говорят, что делать с
 # изменением, а не что это за изменение. Список нужен, чтобы не жаловаться на
 # них как на постороннее.
-PIPELINE = frozenset({checks.HOLD_LABEL})
+PIPELINE = frozenset({checks.HOLD_LABEL, checks.AUTOMERGE_LABEL})
 
 #: Тип коммита по Conventional Commits — метка содержания. Нужна прогону
 #: `agent-pr.yml`: изменение открывается пушем, и без метки классификация красная
