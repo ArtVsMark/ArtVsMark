@@ -436,6 +436,13 @@ def newest_run(runs: list[dict], conclusion: str | None = None) -> dict | None:
 #: питон не импортирует, и копия подписана у каждого вхождения (071).
 HOLD_LABEL = "hold"
 
+#: Метка конвейера «согласие очереди»: кандидат шага автомержа механизмов —
+#: изменение с ней и без ``HOLD_LABEL`` (#345, шаг C). Ставит agent-pr.yml при
+#: открытии. Узнают её scripts/stuck_prs.py — застрявшим считается и
+#: невзведённое изменение с согласием — и scripts/check_labels.py, который не
+#: считает её классификацией. Имя объявлено в .github/labels.yml.
+AUTOMERGE_LABEL = "automerge"
+
 #: REST площадки. Один адрес на всех сторожей.
 API = "https://api.github.com"
 

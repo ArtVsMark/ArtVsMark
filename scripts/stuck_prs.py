@@ -99,7 +99,11 @@ def stuck(change: dict, checked: str | None, now: dt.datetime,
     УСЛОВИЯ ПЕРЕЧИСЛЕНЫ ПОИМЁННО, и каждое отсеивает свой законный случай:
 
     * ``hold`` — придержано намеренно, ждёт человека, а не площадку;
-    * автомерж выключен — значит сливать никто и не собирался;
+    * ни согласия очереди ``automerge``, ни взведённого автомержа — сливать
+      никто и не собирался. С переезда на очередь механизмов (#345, шаг C)
+      значок ``auto_merge`` несёт только взведённая голова, а намерение
+      слить — метка согласия; читать один значок значило бы не видеть
+      изменение с согласием, которое шаг так и не слил;
     * обязательная проверка не зелёная — это другой предмет, у него свой
       адресат, и жаловаться здесь значило бы кричать о красном дважды;
     * конфликт (``dirty``) — тоже другой предмет, чинится правкой ветки;
@@ -108,7 +112,7 @@ def stuck(change: dict, checked: str | None, now: dt.datetime,
     labels = {label.get("name") for label in change.get("labels", [])}
     if checks.HOLD_LABEL in labels:
         return None
-    if not change.get("auto_merge"):
+    if checks.AUTOMERGE_LABEL not in labels and not change.get("auto_merge"):
         return None
     if checked != "success":
         return None
@@ -119,7 +123,7 @@ def stuck(change: dict, checked: str | None, now: dt.datetime,
     if idle < minutes:
         return None
     return (f"#{change['number']} «{checks.clip(change['title'], 60)}» — "
-            f"{REQUIRED} зелёная, автомерж включён, конфликтов нет, "
+            f"{REQUIRED} зелёная, согласие или автомерж есть, конфликтов нет, "
             f"а состояние не менялось {idle:.0f} мин "
             f"(состояние: {change.get('mergeable_state', '—')})")
 
@@ -175,7 +179,7 @@ def body(found: list[str], minutes: int) -> str:
         "",
         "Зелёное на изменении обычно означает «сейчас сольётся»: у витрины это",
         f"занимает 20–60 секунд. Ниже — изменения, у которых `{REQUIRED}` зелёная,",
-        "автомерж включён, конфликтов нет, а состояние не менялось дольше",
+        "согласие очереди или автомерж есть, конфликтов нет, а состояние не менялось дольше",
         f"**{minutes} минут**. Снаружи это неотличимо от «ещё бежит».",
         "",
         "**Что обычно помогает.** Снять и вернуть метку содержания: событие",
@@ -284,7 +288,12 @@ def selftest() -> int:
         ("готово и стоит дольше порога", change(30), "success", True),
         ("стоит, но меньше порога", change(1), "success", False),
         ("придержано меткой hold", change(30, labels=[{"name": "hold"}]), "success", False),
-        ("автомерж выключен", change(30, auto_merge=None), "success", False),
+        ("ни согласия, ни взведения", change(30, auto_merge=None), "success", False),
+        ("согласие очереди без взведения — шаг не слил",
+         change(30, auto_merge=None, labels=[{"name": "automerge"}]), "success", True),
+        ("согласие и hold — придержано",
+         change(30, auto_merge=None, labels=[{"name": "automerge"}, {"name": "hold"}]),
+         "success", False),
         ("обязательная проверка красная", change(30), "failure", False),
         ("обязательной проверки нет вовсе", change(30), None, False),
         ("конфликт с общей веткой", change(30, mergeable_state="dirty"), "success", False),
