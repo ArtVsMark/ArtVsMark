@@ -105,25 +105,6 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python scripts/build_metrics.py
 
-      # Кто из соседей договору фактов не отвечает — каждые сутки, вслух.
-      # Предупреждением, а не красным: расхождение чинится на стороне издателя,
-      # и чужая правка не вправе останавливать наши числа (5–7 сентября витрина
-      # трое суток не пересчитывалась ровно так). Красный — только третий исход:
-      # проверка не отработала.
-      - name: Сверить факты соседей с договором
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set +e
-          python scripts/check_facts.py
-          rc=$?
-          set -e
-          case "$rc" in
-            0) echo "все соседи отвечают договору фактов" ;;
-            1) echo "::warning::Факты соседей расходятся с договором — перечень выше; на витрине у них «—» по недостающему, чинит издатель." ;;
-            *) echo "::error::Сверка фактов не отработала (код $rc): схема не прочитана или площадка не ответила."; exit 1 ;;
-          esac
-
       # Токена площадки у шага больше нет: `gh` он не зовёт, а лишний секрет в
       # окружении — это расширение доверия без предмета. Пуш идёт учётными
       # данными, которые положил checkout выше.
@@ -290,3 +271,92 @@ jobs:
           build_dir: dist-assets
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # КТО ИЗ СОСЕДЕЙ ДОГОВОРУ ФАКТОВ НЕ ОТВЕЧАЕТ — КАЖДЫЕ СУТКИ, ВСЛУХ.
+  #
+  # Договор с 15.10 держит каталог (facts-v2.0.0, #843), а витрина — его
+  # читатель: «факты соседей читает их читатель, а не каталог» (их
+  # check_facts.py без --file). Поэтому сверка осталась здесь, но кодом
+  # каталога, а не своей копией: своя схема знала только мажор 1, и файл 2.0
+  # получал «schema не той формы» (#358). Своя копия уходит из дерева в #353.
+  #
+  # ОТДЕЛЬНОЙ РАБОТОЙ И ТОЛЬКО С ЧТЕНИЕМ. Код берётся с выпуска каталога, а
+  # работа `build` пишет в ветку: чужой код в ней получил бы право записи.
+  # Тег выпуска подвижен, поэтому каждый скачанный файл сверяется с
+  # закреплённым отпечатком — закрепление вызываемого без вызывающего не
+  # защищает ни от чего (152). Подъём договора — правка тега и трёх
+  # отпечатков здесь, одним изменением.
+  #
+  # Предупреждением, а не красным: расхождение чинит издатель у себя, и чужая
+  # правка не вправе останавливать наши числа (039). Красный — только третий
+  # исход: код договора не получен или проверка не отработала.
+  facts:
+    name: facts
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      FACTS_CONTRACT: facts-v2.0.0
+    steps:
+      - name: Забрать список соседей
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          sparse-checkout: projects.json
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+
+      - name: Забрать код договора у каталога и сверить отпечатки
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/facts-contract"
+          mkdir -p "$dir"
+          for f in check_facts.py facts.schema.json facts.version; do
+            curl -fsSL -o "$dir/$f" \
+              "https://github.com/ArtVsMark/Engineering-Incidents-Playbook/releases/download/$FACTS_CONTRACT/$f"
+          done
+          ( cd "$dir" && sha256sum --check --strict - <<'SUMS'
+          49e4e8980cc4c01269239cb84e892625f11995db2243d3a56d5f899c1e9edb8b  check_facts.py
+          e00775d563eb7ed96ff230ecadb56f6ab38232b5da0d6a4fdb74fafafa6434ea  facts.schema.json
+          c28fcca53637bc88e124af1725df13cb98c69dedefd62fb3cdbe1cdb6b760624  facts.version
+          SUMS
+          ) || { echo "::error::Код договора фактов $FACTS_CONTRACT не совпал с закреплённым отпечатком — тег выпуска сдвинули; сверка не запускается (152)"; exit 1; }
+
+      - name: Сверить факты соседей с договором
+        run: |
+          set -uo pipefail
+          dir="$RUNNER_TEMP/facts-contract"
+          repos=$(python -I -c 'import json; print("\n".join(p["repo"] for p in json.load(open("projects.json"))["projects"]))')
+          silent=() ; off=() ; broken=()
+          for repo in $repos; do
+            work="$RUNNER_TEMP/facts/$repo"
+            mkdir -p "$work"
+            base="https://raw.githubusercontent.com/$repo/badges/.github/badges"
+            if ! curl -fsSL -o "$work/facts.json" "$base/facts.json"; then
+              silent+=("$repo"); continue
+            fi
+            # Манифест семьи необязателен: нет — проверка советует, а не отказывает.
+            curl -fsSL -o "$work/contracts.json" "$base/contracts.json" 2>/dev/null || rm -f "$work/contracts.json"
+            echo "== $repo"
+            python -I "$dir/check_facts.py" --file "$work/facts.json" --repo "$repo" \
+              --schema "$dir/facts.schema.json" --version "$dir/facts.version"
+            case $? in
+              0) ;;
+              1) off+=("$repo") ;;
+              *) broken+=("$repo") ;;
+            esac
+          done
+          # Зелёными считаются только объявленные коды (068).
+          if [ ${#off[@]} -gt 0 ]; then
+            echo "::warning::Факты расходятся с договором у: ${off[*]} — перечень выше; на витрине у них «—» по недостающему, чинит издатель."
+          fi
+          if [ ${#silent[@]} -gt 0 ] || [ ${#broken[@]} -gt 0 ]; then
+            echo "::error::Сверка фактов не отработала: не прочитаны — ${silent[*]:-нет}; проверка отказала — ${broken[*]:-нет} (третий исход, 039)"
+            exit 1
+          fi
+          [ ${#off[@]} -eq 0 ] && echo "все соседи отвечают договору фактов $FACTS_CONTRACT"
+          exit 0
