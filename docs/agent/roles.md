@@ -119,7 +119,9 @@
 | `.github/workflows/staleness.yml` | конвейер | окно; секреты за владельцем |
 | `.github/workflows/stuck-prs.yml` | конвейер | окно; секреты за владельцем |
 | `.github/workflows/pr-check.yml` | конвейер | окно; секреты за владельцем |
-| `.github/workflows/automerge.yml` | конвейер | окно; секреты за владельцем |
+| `.github/workflows/automerge.yml` | конвейер | окно держит тонкий вызов шага механизмов; токен слияния — за владельцем |
+| `.github/workflows/labels-sync.yml` | состав меток на площадке | окно; код — у механизмов по коммиту выпуска |
+| `.github/labels.yml` | состав меток — вход очереди и классификации | окно предлагает, владелец решает: новая метка — правка этого файла |
 | `.github/workflows/agent-pr.yml` | конвейер | окно; секреты за владельцем |
 | `.github/workflows/main-red.yml` | конвейер | окно; секреты за владельцем |
 | `.github/workflows/release-hold.yml` | конвейер | окно; секреты за владельцем |

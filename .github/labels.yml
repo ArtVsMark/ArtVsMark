@@ -1,0 +1,95 @@
+# Метки витрины (#345, шаг C).
+#
+# Правило 064: метка — вход механизма, а не украшение. Список разрешительный
+# (068): появление новой метки — правка этого файла, а не действие в интерфейсе.
+# Применяет .github/workflows/labels-sync.yml на правку файла и по кнопке;
+# метку, которой здесь нет, прогон НЕ удаляет — это решение человека.
+#
+# Читатели: scripts/check_labels.py витрины (содержание), шаг автомержа
+# механизмов (`automerge.check_labels_declared` — согласие, стоп, ранги очереди),
+# agent-pr.yml (ставит содержание, `hold` и `automerge`), release-hold.yml
+# (снимает `hold`). Цвета и описания живых меток перенесены как стояли на
+# площадке 15.10.2026: синхронизация правит их по этому файлу.
+
+# --- содержание: ставит автор (check_labels.py) -------------------------------
+- name: "bug"
+  color: "d73a4a"
+  description: "Something isn't working"
+- name: "enhancement"
+  color: "a2eeef"
+  description: "New feature or request"
+- name: "documentation"
+  color: "0075ca"
+  description: "Improvements or additions to documentation"
+- name: "github_actions"
+  color: "000000"
+  description: "Pull requests that update GitHub Actions code"
+- name: "dependencies"
+  color: "0366d6"
+  description: "Pull requests that update a dependency file"
+
+# --- конвейер: ставит машина, требовать от автора нельзя ----------------------
+- name: "hold"
+  color: "d93f0b"
+  description: "Стоп-кран: ставит agent-pr, снимает release-hold при зелёных всех проверках головы"
+- name: "automerge"
+  color: "0e8a16"
+  description: "Согласие очереди: ставит agent-pr при открытии. Сольётся, когда hold снят и голова зелёная"
+- name: "blocker"
+  color: "b60205"
+  description: "Слово владельца: источник 4, идёт в очереди раньше плана и правил"
+- name: "fix-main"
+  color: "b60205"
+  description: "Ставит человек: починка красной общей ветки идёт первой и не замораживается"
+- name: "paused/main-red"
+  color: "d93f0b"
+  description: "Заморозка: общая ветка красна. Ставит и снимает шаг механизмов, кроме несущих fix-main"
+
+# --- ранги очереди: ставит шаг автомержа, след источника работы ---------------
+- name: "source/0"
+  color: "b60205"
+  description: "Источник 0: чинит красную общую ветку — голова очереди"
+- name: "source/1"
+  color: "fbca04"
+  description: "Источник 1: конфликт слияния (виден только у головы очереди)"
+- name: "source/2"
+  color: "fbca04"
+  description: "Источник 2: красная проверка на своём изменении"
+- name: "source/3"
+  color: "0e8a16"
+  description: "Источник 3: снимает находку внешнего взгляда"
+- name: "source/4"
+  color: "0e8a16"
+  description: "Источник 4: слово владельца"
+- name: "source/5"
+  color: "c5def5"
+  description: "Источник 5: долг по правилам каталога"
+- name: "source/6"
+  color: "c5def5"
+  description: "Источник 6: план"
+
+# --- задачи: живут на площадке, их читает человек при разборе -----------------
+- name: "rule-source"
+  color: "5319E7"
+  description: "из этой задачи выросло правило общего каталога"
+- name: "accessibility"
+  color: "f143ab"
+  description: "Barrier affecting people with disabilities"
+- name: "duplicate"
+  color: "cfd3d7"
+  description: "This issue or pull request already exists"
+- name: "good first issue"
+  color: "7057ff"
+  description: "Good for newcomers"
+- name: "help wanted"
+  color: "008672"
+  description: "Extra attention is needed"
+- name: "invalid"
+  color: "e4e669"
+  description: "This doesn't seem right"
+- name: "question"
+  color: "d876e3"
+  description: "Further information is requested"
+- name: "wontfix"
+  color: "ffffff"
+  description: "This will not be worked on"
