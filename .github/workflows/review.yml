@@ -78,47 +78,29 @@ permissions:
   actions: read
 
 jobs:
-  # С МАШИНЫ ВЕРДИКТА НЕ СПРАШИВАЮТ (051). Суточная сборка, сбор журнала и
-  # обновления зависимостей решений не несут, а взгляд каждого — оплата за
-  # пересказ чисел. Список машинных веток один — scripts/checks.py::MACHINE_BRANCHES
-  # (214), — и читается он С ОБЩЕЙ ВЕТКИ: изменение не может объявить себя
-  # машинным правкой своего же checks.py и уйти от взгляда.
-  who:
-    name: who
-    runs-on: ubuntu-26.04
-    timeout-minutes: 5
-    outputs:
-      machine: ${{ steps.who.outputs.machine }}
-    steps:
-      - name: Забрать общую ветку
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.event.pull_request.base.sha || github.sha }}
-          sparse-checkout: scripts
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: "3.14"
-      - name: Машинная ветка взгляда не получает
-        id: who
-        env:
-          HEAD: ${{ github.head_ref }}
-        run: |
-          set -euo pipefail
-          machine=$(python -c 'import os, sys; sys.path.insert(0, "scripts"); import checks; print("yes" if checks.machine_branch(os.environ["HEAD"]) else "no")')
-          echo "machine=$machine" >> "$GITHUB_OUTPUT"
-          if [ "$machine" = yes ]; then
-            echo "::notice::$HEAD — машинная ветка, взгляд не требуется (051)"
-          fi
-
-  # Код шага берётся по коммиту выпуска v1.5.0, а не по тегу и не `./`:
+  # Код шага берётся по коммиту выпуска v1.6.0, а не по тегу и не `./`:
   # `check_mechanisms.py::pinned_actions` требует SHA (тот же коммит, что у
   # ci-complete.yml). Ключ — по имени, а не `secrets: inherit`.
+  #
+  # С МАШИНЫ ВЕРДИКТА НЕ СПРАШИВАЮТ (051). Суточная сборка, сбор журнала и
+  # обновления зависимостей решений не несут, а взгляд каждого — оплата за
+  # пересказ чисел. С v1.6.0 это вход шага `skip-branches` (просила витрина,
+  # Engineering-Pipeline-Mechanisms#1342) вместо своей работы `who`, гасившей
+  # вызов: взгляд и реестр находок на таких ветках не зовутся, пропуск назван
+  # строкой в сводке. Приставки — КОПИЯ scripts/checks.py::MACHINE_BRANCHES:
+  # YAML питон не импортирует; совпадение держит
+  # scripts/check_mechanisms.py::skip_branches_match (214). Та же строка
+  # передаётся шагу автомержа — реестр непросмотренного их не берёт.
+  #
+  # ПРЕДЕЛ НАЗВАН. Вход на `pull_request` берётся из файла прогона в
+  # изменении, а `who` читал список с общей ветки. Изменение, правящее этот
+  # файл, взгляда и так не получает (действие сверяет файл с main), а
+  # реестр непросмотренного его берёт — новой дыры переезд не открывает.
   review:
-    needs: who
-    if: needs.who.outputs.machine == 'no'
-    uses: ArtVsMark/Engineering-Pipeline-Mechanisms/.github/workflows/step-review.yml@c36d16b1abe889e16be1b4a4b2fbd7a165a2e147 # v1.5.0
+    uses: ArtVsMark/Engineering-Pipeline-Mechanisms/.github/workflows/step-review.yml@817255779cdd01caeeb01a3f804fa145c9e1217d # v1.6.0
     with:
       pr: ${{ inputs.pr || '' }}
       mark: ${{ inputs.mark || '' }}
+      skip-branches: "dependabot/ chore/metrics chore/deps- chore/changelog"
     secrets:
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
