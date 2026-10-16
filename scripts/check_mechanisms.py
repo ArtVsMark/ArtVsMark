@@ -2315,6 +2315,45 @@ CATALOGUE_FILE = "where.json"
 ADDRESS_HOME = "checks.py"
 
 
+#: Вход `skip-branches` у вызова общего шага механизмов и сами вызовы, которым
+#: он нужен: взгляд и автомерж (реестр непросмотренного) — v1.6.0, #1342, #1349.
+SKIP_BRANCHES = re.compile(r'^\s*skip-branches:\s*"(?P<said>[^"]*)"', re.M)
+SKIP_STEPS = re.compile(r"uses:\s*\S*/\.github/workflows/(?P<step>step-review|step-automerge)\.yml@")
+
+
+def skip_branches_match(flows: dict[str, str]) -> list[str]:
+    """Приставки машинных веток у вызовов шагов механизмов — копия, сверенная с
+    ``checks.MACHINE_BRANCHES``, а не второе знание (правило 214).
+
+    ЗАЧЕМ. С v1.6.0 механизмы пропускают машинные ветки сами — входом
+    ``skip-branches`` у шага взгляда и шага автомержа (просила витрина, #1342).
+    YAML питон не импортирует, и строка приставок в прогоне — копия списка из
+    ``scripts/checks.py``. Две копии одного решения расходятся на первой правке:
+    новая машинная ветка, вписанная только в ``checks.py``, молча получила бы
+    платный взгляд и запись «слито без взгляда».
+
+    ДВУСТОРОННЕ. Находка — и строка, не совпавшая со списком, и вызов шага без
+    входа вовсе: пропущенный вход значит «смотреть всё», и шаг об этом не скажет.
+    """
+    want = sorted(checks.MACHINE_BRANCHES)
+    found = []
+    for name, text in sorted(flows.items()):
+        steps = sorted({m.group("step") for m in SKIP_STEPS.finditer(text)})
+        if not steps:
+            continue
+        said = [m.group("said") for m in SKIP_BRANCHES.finditer(text)]
+        if not said:
+            found.append(f"{name}: зовёт {', '.join(steps)} без входа skip-branches — "
+                         f"машинные ветки получат взгляд и запись «без взгляда» (051, 214)")
+            continue
+        for line in said:
+            got = sorted(line.split())
+            if got != want:
+                found.append(f"{name}: skip-branches «{line}» не совпадает с "
+                             f"scripts/checks.py::MACHINE_BRANCHES {want} — копия разошлась (214)")
+    return found
+
+
 def single_catalogue_address(sources: dict[str, str]) -> list[str]:
     """Адрес сводки каталога записан ОДИН раз (правило 090).
 
@@ -2674,6 +2713,21 @@ def selftest() -> int:
          {"a.yml": "on:\n  schedule:\n    - cron: '0 4 * * *'\nconcurrency:\n  group: a\n  cancel-in-progress: true\n"}, False),
         ("голова из шагов группой не считается", cancellation_groups,
          {"a.yml": "on:\n  pull_request:\nconcurrency:\n  group: a-${{ github.event.pull_request.number }}\n  cancel-in-progress: true\njobs:\n  x:\n    steps:\n      - run: echo ${{ github.event.pull_request.head.sha }}\n"}, True),
+
+        # ── приставки машинных веток у шагов механизмов — копия списка (214) ─
+        ("skip-branches совпадает со списком", skip_branches_match,
+         {"a.yml": "    uses: o/r/.github/workflows/step-review.yml@abc\n    with:\n"
+                   f"      skip-branches: \"{' '.join(checks.MACHINE_BRANCHES)}\"\n"}, False),
+        ("порядок приставок не важен", skip_branches_match,
+         {"a.yml": "    uses: o/r/.github/workflows/step-automerge.yml@abc\n    with:\n"
+                   f"      skip-branches: \"{' '.join(reversed(checks.MACHINE_BRANCHES))}\"\n"}, False),
+        ("приставки не хватает", skip_branches_match,
+         {"a.yml": "    uses: o/r/.github/workflows/step-review.yml@abc\n    with:\n"
+                   f"      skip-branches: \"{' '.join(checks.MACHINE_BRANCHES[1:])}\"\n"}, True),
+        ("шаг взгляда без входа", skip_branches_match,
+         {"a.yml": "    uses: o/r/.github/workflows/step-review.yml@abc\n"}, True),
+        ("чужой шаг входа не требует", skip_branches_match,
+         {"a.yml": "    uses: o/r/.github/workflows/step-lint.yml@abc\n"}, False),
 
         # ── чужое действие прибито по SHA (правило 021) ──────────────────
         ("действие прибито по SHA", pinned_actions,
@@ -3353,7 +3407,7 @@ def main() -> int:
              if (ROOT / name).exists()}
 
     found = (audit_scripts(sources) + audit_calls(sources) + audit_voice(sources)
-             + single_catalogue_address(sources)
+             + single_catalogue_address(sources) + skip_branches_match(flows)
              + audit_gaps(rules) + audit_workflows(flows) + audit_runners(flows, floor)
              + shared_temp(sources) + shared_swaps(sources) + script_polls(sources)
              + gate_really_blocks(rules, flows) + called_pins(rules, flows)

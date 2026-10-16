@@ -50,9 +50,15 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Код шага — по коммиту выпуска v1.5.0 (тот же, что у ci-complete.yml и
+  # Код шага — по коммиту выпуска v1.6.0 (тот же, что у ci-complete.yml и
   # review.yml), а не по тегу: `check_mechanisms.py::pinned_actions` требует SHA.
+  # `skip-branches` — та же строка, что у review.yml: слитое с машинной ветки
+  # не встаёт в реестр непросмотренного (051); копия
+  # scripts/checks.py::MACHINE_BRANCHES, совпадение держит
+  # scripts/check_mechanisms.py::skip_branches_match (214).
   automerge:
-    uses: ArtVsMark/Engineering-Pipeline-Mechanisms/.github/workflows/step-automerge.yml@c36d16b1abe889e16be1b4a4b2fbd7a165a2e147 # v1.5.0
+    uses: ArtVsMark/Engineering-Pipeline-Mechanisms/.github/workflows/step-automerge.yml@817255779cdd01caeeb01a3f804fa145c9e1217d # v1.6.0
+    with:
+      skip-branches: "dependabot/ chore/metrics chore/deps- chore/changelog"
     secrets:
       MERGE_QUEUE_TOKEN: ${{ secrets.MERGE_QUEUE_TOKEN }}
