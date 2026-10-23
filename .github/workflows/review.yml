@@ -97,7 +97,7 @@ jobs:
   # файл, взгляда и так не получает (действие сверяет файл с main), а
   # реестр непросмотренного его берёт — новой дыры переезд не открывает.
   review:
-    uses: ArtVsMark/Engineering-Pipeline-Mechanisms/.github/workflows/step-review.yml@817255779cdd01caeeb01a3f804fa145c9e1217d # v1.6.0
+    uses: ArtVsMark/Engineering-Pipeline-Mechanisms/.github/workflows/step-review.yml@7cd39af2005ceb7564cba9324a42b375331fa4c8 # v1.8.0
     with:
       pr: ${{ inputs.pr || '' }}
       mark: ${{ inputs.mark || '' }}
