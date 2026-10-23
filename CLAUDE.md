@@ -258,6 +258,13 @@ CI (договор фактов — у каталога, выпуск `facts-v2.
 видит — держит свод.
 → [`210`](https://github.com/ArtVsMark/Engineering-Incidents-Playbook/blob/main/rules/ru/210-a-second-finding-on-one-place-stops-the-patching.md)
 
+**С третьего круга обзора по одному месту кодом чинится только находка с
+путём от реального входа** — файл дерева или настоящий вызов дают ложный
+отказ, пропуск или падение. Остальные снимаются строкой «Разобрано» с
+причиной, без кода. Находки о безопасности и о неверном факте в тексте
+изменения под это не попадают.
+→ [`228`](https://github.com/ArtVsMark/Engineering-Incidents-Playbook/blob/main/rules/ru/228-a-third-round-fixes-only-a-finding-with-a-path.md)
+
 ## 📝 Журнал изменений и журнал решений
 
 **Их два, и они отвечают на разные вопросы.**
