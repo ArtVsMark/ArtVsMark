@@ -137,7 +137,7 @@ Four things I do the same way in every repository, and the artefacts you can che
 
 ## Where this is headed
 
-The repositories above are not parallel products competing for attention. They are one sequence, and the order is deliberate. [Stepik-Python-Grader](https://github.com/ArtVsMark/Stepik-Python-Grader) — today's flagship — was the first real project, the [glossary](https://github.com/ArtVsMark/Glossary-Python) later folded into it, and every infrastructure repository here grew out of a problem hit while building it. Those three do the job a project manager would: between me as the client and AI agents as the development team, they hold the pace, the rules and the reusable machinery for everything else. So they are finished first, and the same mistake is not paid for again in every repository.
+The repositories above are not parallel products competing for attention. They are one sequence, and the order is deliberate. [Stepik-Python-Grader](https://github.com/ArtVsMark/Stepik-Python-Grader) — today's flagship — was the first real project, the [glossary](https://github.com/ArtVsMark/Glossary-Python)'s cards later moved into it and are exported from there, and every infrastructure repository here grew out of a problem hit while building it. The three infrastructure repositories — steps 1 to 3 below — do the job a project manager would: between me as the client and AI agents as the development team, they hold the pace, the rules and the reusable machinery for everything else. So they are finished first, and the same mistake is not paid for again in every repository.
 
 1. **[Shared pipeline mechanisms](https://github.com/ArtVsMark/Engineering-Pipeline-Mechanisms)** — done when every project has moved onto them completely; who already calls the shared steps is [measured by their own run](https://raw.githubusercontent.com/ArtVsMark/Engineering-Pipeline-Mechanisms/badges/.github/badges/who.md), not claimed here. Until then they grow more universal and configurable; afterwards they join the catalogue's cycle: a new rule, a gate built for it, handed out to the family.
 2. **[Rule catalogue](https://github.com/ArtVsMark/Engineering-Incidents-Playbook)** — every rule carries its incident; it collects new rules and skills from the projects and hands them out to all.
@@ -199,7 +199,7 @@ The repositories above are not parallel products competing for attention. They a
 вслух, вместо того чтобы подставить правдоподобное.
 
 **Куда это движется.** Репозитории выше — не параллельные продукты, а одна последовательность.
-Первым был грейдер; глоссарий позже влился в него, а три инфраструктурных проекта — механизмы
+Первым был грейдер; карточки глоссария позже переехали в него и экспортируются оттуда, а три инфраструктурных проекта — механизмы
 конвейера, каталог правил и контроль темпа по телеметрии сессий — родились из проблем, найденных
 при его разработке. Они делают работу руководителя проектов: держат темп, правила и общие механизмы
 между мной как заказчиком и ИИ-агентами как командой. Сначала доделывается эта инфраструктура, чтобы
