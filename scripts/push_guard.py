@@ -312,6 +312,9 @@ def selftest() -> int:
         got = push_targets(command, "agent/x")
         if got != expected:
             broken.append(f"разбор, {name}: ждали {expected}, вышло {got}")
+        # Предфильтр main — сосед разбора: толчок, который разбор видит, он не пропускает.
+        if expected and not PUSH.search(command):
+            broken.append(f"предфильтр, {name}: PUSH не увидел толчка — main его не судил бы")
         print(f"  {'верно' if got == expected else 'СБОЙ '} — разбор: {name}")
 
     try:
