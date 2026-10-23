@@ -137,12 +137,18 @@ Four things I do the same way in every repository, and the artefacts you can che
 
 ## Where this is headed
 
-The repositories above are not parallel products competing for attention. They are one sequence, and the order is deliberate.
+The repositories above are not parallel products competing for attention. They are one sequence, and the order is deliberate. [Stepik-Python-Grader](https://github.com/ArtVsMark/Stepik-Python-Grader) — today's flagship — was the first real project, the [glossary](https://github.com/ArtVsMark/Glossary-Python)'s cards later moved into it and are exported from there, and every infrastructure repository here grew out of a problem hit while building it. The three infrastructure repositories — steps 1 to 3 below — do the job a project manager would: between me as the client and AI agents as the development team, they hold the pace, the rules and the reusable machinery for everything else. So they are finished first, and the same mistake is not paid for again in every repository.
 
-- **The grader came first.** [Stepik-Python-Grader](https://github.com/ArtVsMark/Stepik-Python-Grader) — today's flagship — was the first real project, and the [glossary](https://github.com/ArtVsMark/Glossary-Python) later folded into it. Every infrastructure repository here grew out of a problem hit while building it.
-- **Infrastructure before features.** Three repositories do the job a project manager would: they sit between me as the client and AI agents as the development team, and hold the pace, the rules and the reusable machinery for everything else — [shared pipeline mechanisms](https://github.com/ArtVsMark/Engineering-Pipeline-Mechanisms), a [rule catalogue](https://github.com/ArtVsMark/Engineering-Incidents-Playbook) where every rule carries its incident, and [development pace control](https://github.com/ArtVsMark/Claude-Code_Usage-Token) from session telemetry. They are finished first, so the same mistake is not paid for again in every repository.
-- **Then the grader, all the way.** Work returns to the grader once that groundwork holds, and it is brought to a state worth promoting publicly. A quiet grader in the activity above is this ordering at work, not an abandoned project.
-- **Then the next flagship.** All of this is preparation for a modular platform that automates analytics, reporting and budgeting, built to grow beyond a single tool. It gets its own repository when there is code to show, not before.
+1. **[Shared pipeline mechanisms](https://github.com/ArtVsMark/Engineering-Pipeline-Mechanisms)** — done when every project has moved onto them completely; who already calls the shared steps is [measured by their own run](https://raw.githubusercontent.com/ArtVsMark/Engineering-Pipeline-Mechanisms/badges/.github/badges/who.md), not claimed here. Until then they grow more universal and configurable; afterwards they join the catalogue's cycle: a new rule, a gate built for it, handed out to the family.
+2. **[Rule catalogue](https://github.com/ArtVsMark/Engineering-Incidents-Playbook)** — every rule carries its incident; it collects new rules and skills from the projects and hands them out to all.
+3. **[Development pace control](https://github.com/ArtVsMark/Claude-Code_Usage-Token)** from session telemetry.
+4. **[Glossary](https://github.com/ArtVsMark/Glossary-Python)** — finishing the cards, paused until the infrastructure holds.
+5. **[The grader](https://github.com/ArtVsMark/Stepik-Python-Grader)**. A quiet grader or glossary in the activity above is this order at work, not an abandoned project.
+6. **One infrastructure project on a local server** — the catalogue, the mechanisms and pace control as modules of one project, each free to update its own module at any time; developed on a local server alongside git.
+7. **A lighter version without git** — asked for by people who do not work through git.
+8. **The main automation project** — a modular platform for analytics, reporting and budgeting. It gets its own repository when there is code to show, not before.
+9. **Taxes for the self-employed** — preparing and filing the data.
+10. **A project for coaches** — exercises, records and the like; for now an idea.
 
 <sub>A plan, not a promise with dates: the order can change, and this section changes with it.</sub>
 
@@ -193,11 +199,12 @@ The repositories above are not parallel products competing for attention. They a
 вслух, вместо того чтобы подставить правдоподобное.
 
 **Куда это движется.** Репозитории выше — не параллельные продукты, а одна последовательность.
-Первым был грейдер; глоссарий позже влился в него, а три инфраструктурных проекта — механизмы
+Первым был грейдер; карточки глоссария позже переехали в него и экспортируются оттуда, а три инфраструктурных проекта — механизмы
 конвейера, каталог правил и контроль темпа по телеметрии сессий — родились из проблем, найденных
 при его разработке. Они делают работу руководителя проектов: держат темп, правила и общие механизмы
 между мной как заказчиком и ИИ-агентами как командой. Сначала доделывается эта инфраструктура, чтобы
-не наступать на одни и те же грабли в каждом репозитории; затем грейдер доводится до готовности, с
-которой его можно продвигать; и только после него начинается следующий флагман — модульная
-платформа автоматизации аналитики, отчётности и бюджетирования. Это план, а не обязательство с
-датами.
+не наступать на одни и те же грабли в каждом репозитории: механизмы готовы, когда на них полностью
+перешли все проекты, и это меряет их собственный прогон, а не слова здесь. Затем глоссарий и грейдер;
+после них — единый проект инфраструктуры на локальном сервере, облегчённая версия без git, главный
+проект автоматизации аналитики, отчётности и бюджетирования, налоги для самозанятых и проект для
+тренеров. Это план, а не обязательство с датами.
