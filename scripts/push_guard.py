@@ -88,61 +88,84 @@ WINDOW_PREFIX = "agent/"
 PUSH = re.compile(r"\bgit\b[^;&|]*\bpush\b")
 
 
+#: Опции ``git push``, берущие значение ОТДЕЛЬНЫМ словом (``git help push``):
+#: без них значение читалось бы как удалённый репозиторий или ветка.
+VALUE_OPTIONS = frozenset({"-o", "--push-option", "--repo", "--receive-pack", "--exec"})
 #: Разделители команд оболочки — токены, целиком из этих знаков (210).
-SEPARATORS = frozenset(";&|()")
+SEPARATORS = frozenset(";&|()\n")
+#: Знаки, из которых лексер собирает операторы: разделители и перенаправления.
+OPERATORS = ";&|()<>\n"
+#: Открытие heredoc: ``<<ИМЯ``, ``<<'ИМЯ'``, ``<<-"ИМЯ"`` — тело до строки ИМЯ.
+HEREDOC = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
+
+
+def without_heredocs(command: str) -> str:
+    """Команда без тел heredoc: тело — текст, а не команды (форма 8)."""
+    kept: list[str] = []
+    waiting: list[str] = []
+    for line in command.split("\n"):
+        if waiting:
+            if line.strip() == waiting[0]:
+                waiting.pop(0)
+            continue
+        kept.append(line)
+        waiting.extend(match.group(2) for match in HEREDOC.finditer(line))
+    return "\n".join(kept)
 
 
 def segments(command: str) -> list[list[str]]:
     """Команды строки — словами, по всем формам разделителя, а не по одной.
 
-    ПЕРЕЧЕНЬ ФОРМ (210): находки #329 по этому месту шли по одной форме за раз
-    (``;`` без пробела, перевод строки), и каждая обходила и 012, и 202. Формы,
-    которыми окно пишет команды сегодня, и что с каждой делается:
+    ПЕРЕЧЕНЬ ФОРМ (210). Находки #329 по этому месту шли по одной форме за раз,
+    а первая попытка перечня (#370) резала строку по переводу строки ДО
+    кавычек — и самая частая форма окна, ``git commit -m "$(cat <<'EOF' …)"
+    && git push``, уходила мимо сторожа. Поэтому команда разбирается ОДНИМ
+    лексером целиком, а не построчно. Формы и что с каждой:
 
     1. ``a && b``, ``a ; b`` с пробелами — разделитель;
     2. склеенные ``a&&b``, ``a;b``, ``a||b``, ``a|b`` — разделитель
-       (``shlex`` со знаками пунктуации отдаёт их отдельным токеном);
-    3. перевод строки — разделитель: строки разбираются порознь;
-    4. ``\\`` в конце строки — продолжение той же команды, не разделитель;
+       (знаки пунктуации ``shlex`` отдаёт отдельным токеном);
+    3. перевод строки ВНЕ кавычек — разделитель; ВНУТРИ кавычек (многострочное
+       ``-m "…"``, подстановка с heredoc в кавычках) — часть слова;
+    4. ``\\`` в конце строки — продолжение той же команды;
     5. ``&`` — фоновый разделитель;
     6. ``(`` и ``)`` подоболочки — разделители;
-    7. перенаправление (``2>&1``, ``> файл``, ``< файл``) — выбрасывается вместе
-       с целью, иначе ``2`` и ``1`` стали бы аргументами толчка;
-    8. строка, которую не разобрать (тело heredoc с непарной кавычкой), —
-       пропускается, если толчка в ней нет; есть — отказ разбора (``ValueError``),
-       и сторож говорит, что команду не судил.
+    7. перенаправление — токен ЦЕЛИКОМ из ``<>&`` (``>``, ``>>``, ``>&``) —
+       выбрасывается вместе с целью и номером дескриптора перед ним; слово в
+       кавычках со знаком ``>`` перенаправлением не считается;
+    8. тело heredoc вне кавычек — вырезается до разбора: это текст, и
+       непарная кавычка в нём не должна глушить разбор команды.
 
-    ГРАНИЦА: подстановка ``$(…)`` и переменные не раскрываются — толчок,
-    собранный из них, виден как слово, и это названо в докстроке модуля.
+    Команда, которую не разобрать и в которой есть толчок, — отказ разбора
+    (``ValueError``): сторож говорит, что её не судил.
+
+    ГРАНИЦА: подстановка ``$(…)`` и переменные не раскрываются; оборот
+    ``<<ИМЯ`` внутри кавычек принимается за heredoc.
     """
+    lexer = shlex.shlex(without_heredocs(command.replace("\\\n", " ")),
+                        posix=True, punctuation_chars=OPERATORS)
+    lexer.whitespace = " \t\r"
+    lexer.whitespace_split = True
+    words = list(lexer)
     parts: list[list[str]] = []
-    for line in command.replace("\\\n", " ").split("\n"):
-        lexer = shlex.shlex(line, posix=True, punctuation_chars=True)
-        lexer.whitespace_split = True
-        try:
-            words = list(lexer)
-        except ValueError:
-            if PUSH.search(line):
-                raise
+    current: list[str] = []
+    skip = False
+    for word in words:
+        if skip:
+            skip = False
             continue
-        current: list[str] = []
-        skip = False
-        for word in words:
-            if skip:
-                skip = False
-                continue
-            if word and set(word) <= SEPARATORS:
-                if current:
-                    parts.append(current)
-                current = []
-            elif "<" in word or ">" in word:
-                if current and current[-1].isdigit():
-                    current.pop()
-                skip = True
-            else:
-                current.append(word)
-        if current:
-            parts.append(current)
+        if word and set(word) <= SEPARATORS:
+            if current:
+                parts.append(current)
+            current = []
+        elif word and set(word) <= set("<>&") and set(word) & set("<>"):
+            if current and current[-1].isdigit():
+                current.pop()
+            skip = True
+        else:
+            current.append(word)
+    if current:
+        parts.append(current)
     return parts
 
 
@@ -171,7 +194,12 @@ def push_targets(command: str, current: str, root: pathlib.Path = ROOT) -> list[
             continue
         if place != root and root not in place.parents:
             continue
-        plain = [w for w in rest[1:] if not w.startswith("-")]
+        plain, args = [], iter(rest[1:])
+        for word in args:
+            if word in VALUE_OPTIONS:
+                next(args, None)          # значение опции — не удалённый и не ветка
+            elif not word.startswith("-"):
+                plain.append(word)
         refspecs = plain[1:] if plain else []
         for spec in refspecs or [current]:
             spec = spec.lstrip("+")
@@ -304,6 +332,16 @@ def selftest() -> int:
         ("7: перенаправление — не аргумент", f"cd {root} && git push -u origin agent/x 2>&1 | tail -1",
          [("agent/x", "agent/x")]),
         ("7: перенаправление в файл", f"cd {root} && git push > /tmp/log", [("agent/x", "agent/x")]),
+        ("3: heredoc в подстановке в кавычках и толчок той же командой",
+         f"cd {root} && git commit -m \"$(cat <<'EOF'\nтело с don't\nEOF\n)\" && git push origin main",
+         [("main", "main")]),
+        ("3: многострочное -m и толчок", f"cd {root} && git commit -m \"a\nb\" && git push origin main",
+         [("main", "main")]),
+        ("3: толчок, названный в тексте сообщения, — не команда",
+         f"cd {root} && git commit -m \"тело\ngit push origin main\" && git push origin agent/x",
+         [("agent/x", "agent/x")]),
+        ("7: знак > в слове в кавычках — не перенаправление",
+         f"cd {root} && git push -o \"a>b\" origin main", [("main", "main")]),
         ("8: непарная кавычка в теле — строка пропущена",
          f"cd {root} && cat <<'E' > /tmp/m\nдон't\nE\ngit push origin main",
          [("main", "main")]),
