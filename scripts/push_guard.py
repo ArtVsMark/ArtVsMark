@@ -88,16 +88,62 @@ WINDOW_PREFIX = "agent/"
 PUSH = re.compile(r"\bgit\b[^;&|]*\bpush\b")
 
 
+#: Разделители команд оболочки — токены, целиком из этих знаков (210).
+SEPARATORS = frozenset(";&|()")
+
+
 def segments(command: str) -> list[list[str]]:
-    """Команды строки, разрезанные по ``&&``, ``;``, ``||`` и ``|``, — словами."""
-    words = shlex.split(command, posix=True) if command.strip() else []
-    parts: list[list[str]] = [[]]
-    for word in words:
-        if word in ("&&", ";", "||", "|"):
-            parts.append([])
-        else:
-            parts[-1].append(word)
-    return [part for part in parts if part]
+    """Команды строки — словами, по всем формам разделителя, а не по одной.
+
+    ПЕРЕЧЕНЬ ФОРМ (210): находки #329 по этому месту шли по одной форме за раз
+    (``;`` без пробела, перевод строки), и каждая обходила и 012, и 202. Формы,
+    которыми окно пишет команды сегодня, и что с каждой делается:
+
+    1. ``a && b``, ``a ; b`` с пробелами — разделитель;
+    2. склеенные ``a&&b``, ``a;b``, ``a||b``, ``a|b`` — разделитель
+       (``shlex`` со знаками пунктуации отдаёт их отдельным токеном);
+    3. перевод строки — разделитель: строки разбираются порознь;
+    4. ``\\`` в конце строки — продолжение той же команды, не разделитель;
+    5. ``&`` — фоновый разделитель;
+    6. ``(`` и ``)`` подоболочки — разделители;
+    7. перенаправление (``2>&1``, ``> файл``, ``< файл``) — выбрасывается вместе
+       с целью, иначе ``2`` и ``1`` стали бы аргументами толчка;
+    8. строка, которую не разобрать (тело heredoc с непарной кавычкой), —
+       пропускается, если толчка в ней нет; есть — отказ разбора (``ValueError``),
+       и сторож говорит, что команду не судил.
+
+    ГРАНИЦА: подстановка ``$(…)`` и переменные не раскрываются — толчок,
+    собранный из них, виден как слово, и это названо в докстроке модуля.
+    """
+    parts: list[list[str]] = []
+    for line in command.replace("\\\n", " ").split("\n"):
+        lexer = shlex.shlex(line, posix=True, punctuation_chars=True)
+        lexer.whitespace_split = True
+        try:
+            words = list(lexer)
+        except ValueError:
+            if PUSH.search(line):
+                raise
+            continue
+        current: list[str] = []
+        skip = False
+        for word in words:
+            if skip:
+                skip = False
+                continue
+            if word and set(word) <= SEPARATORS:
+                if current:
+                    parts.append(current)
+                current = []
+            elif "<" in word or ">" in word:
+                if current and current[-1].isdigit():
+                    current.pop()
+                skip = True
+            else:
+                current.append(word)
+        if current:
+            parts.append(current)
+    return parts
 
 
 def push_targets(command: str, current: str, root: pathlib.Path = ROOT) -> list[tuple[str, str]]:
@@ -244,12 +290,36 @@ def selftest() -> int:
         ("не толчок", f"cd {root} && git status", []),
         ("чужой репозиторий", "cd /tmp && git push origin main", []),
         ("пуш в echo — не толчок", f"cd {root} && echo git push", []),
+        # Перечень форм разделителя (210) — по случаю на форму.
+        ("2: склеенное ;", f"cd {root} && git commit -m x;git push origin main",
+         [("main", "main")]),
+        ("2: склеенное &&", f"cd {root}&&git push origin main", [("main", "main")]),
+        ("2: склеенное ||", f"cd {root} && false||git push origin main", [("main", "main")]),
+        ("3: перевод строки", f"cd {root}\ngit add -A\ngit push origin main",
+         [("main", "main")]),
+        ("4: продолжение строки — одна команда", f"cd {root} && git push \\\n origin main",
+         [("main", "main")]),
+        ("5: фоновый &", f"cd {root} & git push origin main", [("main", "main")]),
+        ("6: подоболочка", f"(cd {root} && git push origin main)", [("main", "main")]),
+        ("7: перенаправление — не аргумент", f"cd {root} && git push -u origin agent/x 2>&1 | tail -1",
+         [("agent/x", "agent/x")]),
+        ("7: перенаправление в файл", f"cd {root} && git push > /tmp/log", [("agent/x", "agent/x")]),
+        ("8: непарная кавычка в теле — строка пропущена",
+         f"cd {root} && cat <<'E' > /tmp/m\nдон't\nE\ngit push origin main",
+         [("main", "main")]),
     ]
     for name, command, expected in targets:
         got = push_targets(command, "agent/x")
         if got != expected:
             broken.append(f"разбор, {name}: ждали {expected}, вышло {got}")
         print(f"  {'верно' if got == expected else 'СБОЙ '} — разбор: {name}")
+
+    try:
+        push_targets(f"cd {root} && git push origin 'main", "agent/x")
+        broken.append("разбор, 8: непарная кавычка в строке толчка — ждали отказ разбора")
+        print("  СБОЙ  — разбор: 8: толчок в неразбираемой строке — отказ")
+    except ValueError:
+        print("  верно — разбор: 8: толчок в неразбираемой строке — отказ")
 
     def never(sha: str, *_: str) -> bool:
         return False
