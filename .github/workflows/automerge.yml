@@ -57,7 +57,7 @@ jobs:
   # scripts/checks.py::MACHINE_BRANCHES, совпадение держит
   # scripts/check_mechanisms.py::skip_branches_match (214).
   automerge:
-    uses: ArtVsMark/Engineering-Pipeline-Mechanisms/.github/workflows/step-automerge.yml@817255779cdd01caeeb01a3f804fa145c9e1217d # v1.6.0
+    uses: ArtVsMark/Engineering-Pipeline-Mechanisms/.github/workflows/step-automerge.yml@7cd39af2005ceb7564cba9324a42b375331fa4c8 # v1.8.0
     with:
       skip-branches: "dependabot/ chore/metrics chore/deps- chore/changelog"
     secrets:
