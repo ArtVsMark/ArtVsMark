@@ -2212,19 +2212,61 @@ def flow_pins(flows: dict[str, str]) -> dict[str, set[str]]:
     другого соседа в том же файле своим ``ref:`` не должен прикрыть
     расхождение. Шаг кончается на следующем ``- `` списка шагов.
     """
-    pins: dict[str, set[str]] = {}
-    for text in flows.values():
+    return {repo: {sha for sha, _ in found} for repo, found in flow_pin_sites(flows).items()}
+
+
+def flow_pin_sites(flows: dict[str, str]) -> dict[str, set[tuple[str, str]]]:
+    """Пины соседей с местом: репозиторий → {(коммит, «файл:строка»)}.
+
+    Закомментированная строка пином не считается (находка ed107d9): старый
+    ``# uses: …@sha`` прикрыл бы устаревший ``origin``.
+    """
+    pins: dict[str, set[tuple[str, str]]] = {}
+    for name, text in sorted(flows.items()):
         repo = ""
-        for line in text.splitlines():
+        for number, line in enumerate(text.splitlines(), start=1):
+            if line.lstrip().startswith("#"):
+                continue
             if STEP_START.match(line):
                 repo = ""
             if match := USES_PIN.search(line):
-                pins.setdefault(match[1], set()).add(match[2])
+                pins.setdefault(match[1], set()).add((match[2], f"{name}:{number}"))
             if match := CHECKOUT_REPO.match(line):
                 repo = match[1]
             elif repo and (match := CHECKOUT_REF.match(line)):
-                pins.setdefault(repo, set()).add(match[1])
+                pins.setdefault(repo, set()).add((match[1], f"{name}:{number}"))
     return pins
+
+
+def one_pin_per_neighbour(flows: dict[str, str]) -> list[str]:
+    """Один сосед — одна версия во всех прогонах, во всех формах вызова.
+
+    ПРЕДМЕТ ОПЛАЧЕН 24–26 ОКТЯБРЯ. Соседа витрина зовёт тремя формами:
+    переиспользуемым прогоном (``uses: …/.github/workflows/X.yml@sha``),
+    действием (``uses: …/.github/actions/X@sha``) и чекаутом с ``ref:``, из
+    которого бегут его скрипты. Обновлятель зависимостей двигает только
+    ``uses:``. #366 сдвинул действие каталога на v2.0.0, оставив его чекауты на
+    v1.12.0; #374 сдвинул шаги механизмов на v1.8.0 (контракт 0.10), оставив
+    чекаут сводного гейта на v1.6.0 — и сводный гейт, сверяющий контракт
+    кодом старой версии, пропустил подъём, а шаг автомержа новой версии
+    отказал всем изменениям. ``called_pins`` молчал оба раза: он спрашивал,
+    есть ли версия ``origin`` среди ЛЮБЫХ пинов соседа, а старые пины
+    оставались (находка 2144051).
+
+    Поэтому пины одного соседа обязаны совпадать — тогда и ``origin`` сверяется
+    с единственной версией, и сдвиг одной формы без остальных краснеет на том
+    же изменении, которое его принесло.
+    """
+    found: list[str] = []
+    for repo, sites in sorted(flow_pin_sites(flows).items()):
+        versions = sorted({sha for sha, _ in sites})
+        if len(versions) > 1:
+            where = "; ".join(f"{sha} — " + ", ".join(sorted(at for s, at in sites if s == sha))
+                              for sha in versions)
+            found.append(f"{repo}: прибит к {len(versions)} версиям сразу ({where}). Обновлятель "
+                         f"двигает только uses:, чекауты с ref: остаются — сдвиньте все формы "
+                         f"вызова одним изменением")
+    return found
 
 
 def called_pins(rules: dict[str, dict], flows: dict[str, str]) -> list[str]:
@@ -2518,6 +2560,21 @@ def selftest() -> int:
          {"123": {"origin_kind": "adapted", "origin": f"A/cat:scripts/x.py@{'c' * 40}"}}, False),
         ("origin вызванного без версии", lambda r: called_pins(r, PIN_FLOWS),
          {"123": {"origin_kind": "called", "origin": "A/cat:scripts/x.py"}}, True),
+        # Один сосед — одна версия (2144051): формы вызова — чекаут с ref,
+        # действие и переиспользуемый прогон; закомментированный пин — не пин.
+        ("чекаут и действие соседа на разных версиях", one_pin_per_neighbour,
+         PIN_FLOWS, True),
+        ("все формы вызова соседа на одной версии", one_pin_per_neighbour,
+         {"x.yml": "      - uses: actions/checkout@v7\n        with:\n"
+                   f"          repository: A/cat\n          ref: {'a' * 40}\n"
+                   f"      - uses: A/cat/.github/actions/act@{'a' * 40}\n"
+                   f"    uses: A/cat/.github/workflows/step.yml@{'a' * 40}\n"}, False),
+        ("сдвиг в другом файле тоже ловится", one_pin_per_neighbour,
+         {"x.yml": f"    uses: A/cat/.github/workflows/step.yml@{'a' * 40}\n",
+          "y.yml": f"    uses: A/cat/.github/workflows/step.yml@{'c' * 40}\n"}, True),
+        ("старый пин в комментарии не считается", one_pin_per_neighbour,
+         {"x.yml": f"    uses: A/cat/.github/workflows/step.yml@{'a' * 40}\n"
+                   f"    # uses: A/cat/.github/workflows/step.yml@{'c' * 40}\n"}, False),
         ("ожидание в цикле скрипта", script_polls,
          {"a.py": "import time\nwhile True:\n    time.sleep(30)\n"}, True),
         ("ожидание по прямому имени", script_polls,
@@ -3411,6 +3468,7 @@ def main() -> int:
              + audit_gaps(rules) + audit_workflows(flows) + audit_runners(flows, floor)
              + shared_temp(sources) + shared_swaps(sources) + script_polls(sources)
              + gate_really_blocks(rules, flows) + called_pins(rules, flows)
+             + one_pin_per_neighbour(flows)
              + audit_harness(sources, flows) + audit_charter(ROOT)
              + list_reads(sources, flows) + unreached_names(sources)
              + regex_copies(sources) + marker_copies(sources, flows)
