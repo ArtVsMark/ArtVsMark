@@ -78,7 +78,7 @@ permissions:
   actions: read
 
 jobs:
-  # Код шага берётся по коммиту выпуска v1.6.0, а не по тегу и не `./`:
+  # Код шага берётся по коммиту выпуска v1.8.0, а не по тегу и не `./`:
   # `check_mechanisms.py::pinned_actions` требует SHA (тот же коммит, что у
   # ci-complete.yml). Ключ — по имени, а не `secrets: inherit`.
   #

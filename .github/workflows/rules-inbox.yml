@@ -123,11 +123,19 @@ jobs:
           # те же; сухой прогон на 3.14: входящие — код 0, очередь пуста;
           # самопроверки link_trails и main_red пройдены; атрибуция первопредков
           # от ca0d920 — 150 объединяющих коммитов, без атрибуции 0.
-          ref: b577c644d62b08a8b5a1bc27180ea84ed8363c28 # v1.12.0, 2026-10-14
+          #
+          # Сдвиг 26 октября — на коммит выпуска 2.0.0, все ШЕСТЬ мест вместе.
+          # Пины РАЗОШЛИСЬ снова тем же путём: dependabot (#366) передвинул
+          # действие атрибуции на 2.0.0, чекауты остались на 1.12.0. Теперь
+          # расхождение краснит check_mechanisms.py::one_pin_per_neighbour на
+          # том же изменении. Между 1.12.0 и 2.0.0 check_attribution.py,
+          # main_red.py и check_python_version.py побайтно те же, у
+          # sync_inbox.py в список чужих контрактов добавлен `facts`.
+          ref: cf7fc6f746dfca251a8b0686593ab42f34df050c # v2.0.0, 2026-10-16
           path: .rules-sync
           fetch-depth: 1
 
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.14"
 

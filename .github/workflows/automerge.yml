@@ -50,7 +50,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Код шага — по коммиту выпуска v1.6.0 (тот же, что у ci-complete.yml и
+  # Код шага — по коммиту выпуска v1.8.0 (тот же, что у ci-complete.yml и
   # review.yml), а не по тегу: `check_mechanisms.py::pinned_actions` требует SHA.
   # `skip-branches` — та же строка, что у review.yml: слитое с машинной ветки
   # не встаёт в реестр непросмотренного (051); копия
