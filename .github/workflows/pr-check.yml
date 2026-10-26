@@ -356,9 +356,10 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ArtVsMark/Engineering-Incidents-Playbook
-          # Пин тот же, что у остальных трёх инструментов каталога; почему
-          # коммит, а не тег, — сказано в rules-inbox.yml.
-          ref: b577c644d62b08a8b5a1bc27180ea84ed8363c28 # v1.12.0, 2026-10-14
+          # Пин тот же, что у всех мест каталога в прогонах — их шесть, и
+          # разойтись им не даёт check_mechanisms.py::one_pin_per_neighbour;
+          # почему коммит, а не тег, — сказано в rules-inbox.yml.
+          ref: cf7fc6f746dfca251a8b0686593ab42f34df050c # v2.0.0, 2026-10-16
           path: .py-gates
           fetch-depth: 1
 
