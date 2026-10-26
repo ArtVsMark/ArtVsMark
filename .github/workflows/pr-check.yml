@@ -79,7 +79,7 @@ jobs:
       # ЧЕКАУТА ГРЕЙДЕРА ЗДЕСЬ БОЛЬШЕ НЕТ — см. врезку в metrics.yml: числа,
       # ради которых он клонировался, грейдер публикует о себе сам.
 
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.14"
 
@@ -322,7 +322,7 @@ jobs:
       # Прежняя редакция выкачивала гейт по нему ещё раз, и закрепить его
       # можно было, только зная второй вход (095) — мы его знали и задавали.
       - name: Сверить трейлеры со списком согласованных имён
-        uses: ArtVsMark/Engineering-Incidents-Playbook/.github/actions/attribution@cf7fc6f746dfca251a8b0686593ab42f34df050c # v2.0.0, 2026-10-16
+        uses: ArtVsMark/Engineering-Incidents-Playbook/.github/actions/attribution@42eb3df6276d3ef321700524daf35524e00d82b0 # v2.0.0, 2026-10-16
         with:
           authors: .github/authors.txt
           # Пусто: подрезать нечего, диапазон и так только коммиты изменения.
@@ -406,7 +406,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.15"
 
