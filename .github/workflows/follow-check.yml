@@ -1,0 +1,65 @@
+# Сверка подписок владельца: на кого подписан, а тот на него — нет.
+#
+# ЗАЧЕМ. Решение владельца 26 октября: постоянно отслеживаемая задача, где
+# каждый аккаунт без взаимной подписки предложен к одному из двух решений —
+# отписаться или внести в исключения (.github/follow-exceptions.json). Логика —
+# в scripts/follow_check.py, здесь только когда будить.
+#
+# ОН ПРЕДЛАГАЕТ, А НЕ ОТПИСЫВАЕТ. Отписка — жест владельца, и штатному токену
+# права на неё не дают; токен владельца сюда не берётся намеренно: прогон,
+# который может отписать, однажды отпишет не того.
+#
+# ПОЧЕМУ РАЗ В СУТКИ. Подписки меняются днями, а не минутами; чаще — это
+# запросы к площадке без нового ответа.
+name: follow-check
+
+on:
+  schedule:
+    # Раз в сутки, минута не :00 — не попадать в общий пик площадки.
+    - cron: "41 5 * * *"
+  # У событийной автоматики всегда есть ручная кнопка (правило 104).
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  # Сверка ведёт ОДНУ задачу; закрывать её она не умеет.
+  issues: write
+
+concurrency:
+  group: follow-check
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: follow-check
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          # Сверка зовёт общего помощника разметки и читает файл исключений.
+          # За полнотой этого списка следит check_mechanisms.py::audit_sparse.
+          sparse-checkout: |
+            scripts/follow_check.py
+            scripts/checks.py
+            .github/follow-exceptions.json
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.14"
+
+      - name: Есть ли подписки без взаимности?
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -uo pipefail
+          python3 scripts/follow_check.py
+          rc=$?
+          # Код 1 — находка, а не поломка прогона: задача заведена или
+          # обновлена, и этого достаточно. Красное на вкладке дало бы второй
+          # адресат тому же сообщению (правило 142). Код 2 — сверка не
+          # отработала, и вот это уже красное.
+          if [ "$rc" -eq 2 ]; then exit 1; fi
+          exit 0
