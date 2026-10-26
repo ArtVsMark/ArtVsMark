@@ -408,6 +408,11 @@ def project_stats(repo: str) -> dict[str, int]:
 #: Логин подставляется через json.dumps, а не форматированием: имя приезжает
 #: из данных, и склеивать запрос со строкой значит писать инъекцию собственными
 #: руками. Здесь оно наше, но образец копируют, а не читают.
+#:
+#: Второй отрезок, `recent`, — последние RECENT_DAYS дней тем же запросом, под
+#: псевдонимом. Его «всего» тоже отдаёт площадка: сумма дней календаря была бы
+#: вторым определением вклада, и с годовым числом она могла бы разойтись молча
+#: (правило 090) — у площадки в «всего» входят вклады, которых нет в днях.
 CONTRIB_QUERY = """
 query {
   user(login: %s) {
@@ -417,22 +422,46 @@ query {
         weeks { contributionDays { date contributionCount } }
       }
     }
+    recent: contributionsCollection(from: %s, to: %s) {
+      contributionCalendar { totalContributions }
+    }
   }
 }
 """
 
+#: Окно плитки «за месяц». Решение владельца 26.10.2026 (#389): плитка
+#: `followers` повторяла число, которое площадка и так показывает рядом с
+#: профилем, а вклад за месяц рядом с вкладом за год показывает темп.
+RECENT_DAYS = 30
 
-def contribution_days(login: str = OWNER) -> tuple[int, list[tuple[str, int]]]:
-    """Вклады за год: всего и по дням. Дни идут по возрастанию даты.
 
-    Число «всего» берётся у площадки, а не суммируется из дней: сумма — второе
+def contribution_window(today: dt.date, days: int = RECENT_DAYS) -> tuple[str, str]:
+    """Границы отрезка «последние `days` дней» для запроса: сегодня входит в счёт."""
+    start = today - dt.timedelta(days=days - 1)
+    return f"{start.isoformat()}T00:00:00Z", f"{today.isoformat()}T23:59:59Z"
+
+
+def parse_contributions(data: dict) -> tuple[int, list[tuple[str, int]], int]:
+    """Разбор ответа календаря: всего за год, дни по возрастанию даты, всего за отрезок.
+
+    Числа «всего» берутся у площадки, а не суммируются из дней: сумма — второе
     определение той же величины, и разойтись они могут молча (правило 090).
     """
-    data = _graphql(CONTRIB_QUERY % json.dumps(login))
-    calendar = data["user"]["contributionsCollection"]["contributionCalendar"]
+    user = data["user"]
+    calendar = user["contributionsCollection"]["contributionCalendar"]
     days = [(day["date"], day["contributionCount"])
             for week in calendar["weeks"] for day in week["contributionDays"]]
-    return calendar["totalContributions"], sorted(days)
+    # `null` вместо отрезка — тоже отказ, и того же рода: TypeError прошёл бы
+    # мимо перехвата ``profile_or_nothing`` и уронил бы сборку целиком.
+    recent = (user.get("recent") or {})["contributionCalendar"]["totalContributions"]
+    return calendar["totalContributions"], sorted(days), recent
+
+
+def contribution_days(login: str = OWNER) -> tuple[int, list[tuple[str, int]], int]:
+    """Вклады: всего за год, по дням за год и всего за последние RECENT_DAYS дней."""
+    since, until = contribution_window(dt.datetime.now(dt.UTC).date())
+    query = CONTRIB_QUERY % (json.dumps(login), json.dumps(since), json.dumps(until))
+    return parse_contributions(_graphql(query))
 
 
 def streaks(days: list[tuple[str, int]], today: str = "") -> tuple[int, int]:
@@ -650,16 +679,16 @@ def profile_stats() -> dict[str, object]:
     profile = _api(f"/users/{OWNER}")
     owned = owned_repos()
     stars = sum(count for _, count in owned)
-    total, days = contribution_days()
+    total, days, recent = contribution_days()
     current, longest = streaks(days)
     return {
         # Имена репозиториев едут вместе с числами: по ним сверяется состав
         # витрины, и второго обхода для этого не делается (правило 090).
         "owned": [name for name, _ in owned],
         "repos": profile.get("public_repos", len(owned)),
-        "followers": profile.get("followers", 0),
         "stars": stars,
         "contributions": total,
+        "recent": recent,
         "streak": current,
         "longest": longest,
         "days": days,
@@ -2415,8 +2444,8 @@ def orphaned(export: dict, rules: dict) -> list[str]:
 ENGINEERING_TILES = (
     ("repos", "public repos"),
     ("stars", "stars earned"),
-    ("followers", "followers"),
     ("contributions", "contributions · 365d"),
+    ("recent", f"contributions · {RECENT_DAYS}d"),
     ("streak", "day streak"),
     ("longest", "longest streak"),
 )
@@ -3412,7 +3441,7 @@ def selftest() -> int:
         broken.append("след технологий: роли повторяются")
 
     # ── карточка профиля рисуется и называет себя ─────────────────────────
-    eng_stats = {"repos": 12, "stars": 6, "followers": 4,
+    eng_stats = {"repos": 12, "stars": 6, "recent": 214,
                  "contributions": 1287, "streak": 12, "longest": 41}
     for dark in (True, False):
         card = render_engineering(eng_stats, dark)
@@ -3427,6 +3456,36 @@ def selftest() -> int:
             if not ok:
                 broken.append(f"карточка профиля ({theme}): {name} — нет")
             print(f"  {'да ' if ok else 'НЕТ'} — карточка профиля ({theme}): {name}")
+
+    # ── вклад за месяц: «всего» берётся у площадки, а не суммой дней ─────
+    # Подделка нарочно расходится: дни в сумме дают 3, а «всего» площадки — 5
+    # и 2. Разбор, взявший сумму дней, дал бы 3 там, где страница обещает число
+    # площадки (090). Отрезок включает сегодня: 30 дней — это 29 назад и сегодня.
+    fake = {"user": {
+        "contributionsCollection": {"contributionCalendar": {
+            "totalContributions": 5,
+            "weeks": [{"contributionDays": [{"date": "2026-10-02", "contributionCount": 2},
+                                            {"date": "2026-10-01", "contributionCount": 1}]}]}},
+        "recent": {"contributionCalendar": {"totalContributions": 2}}}}
+    year, days, recent = parse_contributions(fake)
+    since, until = contribution_window(dt.date(2026, 10, 26))
+    checks_recent = [
+        ("год — число площадки, а не сумма дней", year == 5),
+        ("месяц — число площадки под псевдонимом recent", recent == 2),
+        ("дни идут по возрастанию даты", [d for d, _ in days] == ["2026-10-01", "2026-10-02"]),
+        ("отрезок — 30 дней со сегодняшним", (since, until) == ("2026-09-27T00:00:00Z",
+                                                                 "2026-10-26T23:59:59Z")),
+        ("плитка месяца есть в карточке", "contributions · 30d" in render_engineering(eng_stats, True)),
+    ]
+    try:
+        parse_contributions({"user": {**fake["user"], "recent": None}})
+        checks_recent.append(("ответ без отрезка — отказ, а не ноль", False))
+    except KeyError:
+        checks_recent.append(("ответ без отрезка — отказ, а не ноль", True))
+    for name, ok in checks_recent:
+        if not ok:
+            broken.append(f"вклад за месяц: {name} — нет")
+        print(f"  {'да ' if ok else 'НЕТ'} — вклад за месяц: {name}")
 
     # Разряды разделяются, иначе «1287» читается как год. Пробел неразрывный не
     # нужен: это текст SVG, переносов в нём нет.
