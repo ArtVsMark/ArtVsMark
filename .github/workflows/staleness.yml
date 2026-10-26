@@ -65,6 +65,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # Без -e: оболочка шага `bash -e` оборвала бы его на коде 1 раньше,
+          # чем `rc=$?` его прочтёт, и находка стала бы красным (039).
+          set +e
           set -uo pipefail
           python3 scripts/staleness.py ${{ inputs.hours && format('--hours {0}', inputs.hours) || '' }}
           rc=$?
@@ -88,6 +91,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # Без -e: оболочка шага `bash -e` оборвала бы его на коде 1 раньше,
+          # чем `rc=$?` его прочтёт, и находка стала бы красным (039).
+          set +e
           set -uo pipefail
           python3 scripts/staleness.py --workflow snake.yml ${{ inputs.hours && format('--hours {0}', inputs.hours) || '' }}
           rc=$?
