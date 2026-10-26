@@ -131,7 +131,7 @@ jobs:
           # том же изменении. Между 1.12.0 и 2.0.0 check_attribution.py,
           # main_red.py и check_python_version.py побайтно те же, у
           # sync_inbox.py в список чужих контрактов добавлен `facts`.
-          ref: cf7fc6f746dfca251a8b0686593ab42f34df050c # v2.0.0, 2026-10-16
+          ref: 42eb3df6276d3ef321700524daf35524e00d82b0 # v2.1.0, 2026-10-22
           path: .rules-sync
           fetch-depth: 1
 

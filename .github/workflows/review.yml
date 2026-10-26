@@ -78,7 +78,7 @@ permissions:
   actions: read
 
 jobs:
-  # Код шага берётся по коммиту выпуска v1.8.0, а не по тегу и не `./`:
+  # Код шага берётся по коммиту выпуска v1.11.0, а не по тегу и не `./`:
   # `check_mechanisms.py::pinned_actions` требует SHA (тот же коммит, что у
   # ci-complete.yml). Ключ — по имени, а не `secrets: inherit`.
   #
@@ -97,7 +97,7 @@ jobs:
   # файл, взгляда и так не получает (действие сверяет файл с main), а
   # реестр непросмотренного его берёт — новой дыры переезд не открывает.
   review:
-    uses: ArtVsMark/Engineering-Pipeline-Mechanisms/.github/workflows/step-review.yml@7cd39af2005ceb7564cba9324a42b375331fa4c8 # v1.8.0
+    uses: ArtVsMark/Engineering-Pipeline-Mechanisms/.github/workflows/step-review.yml@96c2c93b52cd5a433e06a2984a0919e655ad9b73 # v1.11.0
     with:
       pr: ${{ inputs.pr || '' }}
       mark: ${{ inputs.mark || '' }}
