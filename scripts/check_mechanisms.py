@@ -2241,6 +2241,9 @@ def flow_pin_sites(flows: dict[str, str]) -> dict[str, set[tuple[str, str]]]:
 #: Чтение кода возврата строкой после команды и снятие errexit в шаге.
 READS_RC = re.compile(r"^\s*rc=\$\?\s*$")
 ERREXIT_OFF = re.compile(r"^\s*set \+e\b")
+#: Errexit включён снова: флаг e в первой группе (``set -e``, ``set -euo
+#: pipefail``) или ``set -o errexit`` — после них ``rc=$?`` снова не прочтётся.
+ERREXIT_ON = re.compile(r"^\s*set\s+(?:-[a-zA-Z]*e[a-zA-Z]*\b|-o\s+errexit\b)")
 
 
 def errexit_reads(flows: dict[str, str]) -> list[str]:
@@ -2262,6 +2265,8 @@ def errexit_reads(flows: dict[str, str]) -> list[str]:
                 off = False
             if ERREXIT_OFF.match(line):
                 off = True
+            elif ERREXIT_ON.match(line):
+                off = False
             if READS_RC.match(line) and not off:
                 found.append(f"{name}:{number}: rc=$? без set +e выше в шаге — оболочка "
                              f"bash -e оборвёт шаг на ненулевом коде раньше, чем он "
@@ -2609,6 +2614,15 @@ def selftest() -> int:
         ("rc=$? после set +e в том же шаге", errexit_reads,
          {"x.yml": "      - name: a\n        run: |\n          set +e\n"
                    "          python3 x.py\n          rc=$?\n"}, False),
+        ("set +e, потом снова set -euo pipefail — errexit вернулся", errexit_reads,
+         {"x.yml": "      - name: a\n        run: |\n          set +e\n"
+                   "          set -euo pipefail\n          python3 x.py\n          rc=$?\n"}, True),
+        ("set +e, потом set -o errexit", errexit_reads,
+         {"x.yml": "      - name: a\n        run: |\n          set +e\n          set -o errexit\n"
+                   "          python3 x.py\n          rc=$?\n"}, True),
+        ("set -uo pipefail errexit не включает", errexit_reads,
+         {"x.yml": "      - name: a\n        run: |\n          set +e\n"
+                   "          set -uo pipefail\n          python3 x.py\n          rc=$?\n"}, False),
         ("set +e соседнего шага не считается", errexit_reads,
          {"x.yml": "      - name: a\n        run: |\n          set +e\n"
                    "      - name: b\n        run: |\n          python3 x.py\n"
