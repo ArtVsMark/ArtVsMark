@@ -6,8 +6,8 @@
 Взгляд — общий шаг Engineering-Pipeline-Mechanisms (`step-review.yml`), позванный
 тонким вызовом `.github/workflows/review.yml` (#345, шаг B). **Как смотреть** —
 три захода, роли, форма ответа — канон механизмов:
-[`docs/agent/review.md`](https://github.com/ArtVsMark/Engineering-Pipeline-Mechanisms/blob/7cd39af2005ceb7564cba9324a42b375331fa4c8/docs/agent/review.md)
-на коммите выпуска v1.8.0. Здесь он не пересказывается: пересказ разошёлся бы
+[`docs/agent/review.md`](https://github.com/ArtVsMark/Engineering-Pipeline-Mechanisms/blob/96c2c93b52cd5a433e06a2984a0919e655ad9b73/docs/agent/review.md)
+на коммите выпуска v1.11.0. Здесь он не пересказывается: пересказ разошёлся бы
 с ним с первой правки
 ([022](https://github.com/ArtVsMark/Engineering-Incidents-Playbook/blob/main/rules/ru/022-one-canonical-document.md)).
 

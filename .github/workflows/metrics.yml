@@ -274,13 +274,14 @@ jobs:
 
   # КТО ИЗ СОСЕДЕЙ ДОГОВОРУ ФАКТОВ НЕ ОТВЕЧАЕТ — КАЖДЫЕ СУТКИ, ВСЛУХ.
   #
-  # Договор с 15.10 держит каталог (facts-v2.0.0, #843), а витрина — его
-  # читатель: «факты соседей читает их читатель, а не каталог» (их
-  # check_facts.py без --file). Поэтому сверка осталась здесь, но кодом
-  # каталога, а не своей копией: своя схема знала только мажор 1, и файл 2.0
-  # получал «schema не той формы» (#358). Своя копия уходит из дерева в #353.
+  # Договор держат механизмы (facts-v2.2.0, их #1563 и #1679), а витрина — его
+  # читатель: «факты соседей читает их читатель, а не издатель». С 15.10
+  # держателем был каталог (facts-v2.0.0, его #843); с 2.1 (выпуск 23.10)
+  # договор у механизмов, форма файла та же. Сверка здесь идёт кодом
+  # держателя, а не своей копией: своя схема знала только мажор 1, и файл 2.0
+  # получал «schema не той формы» (#358).
   #
-  # ОТДЕЛЬНОЙ РАБОТОЙ И ТОЛЬКО С ЧТЕНИЕМ. Код берётся с выпуска каталога, а
+  # ОТДЕЛЬНОЙ РАБОТОЙ И ТОЛЬКО С ЧТЕНИЕМ. Код берётся с выпуска механизмов, а
   # работа `build` пишет в ветку: чужой код в ней получил бы право записи.
   # Тег выпуска подвижен, поэтому каждый скачанный файл сверяется с
   # закреплённым отпечатком — закрепление вызываемого без вызывающего не
@@ -297,7 +298,7 @@ jobs:
     permissions:
       contents: read
     env:
-      FACTS_CONTRACT: facts-v2.0.0
+      FACTS_CONTRACT: facts-v2.2.0
     steps:
       - name: Забрать список соседей
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -310,19 +311,19 @@ jobs:
         with:
           python-version: "3.14"
 
-      - name: Забрать код договора у каталога и сверить отпечатки
+      - name: Забрать код договора у механизмов и сверить отпечатки
         run: |
           set -euo pipefail
           dir="$RUNNER_TEMP/facts-contract"
           mkdir -p "$dir"
           for f in check_facts.py facts.schema.json facts.version; do
             curl -fsSL -o "$dir/$f" \
-              "https://github.com/ArtVsMark/Engineering-Incidents-Playbook/releases/download/$FACTS_CONTRACT/$f"
+              "https://github.com/ArtVsMark/Engineering-Pipeline-Mechanisms/releases/download/$FACTS_CONTRACT/$f"
           done
           ( cd "$dir" && sha256sum --check --strict - <<'SUMS'
-          49e4e8980cc4c01269239cb84e892625f11995db2243d3a56d5f899c1e9edb8b  check_facts.py
-          e00775d563eb7ed96ff230ecadb56f6ab38232b5da0d6a4fdb74fafafa6434ea  facts.schema.json
-          c28fcca53637bc88e124af1725df13cb98c69dedefd62fb3cdbe1cdb6b760624  facts.version
+          098bed2885496f5a996c424d6b230260459aad26ffae1b9862ae58d62332006f  check_facts.py
+          bd9cb9862b1ad99df867966824f4f8f57b15fd3bf1a855ffecbffdf7e6502898  facts.schema.json
+          c4a2383a03bdb6739d16a0e24058e4b9c7da4e63d203e0be2f448868cc03c530  facts.version
           SUMS
           ) || { echo "::error::Код договора фактов $FACTS_CONTRACT не совпал с закреплённым отпечатком — тег выпуска сдвинули; сверка не запускается (152)"; exit 1; }
 
