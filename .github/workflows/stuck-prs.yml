@@ -63,6 +63,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # Без -e: оболочка шага `bash -e` оборвала бы его на коде 1 раньше,
+          # чем `rc=$?` его прочтёт, и находка стала бы красным (039).
+          set +e
           set -uo pipefail
           python3 scripts/stuck_prs.py ${{ inputs.minutes && format('--minutes {0}', inputs.minutes) || '' }}
           rc=$?

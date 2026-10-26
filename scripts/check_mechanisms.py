@@ -2238,6 +2238,37 @@ def flow_pin_sites(flows: dict[str, str]) -> dict[str, set[tuple[str, str]]]:
     return pins
 
 
+#: Чтение кода возврата строкой после команды и снятие errexit в шаге.
+READS_RC = re.compile(r"^\s*rc=\$\?\s*$")
+ERREXIT_OFF = re.compile(r"^\s*set \+e\b")
+
+
+def errexit_reads(flows: dict[str, str]) -> list[str]:
+    """``rc=$?`` в шаге, где errexit не снят: код ненулевой команды не прочтётся.
+
+    ПРЕДМЕТ ОПЛАЧЕН 26 ОКТЯБРЯ первым прогоном сверки подписок: задача
+    заведена, а прогон красный. Оболочка шага на площадке — ``bash -e``, и
+    команда, вернувшая 1, обрывает шаг раньше, чем следующая строка
+    ``rc=$?`` её прочтёт: «находка, а не поломка» стала поломкой. Та же форма
+    стояла ещё в трёх шагах (staleness ×2, stuck-prs) — их коды 1 красили
+    вкладку вопреки собственным комментариям; четыре шага с ``set +e`` выше
+    работали верно. Шаг кончается на следующем ``- `` списка шагов.
+    """
+    found: list[str] = []
+    for name, text in sorted(flows.items()):
+        off = False
+        for number, line in enumerate(text.splitlines(), start=1):
+            if STEP_START.match(line):
+                off = False
+            if ERREXIT_OFF.match(line):
+                off = True
+            if READS_RC.match(line) and not off:
+                found.append(f"{name}:{number}: rc=$? без set +e выше в шаге — оболочка "
+                             f"bash -e оборвёт шаг на ненулевом коде раньше, чем он "
+                             f"прочтётся (039)")
+    return found
+
+
 def one_pin_per_neighbour(flows: dict[str, str]) -> list[str]:
     """Один сосед — одна версия во всех прогонах, во всех формах вызова.
 
@@ -2572,6 +2603,16 @@ def selftest() -> int:
         ("сдвиг в другом файле тоже ловится", one_pin_per_neighbour,
          {"x.yml": f"    uses: A/cat/.github/workflows/step.yml@{'a' * 40}\n",
           "y.yml": f"    uses: A/cat/.github/workflows/step.yml@{'c' * 40}\n"}, True),
+        ("rc=$? без set +e — код не прочтётся", errexit_reads,
+         {"x.yml": "      - name: a\n        run: |\n          set -uo pipefail\n"
+                   "          python3 x.py\n          rc=$?\n"}, True),
+        ("rc=$? после set +e в том же шаге", errexit_reads,
+         {"x.yml": "      - name: a\n        run: |\n          set +e\n"
+                   "          python3 x.py\n          rc=$?\n"}, False),
+        ("set +e соседнего шага не считается", errexit_reads,
+         {"x.yml": "      - name: a\n        run: |\n          set +e\n"
+                   "      - name: b\n        run: |\n          python3 x.py\n"
+                   "          rc=$?\n"}, True),
         ("старый пин в комментарии не считается", one_pin_per_neighbour,
          {"x.yml": f"    uses: A/cat/.github/workflows/step.yml@{'a' * 40}\n"
                    f"    # uses: A/cat/.github/workflows/step.yml@{'c' * 40}\n"}, False),
@@ -3468,7 +3509,7 @@ def main() -> int:
              + audit_gaps(rules) + audit_workflows(flows) + audit_runners(flows, floor)
              + shared_temp(sources) + shared_swaps(sources) + script_polls(sources)
              + gate_really_blocks(rules, flows) + called_pins(rules, flows)
-             + one_pin_per_neighbour(flows)
+             + one_pin_per_neighbour(flows) + errexit_reads(flows)
              + audit_harness(sources, flows) + audit_charter(ROOT)
              + list_reads(sources, flows) + unreached_names(sources)
              + regex_copies(sources) + marker_copies(sources, flows)
