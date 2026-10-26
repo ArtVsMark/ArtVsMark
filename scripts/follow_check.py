@@ -17,11 +17,13 @@
 посмотрел», а механизм такого сказать не может (как у ``stuck_prs.py``).
 Пустой разности задачу не заводит; заведённую — переписывает «расхождений нет».
 
-ИСКЛЮЧЕНИЕ — ПО ЛОГИНУ ИЛИ ПО ИМЕНИ. Владелец называет аккаунты так, как видит
-их на странице («Поколение Python»), и логин по имени из окна не узнать —
-список подписок окну площадка не отдаёт. Поэтому имя принимается как есть,
-без учёта регистра, а задача показывает, на какой логин оно легло: два
-аккаунта с одним именем видны сразу, а не прячутся.
+ИСКЛЮЧЕНИЕ СНИМАЕТ ПО ЛОГИНУ, ИМЯ — ТОЛЬКО ПОДСКАЗКА (194). Владелец называет
+аккаунты так, как видит их на странице («Поколение Python»), но имя профиля
+аккаунт ставит себе сам: назовись любой кандидат «Python» — и исключение по
+имени тихо сняло бы его со списка (взгляд на #381). Поэтому запись по имени
+кандидата не снимает: совпавший остаётся в списке, и рядом сказано, чьё имя
+совпало, — подтверждается это только логином. Чужое имя вставляется в
+задачу как текст: упоминание гасится, разметка экранируется.
 
 Запуск::
 
@@ -38,6 +40,7 @@ import argparse
 import json
 import os
 import pathlib
+import re
 import sys
 import tempfile
 import urllib.error
@@ -56,59 +59,94 @@ TITLE = "Подписки без взаимности: отписаться ил
 
 
 def load_exceptions(path: pathlib.Path = EXCEPTIONS) -> list[dict]:
-    """Исключения из файла. Запись без логина и имени или без причины — отказ."""
+    """Исключения из файла. Запись не того вида, без логина и имени или без причины — отказ.
+
+    Отказ — ``ValueError``, то есть исход 2: голая строка вместо объекта
+    уронила бы разбор ``AttributeError``, питон вышел бы кодом 1, а прогон
+    прочёл бы его как «есть кандидаты» — сбой прошёл бы зелёным (039).
+    """
     data = json.loads(path.read_text(encoding="utf-8"))
-    found = data.get("exceptions")
+    found = data.get("exceptions") if isinstance(data, dict) else None
     if not isinstance(found, list):
         raise ValueError(f"{path.name}: нет списка exceptions")
     for one in found:
-        if not (one.get("login") or one.get("name")) or not str(one.get("why", "")).strip():
+        if not isinstance(one, dict) or not all(isinstance(one.get(key, ""), str)
+                                                for key in ("login", "name", "why")):
+            raise ValueError(f"{path.name}: запись {one!r} — не объект со строковыми полями")
+        if not (one.get("login") or one.get("name")) or not one.get("why", "").strip():
             raise ValueError(f"{path.name}: запись {one} без login/name или без why")
     return found
 
 
 def compare(following: list[str], followers: list[str], names: dict[str, str],
-            exceptions: list[dict]) -> tuple[list[str], list[tuple[dict, list[str]]],
-                                             list[dict]]:
-    """Разность подписок за вычетом исключений.
+            exceptions: list[dict]) -> tuple[list[str], list[tuple[dict, str]],
+                                             dict[str, list[dict]], list[dict]]:
+    """Разность подписок за вычетом исключений — ПО ЛОГИНУ, а не по имени (194).
 
-    Возвращает: кандидатов (логины), сработавшие исключения с логинами, на
-    которые они легли, и исключения, не нашедшие никого среди подписок.
-    ``names`` — имя профиля по логину, только для разности.
+    ИМЯ НЕ ДОКАЗЫВАЕТ ВЛАДЕНИЯ. Имя профиля аккаунт ставит себе сам: назовись
+    любой из кандидатов «Python» — и исключение по имени тихо сняло бы его со
+    списка (взгляд на #381). Поэтому кандидата снимает только исключение по
+    ЛОГИНУ, а запись по имени — подсказка: совпавший по имени остаётся
+    кандидатом, и рядом сказано, чьё имя совпало, — подтвердить его можно
+    только логином.
+
+    Возвращает: кандидатов; сработавшие исключения по логину; подсказки по
+    имени — кандидат → записи, чьё имя совпало; исключения по логину, на
+    которых подписки нет вовсе. ``names`` — имя профиля по логину, только для
+    разности.
     """
     mutual = {login.lower() for login in followers}
     lonely = [login for login in following if login.lower() not in mutual]
     followed = {login.lower() for login in following}
-    matched: list[tuple[dict, list[str]]] = []
+    matched: list[tuple[dict, str]] = []
     stale: list[dict] = []
     excused: set[str] = set()
+    hints: dict[str, list[dict]] = {}
     for one in exceptions:
-        login = str(one.get("login", "")).lower()
-        name = str(one.get("name", "")).strip().lower()
-        hits = [who for who in lonely
-                if (login and who.lower() == login)
-                or (name and str(names.get(who) or "").strip().lower() == name)]
-        if hits:
-            matched.append((one, hits))
-            excused.update(hits)
-        elif not (login and login in followed):
-            # Взаимный аккаунт законно не попадает в разность — исключение ему
-            # просто не нужно; «устаревшим» оно становится, только если
-            # подписки на него нет вовсе.
-            stale.append(one)
-    return [who for who in lonely if who not in excused], matched, stale
+        login = one.get("login", "").lower()
+        name = one.get("name", "").strip().lower()
+        if login:
+            hit = next((who for who in lonely if who.lower() == login), "")
+            if hit:
+                matched.append((one, hit))
+                excused.add(hit)
+            elif login not in followed:
+                # На взаимного исключение просто не нужно; лишним оно
+                # становится, только если подписки на логин нет вовсе.
+                stale.append(one)
+        elif name:
+            for who in lonely:
+                if (names.get(who) or "").strip().lower() == name:
+                    hints.setdefault(who, []).append(one)
+    candidates = [who for who in lonely if who not in excused]
+    return candidates, matched, {who: hints[who] for who in candidates if who in hints}, stale
+
+
+#: Знаки разметки, которые чужое имя профиля могло бы обратить в ссылку,
+#: выделение или код. Экранируются обратной косой.
+MARKUP = re.compile(r"([\\`*_\[\]()<>#|~!])")
+
+
+def plain(text: str) -> str:
+    """Чужое имя профиля — как текст, а не как разметка.
+
+    Имя пишет владелец аккаунта, а не мы: ``@кто-то`` в нём упомянул бы
+    постороннего, ``](`` сломал бы ссылку (взгляд на #381). Упоминание
+    гасится невидимым разделителем после ``@``, знаки разметки — обратной косой.
+    """
+    return MARKUP.sub(r"\\\1", text).replace("@", "@\u2060")
 
 
 def profile(who: str, names: dict[str, str]) -> str:
     """Ссылка на профиль: текстом — имя, как владелец видит его на странице, рядом логин."""
     name = (names.get(who) or "").strip()
-    return f"[{name or who}](https://github.com/{who}){f' · `{who}`' if name else ''}"
+    return f"[{plain(name) if name else who}](https://github.com/{who}){f' · `{who}`' if name else ''}"
 
 
-def body(candidates: list[str], names: dict[str, str],
-         matched: list[tuple[dict, list[str]]], stale: list[dict],
+def body(candidates: list[str], names: dict[str, str], matched: list[tuple[dict, str]],
+         hints: dict[str, list[dict]], stale: list[dict], unused: list[dict],
          following: int, followers: int) -> str:
-    """Тело задачи: кандидаты, сработавшие и лишние исключения."""
+    """Тело задачи: кандидаты с подсказками, сработавшие, лишние и несовпавшие записи."""
     lines = [MARKER, "",
              f"> Сверка подписок `{OWNER}`: подписан на {following}, подписчиков "
              f"{followers}. Собирает `scripts/follow_check.py` по расписанию "
@@ -117,28 +155,38 @@ def body(candidates: list[str], names: dict[str, str],
     if candidates:
         lines += ["## Подписан, а взаимности нет", "",
                   "По каждому — одно из двух: **отписаться** (на странице аккаунта) "
-                  "или **внести в исключения** — строкой в "
-                  "`.github/follow-exceptions.json` с причиной.", ""]
+                  "или **внести в исключения** — строкой с логином в "
+                  "`.github/follow-exceptions.json` и причиной.", ""]
         for who in candidates:
-            lines.append(f"- [ ] {profile(who, names)}")
+            said = ", ".join(f"«{plain(one['name'])}»" for one in hints.get(who, []))
+            hint = (f" — имя совпало с исключением {said}; имя не доказывает, что это "
+                    f"тот аккаунт: если он, впишите логин `{who}`") if said else ""
+            lines.append(f"- [ ] {profile(who, names)}{hint}")
     else:
         lines += ["## Расхождений нет", "",
                   "Все, на кого подписан владелец, подписаны в ответ или внесены в "
                   "исключения. Закрыть задачу — решение владельца."]
     if matched:
         lines += ["", "## Исключения сработали", ""]
-        for one, hits in matched:
-            said = one.get("login") or one.get("name")
-            landed = ", ".join(profile(who, names) for who in hits)
-            twice = " — **имя легло на несколько аккаунтов**" if len(hits) > 1 else ""
-            lines.append(f"- {said} → {landed}{twice} ({one['why']})")
+        lines += [f"- {profile(who, names)} ({plain(one['why'])})" for one, who in matched]
     if stale:
-        lines += ["", "## Исключения не сработали", "",
-                  "Среди подписок без взаимности нет никого с таким логином или "
-                  "именем: аккаунт подписался в ответ, подписка снята или имя "
-                  "сменилось. Если так и задумано — исключение можно убрать из файла.", ""]
-        lines += [f"- {one.get('login') or one.get('name')} ({one['why']})" for one in stale]
+        lines += ["", "## Исключения без подписки", "",
+                  "Подписки на этот логин нет вовсе — исключение можно убрать из файла.", ""]
+        lines += [f"- `{one['login']}` ({plain(one['why'])})" for one in stale]
+    if unused:
+        lines += ["", "## Подсказки по имени ни с кем не совпали", "",
+                  "Среди подписок без взаимности нет аккаунта с таким именем: он "
+                  "подписан в ответ, подписка снята или имя другое. Записи по имени "
+                  "кандидата не снимают — надёжнее вписать логин.", ""]
+        lines += [f"- {plain(one['name'])} ({plain(one['why'])})" for one in unused]
     return "\n".join(lines) + "\n"
+
+
+def unused_hints(exceptions: list[dict], hints: dict[str, list[dict]]) -> list[dict]:
+    """Записи по имени, не совпавшие ни с одним кандидатом."""
+    used = {id(one) for found in hints.values() for one in found}
+    return [one for one in exceptions
+            if not one.get("login") and one.get("name") and id(one) not in used]
 
 
 def sync(text: str, needed: bool, dry: bool) -> str:
@@ -166,30 +214,38 @@ def selftest() -> int:
     """Обе стороны сверки и третий исход (140)."""
     broken: list[str] = []
     names = {"py": "Python", "gen": "Поколение Python", "x": "X", "twin1": "Twin",
-             "twin2": "Twin"}
-    following = ["py", "gen", "x", "mutual", "twin1", "twin2"]
+             "twin2": "Twin", "fake": "Python", "evil": "@victim ](x) *b*"}
+    following = ["py", "gen", "x", "mutual", "twin1", "twin2", "fake", "evil"]
     followers = ["Mutual", "fan"]
     exceptions = [{"name": "python", "why": "т"}, {"login": "GEN", "why": "т"},
                   {"name": "Twin", "why": "т"}, {"name": "Ушедший", "why": "т"},
-                  {"login": "mutual", "why": "т"}]
-    candidates, matched, stale = compare(following, followers, names, exceptions)
+                  {"login": "mutual", "why": "т"}, {"login": "gone", "why": "т"}]
+    candidates, matched, hints, stale = compare(following, followers, names, exceptions)
+    unused = unused_hints(exceptions, hints)
     cases = [
         ("взаимная подписка не кандидат, регистр не важен", "mutual" not in candidates),
-        ("без взаимности и без исключения — кандидат", candidates == ["x"]),
-        ("исключение по имени, без учёта регистра", any(h == ["py"] for _, h in matched)),
-        ("исключение по логину", any(h == ["gen"] for _, h in matched)),
-        ("имя на двух аккаунтах — оба сняты и видны", any(h == ["twin1", "twin2"]
-                                                          for _, h in matched)),
-        ("несработавшее исключение названо", [o.get("name") for o in stale] == ["Ушедший"]),
-        ("исключение на взаимного не лишнее", all(o.get("login") != "mutual" for o in stale)),
+        ("исключение по логину снимает кандидата, регистр не важен",
+         "gen" not in candidates and [w for _, w in matched] == ["gen"]),
+        ("имя не снимает: совпавший по имени остаётся кандидатом (194)",
+         "py" in candidates and "fake" in candidates),
+        ("подделка имени видна: оба «Python» с подсказкой", set(hints) >= {"py", "fake"}),
+        ("имя на двух аккаунтах — оба кандидаты с подсказкой",
+         {"twin1", "twin2"} <= set(hints)),
+        ("без исключения — кандидат без подсказки", "x" in candidates and "x" not in hints),
+        ("логин без подписки — лишний", [o["login"] for o in stale] == ["gone"]),
+        ("логин на взаимного не лишний", all(o["login"] != "mutual" for o in stale)),
+        ("имя, ни с кем не совпавшее, названо", [o["name"] for o in unused] == ["Ушедший"]),
     ]
-    text = body(candidates, names, matched, stale, len(following), len(followers))
+    text = body(candidates, names, matched, hints, stale, unused,
+                len(following), len(followers))
     cases += [
-        ("в теле маркер, кандидат и двойное имя",
+        ("в теле маркер, ссылка с логином и подсказка",
          MARKER in text and "[X](https://github.com/x) · `x`" in text
-         and "несколько аккаунтов" in text),
+         and "впишите логин `fake`" in text),
+        ("чужое имя — текст: упоминание погашено, разметка экранирована",
+         "@victim" not in text and "@\u2060victim" in text and "\\]\\(x\\)" in text),
         ("пустая разность — «расхождений нет»",
-         "Расхождений нет" in body([], {}, [], [], 1, 1)),
+         "Расхождений нет" in body([], {}, [], {}, [], [], 1, 1)),
     ]
     for name, good in cases:
         if not good:
@@ -198,12 +254,15 @@ def selftest() -> int:
 
     with tempfile.TemporaryDirectory(dir=checks.runner_temp()) as place:
         bad = pathlib.Path(place) / "exceptions.json"
-        bad.write_text('{"exceptions": [{"name": "X"}]}', encoding="utf-8")
-        try:
-            load_exceptions(bad)
-            broken.append("исключение без причины не отвергнуто")
-        except ValueError:
-            print("  верно — исключение без причины отвергнуто")
+        for said, raw in (("без причины", '{"exceptions": [{"name": "X"}]}'),
+                          ("строкой вместо объекта", '{"exceptions": ["Python"]}'),
+                          ("с полем не строкой", '{"exceptions": [{"login": 1, "why": "т"}]}')):
+            bad.write_text(raw, encoding="utf-8")
+            try:
+                load_exceptions(bad)
+                broken.append(f"запись {said} не отвергнута")
+            except ValueError:
+                print(f"  верно — запись {said} отвергнута разбором (исход 2)")
 
     # Исходы живым путём main, вхолостую: площадка подменена (186).
     saved, saved_one = checks.rest_list, checks.rest
@@ -259,16 +318,18 @@ def main(argv: list[str] | None = None) -> int:
         mutual = {login.lower() for login in followers}
         names = {who: str(checks.rest(f"/users/{who}").get("name") or "")
                  for who in following if who.lower() not in mutual}
-        candidates, matched, stale = compare(following, followers, names, exceptions)
-        text = body(candidates, names, matched, stale, len(following), len(followers))
+        candidates, matched, hints, stale = compare(following, followers, names, exceptions)
+        unused = unused_hints(exceptions, hints)
+        text = body(candidates, names, matched, hints, stale, unused,
+                    len(following), len(followers))
         said = sync(text, bool(candidates), args.dry_run)
     except (urllib.error.URLError, OSError, ValueError, KeyError, TypeError) as refusal:
         print(checks.annotate("error", f"сверка подписок не отработала — {refusal}"),
               file=sys.stderr)
         return 2
     print(f"подписан на {len(following)}, подписчиков {len(followers)}; без взаимности "
-          f"{len(candidates)}, исключений сработало {len(matched)}, не сработало "
-          f"{len(stale)}; {said}")
+          f"{len(candidates)} (из них с подсказкой по имени {len(hints)}), исключений "
+          f"сработало {len(matched)}, лишних {len(stale)}; {said}")
     return 1 if candidates else 0
 
 
