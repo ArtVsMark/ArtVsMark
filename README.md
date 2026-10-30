@@ -30,9 +30,9 @@
 <!--m:profile-cards-->
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/engineering-dark.svg?v=ff03bcbe">
-  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/engineering-light.svg?v=dc0ad6d3">
-  <img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/engineering-dark.svg?v=ff03bcbe" alt="GitHub engineering stats: 8 public repos, 13 stars earned, 9 227 contributions · 365d, 2 997 contributions · 30d, 53 day streak, 53 longest streak" width="48%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/engineering-dark.svg?v=ab91243a">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/engineering-light.svg?v=9355fa17">
+  <img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/engineering-dark.svg?v=ab91243a" alt="GitHub engineering stats: 8 public repos, 17 stars earned, 9 371 contributions · 365d, 3 113 contributions · 30d, 54 day streak, 54 longest streak" width="48%">
 </picture>
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/stack-dark.svg?v=b01c44ee">
@@ -43,9 +43,9 @@
 <br><br>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/activity-dark.svg?v=80eb40d9">
-  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/activity-light.svg?v=b36d0022">
-  <img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/activity-dark.svg?v=80eb40d9" alt="A year of contributions day by day, peak 461 in a day, weekly trend below; a snake crossing the contribution grid" width="92%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/activity-dark.svg?v=54a19bfd">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/activity-light.svg?v=2a321078">
+  <img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/activity-dark.svg?v=54a19bfd" alt="A year of contributions day by day, peak 461 in a day, weekly trend below; a snake crossing the contribution grid" width="92%">
 </picture>
 
 <!--/m:profile-cards-->
@@ -67,9 +67,9 @@
 <div align="center">
 <a href="https://github.com/ArtVsMark?tab=repositories">
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/featured-dark.svg?v=69a8e759">
-  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/featured-light.svg?v=54702f80">
-  <img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/featured-dark.svg?v=69a8e759" alt="Stepik-Python-Grader — Offline Python autograder: unlimited local checks, honest side-by-side comparison of solutions. release 1.12, CI success, coverage 91.3%, version 1.12.31. 3 stars, 1829 commits, 48 issues, 13 releases, 833 prs. 5 524 tests, 279 test modules, 11 checks per PR. rules held by: gate 85 (39.5%), pipeline 43 (20.0%), document 72 (33.5%); not applicable 5 (2.3%), unanswered 10 (4.7%); 205 of 215 rules answered · 195 linked to issues. CLI · web UI · GUI · pytest plugin · OS sandbox · Engineering-Incidents-Playbook — Rules for agent sessions and a GitHub pipeline — each one carrying the incident it grew from. release 2.1, CI success, coverage 78.4%, version 2.1.23. 5 stars, 919 commits, 12 issues, 18 releases, 809 prs. 1 827 tests, 84 test modules, 10 checks per PR. rules held by: gate 153 (71.2%), pipeline 12 (5.6%), skill 5 (2.3%), document 19 (8.8%), none 10 (4.7%); not applicable 16 (7.4%); 215 of 215 rules answered · 77 linked to issues. docs · RU/EN · Engineering-Pipeline-Mechanisms — One pipeline skeleton for the whole family: same workflows, own contents. Early — nothing to take yet. release 1.12, CI success, coverage 94.4%, version 1.12.3. 1 stars, 1455 commits, 22 issues, 16 releases, 1412 prs. 4 820 tests, 206 test modules, 25 checks per PR. rules held by: gate 183 (85.1%), pipeline 18 (8.4%), skill 3 (1.4%), document 4 (1.9%); not applicable 7 (3.3%); 215 of 215 rules answered · 21 linked to issues. GitHub Actions · gates · Python · Glossary-Python — The RU/EN glossary the grader links into when a run fails. release 1.4, CI failure, coverage 97.6%, version 1.4.42. 2 stars, 553 commits, 11 issues, 5 releases, 219 prs. 874 tests, 56 test modules, 12 checks per PR. rules held by: gate 77 (35.8%), pipeline 14 (6.5%), document 59 (27.4%), none 12 (5.6%); not applicable 42 (19.5%), rejected 1 (0.5%), unanswered 10 (4.7%); 205 of 215 rules answered · 2 linked to issues. content · tooling" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/featured-dark.svg?v=8d199f03">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/featured-light.svg?v=24a00c26">
+  <img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/featured-dark.svg?v=8d199f03" alt="Stepik-Python-Grader — Offline Python autograder: unlimited local checks, honest side-by-side comparison of solutions. release 1.12, CI success, coverage 91.3%, version 1.12.32. 4 stars, 1830 commits, 48 issues, 13 releases, 833 prs. 5 524 tests, 279 test modules, 11 checks per PR. rules held by: gate 85 (39.2%), pipeline 42 (19.4%), document 72 (33.2%); not applicable 5 (2.3%), unanswered 13 (6.0%); 204 of 217 rules answered · 196 linked to issues. CLI · web UI · GUI · pytest plugin · OS sandbox · Engineering-Pipeline-Mechanisms — One pipeline skeleton for the whole family: same workflows, own contents. Early — nothing to take yet. release 1.14, CI success, coverage 94.5%, version 1.14.3. 2 stars, 1479 commits, 21 issues, 18 releases, 1436 prs. 4 932 tests, 207 test modules, 25 checks per PR. rules held by: gate 182 (83.9%), pipeline 18 (8.3%), skill 3 (1.4%), document 4 (1.8%); not applicable 7 (3.2%), unanswered 3 (1.4%); 214 of 217 rules answered · 24 linked to issues. GitHub Actions · gates · Python · Engineering-Incidents-Playbook — Rules for agent sessions and a GitHub pipeline — each one carrying the incident it grew from. release 3.0, CI success, coverage 77.0%, version 3.0.3. 6 stars, 941 commits, 10 issues, 20 releases, 829 prs. rules held by: gate 152 (70.0%), pipeline 13 (6.0%), skill 5 (2.3%), document 19 (8.8%), none 12 (5.5%); not applicable 16 (7.4%); 217 of 217 rules answered · 77 linked to issues. docs · RU/EN · Glossary-Python — The RU/EN glossary the grader links into when a run fails. release 1.4, CI failure, coverage 97.6%, version 1.4.42. 2 stars, 553 commits, 12 issues, 5 releases, 219 prs. 874 tests, 56 test modules, 12 checks per PR. rules held by: gate 77 (35.5%), pipeline 14 (6.5%), document 58 (26.7%), none 12 (5.5%); not applicable 42 (19.4%), rejected 1 (0.5%), unanswered 13 (6.0%); 204 of 217 rules answered · 2 linked to issues. content · tooling" width="100%">
 </picture>
 </a>
 </div>
@@ -83,7 +83,7 @@
 <a href="https://github.com/ArtVsMark/Glossary-Python"><picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/tile-glossary-python-dark.svg?v=c3e901f8"><source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/tile-glossary-python-light.svg?v=7db11f01"><img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/tile-glossary-python-dark.svg?v=c3e901f8" alt="Open Glossary-Python on GitHub" width="23%"></picture></a>
 <a href="https://github.com/ArtVsMark/Claude-Code_Usage-Token"><picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/tile-claude-code-usage-token-dark.svg?v=834179d6"><source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/tile-claude-code-usage-token-light.svg?v=6143f0a0"><img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/tile-claude-code-usage-token-dark.svg?v=834179d6" alt="Open Claude-Code_Usage-Token on GitHub" width="23%"></picture></a>
 
-<sub>data as of 2026-10-29</sub>
+<sub>data as of 2026-10-30</sub>
 
 </div>
 <!--/m:projects-->
@@ -186,7 +186,7 @@ The repositories above are not parallel products competing for attention. They a
 договорённостей дороже, чем один раз их записать так, чтобы за ними следила машина.
 
 Правила у меня не берутся из головы. Каждое выросло из конкретной поломки, и рядом с ним записано,
-из какой именно — <!--m:rules-->215<!--/m:rules--> действующих записей в общем
+из какой именно — <!--m:rules-->217<!--/m:rules--> действующих записей в общем
 [каталоге](https://github.com/ArtVsMark/Engineering-Incidents-Playbook), одном на все репозитории.
 Каждый отвечает по каждому правилу: принял и чем держит, отклонил и почему, предмета нет — и ответ
 сверяется гейтом, а не совестью. Правило, за которым не бежит ничего, на витрине видно отдельной
