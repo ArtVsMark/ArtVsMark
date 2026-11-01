@@ -30,9 +30,9 @@
 <!--m:profile-cards-->
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/engineering-dark.svg?v=aa81207c">
-  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/engineering-light.svg?v=c0a3d5ca">
-  <img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/engineering-dark.svg?v=aa81207c" alt="GitHub engineering stats: 8 public repos, 19 stars earned, 9 373 contributions · 365d, 2 927 contributions · 30d, 54 day streak, 54 longest streak" width="48%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/engineering-dark.svg?v=e4f0d759">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/engineering-light.svg?v=c01d26d1">
+  <img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/engineering-dark.svg?v=e4f0d759" alt="GitHub engineering stats: 8 public repos, 19 stars earned, 9 375 contributions · 365d, 2 659 contributions · 30d, 55 day streak, 55 longest streak" width="48%">
 </picture>
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/stack-dark.svg?v=b01c44ee">
@@ -43,9 +43,9 @@
 <br><br>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/activity-dark.svg?v=83669230">
-  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/activity-light.svg?v=ad2ad14b">
-  <img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/activity-dark.svg?v=83669230" alt="A year of contributions day by day, peak 461 in a day, weekly trend below; a snake crossing the contribution grid" width="92%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/activity-dark.svg?v=c0f3929d">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/activity-light.svg?v=b3815f2e">
+  <img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/activity-dark.svg?v=c0f3929d" alt="A year of contributions day by day, peak 461 in a day, weekly trend below; a snake crossing the contribution grid" width="92%">
 </picture>
 
 <!--/m:profile-cards-->
@@ -83,7 +83,7 @@
 <a href="https://github.com/ArtVsMark/Glossary-Python"><picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/tile-glossary-python-dark.svg?v=c3e901f8"><source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/tile-glossary-python-light.svg?v=7db11f01"><img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/tile-glossary-python-dark.svg?v=c3e901f8" alt="Open Glossary-Python on GitHub" width="23%"></picture></a>
 <a href="https://github.com/ArtVsMark/Claude-Code_Usage-Token"><picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/tile-claude-code-usage-token-dark.svg?v=834179d6"><source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/tile-claude-code-usage-token-light.svg?v=6143f0a0"><img src="https://raw.githubusercontent.com/ArtVsMark/ArtVsMark/assets/tile-claude-code-usage-token-dark.svg?v=834179d6" alt="Open Claude-Code_Usage-Token on GitHub" width="23%"></picture></a>
 
-<sub>data as of 2026-10-31</sub>
+<sub>data as of 2026-11-01</sub>
 
 </div>
 <!--/m:projects-->
@@ -104,7 +104,7 @@ Four things I do the same way in every repository, and the artefacts you can che
 - **Public rules over private habit** — the workflows, the conventions and the trade-offs are written down and versioned, so they can be read without taking my word for it. Every rule in the shared catalogue gets an answer from this repository — adopted and by what mechanism, rejected and why, or no subject here — in [`.rules/bindings.json`](./.rules/bindings.json).
 - **Incidents over folklore** — a rule exists because something broke. Each one carries the failure it grew from, and they live together in a [public catalogue](https://github.com/ArtVsMark/Engineering-Incidents-Playbook) rather than in my head.
 - **Measured over hand-written** — every number on this page is rebuilt from its source by a [daily job](./.github/workflows/metrics.yml). A number nobody measures is a number that rots, and it rots quietly.
-- **Agent work, signed and traceable** — the work here is done in agent sessions, and the history says so: every commit carries who did it and a link to the session that produced it. Over the last 30 days that is <!--m:signed-->81<!--/m:signed--> of <!--m:signed-total-->81<!--/m:signed-total--> work commits — machine rebuilds excluded, because a scheduled job takes no decisions to sign for. A gate refuses the ones that don't, before the merge rather than after.
+- **Agent work, signed and traceable** — the work here is done in agent sessions, and the history says so: every commit carries who did it and a link to the session that produced it. Over the last 30 days that is <!--m:signed-->75<!--/m:signed--> of <!--m:signed-total-->75<!--/m:signed-total--> work commits — machine rebuilds excluded, because a scheduled job takes no decisions to sign for. A gate refuses the ones that don't, before the merge rather than after.
 
 <sub><b>One worked example, not the whole argument.</b> On the flagship repository the branch protection is public and machine-readable: <!--m:required-->1<!--/m:required--> required checks on `main` (<a href="https://api.github.com/repos/ArtVsMark/Stepik-Python-Grader/rules/branches/main">read the ruleset yourself</a>), over <!--m:releases-->13<!--/m:releases--> releases; behind them a test matrix of <!--m:os-->3<!--/m:os--> operating systems × Python <!--m:py-->3.14<!--/m:py--> with <!--m:exp-->no<!--/m:exp--> experimental, published by the project itself in <a href="https://github.com/ArtVsMark/Stepik-Python-Grader/blob/badges/.github/badges/facts.json">its facts file</a> — check either instead of believing this line. The other repositories hold the same shape at their own maturity; this one simply has the most to show.</sub>
 
